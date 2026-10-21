@@ -103,7 +103,7 @@ def typed_in_origin(rec, receiver_tp):
             continue
         try:
             r = json.loads(raw)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         if not isinstance(r, dict):
             continue
@@ -145,7 +145,7 @@ def candidates(log_text, my_session, handled, started, now):
     for line in log_text.splitlines():
         try:
             r = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         if not isinstance(r, dict) or r.get("source") != "user-prompt" or r.get("skill") not in VERBS:
             continue
@@ -210,7 +210,7 @@ def seat_started(tp, use_birthtime=True):
     for raw in head.split(b"\n"):
         try:
             r = json.loads(raw)
-        except ValueError:
+        except (ValueError, RecursionError):    # a line nested past the parser's depth raises the second
             continue
         if isinstance(r, dict) and r.get("timestamp"):
             t = parse_ts(str(r.get("timestamp"))[:19] + "Z")
@@ -317,7 +317,7 @@ def list_agents(run=None):
         if p.returncode != 0:
             return None
         v = json.loads(p.stdout)
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (OSError, ValueError, RecursionError, subprocess.SubprocessError):
         return None
     return v if isinstance(v, list) else None
 
@@ -336,7 +336,7 @@ def report_who_missed(root, origin, agents):
     for line in lines:
         try:
             r = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         if (isinstance(r, dict) and r.get("source") == "user-prompt" and r.get("skill") in VERBS
                 and is_fleet(r.get("args")) and parse_ts(r.get("ts")) is not None):
@@ -435,6 +435,8 @@ def self_test():
       and pending(base, "me", None, parse_ts("2026-10-17T10:06:00Z"), now) is None)
     two = "\n".join([rec("2026-10-17T10:02:00Z", skill="pre-compact", args="--fleet --disarm"), base, "junk"])
     t("the newest owed record wins", pending(two, "me", None, None, now)[1]["skill"] == "pause")
+    t("a log line nested deeper than the parser allows is skipped, never a crash",
+      pending("\n".join(["[" * 100_000 + "]" * 100_000, base]), "me", None, None, now)[1]["skill"] == "pause")
     t("the local command drops only --fleet",
       local_args("--fleet --disarm") == "--disarm" and local_args("--compact --fleet --resume 15m") == "--compact --resume 15m")
     d = directive({"skill": "pre-compact", "args": "--fleet --disarm", "session": "abcdef12-xx", "ts": "2026-10-17T10:02:00Z"})
@@ -465,7 +467,8 @@ def self_test():
         def __init__(self, rc, out): self.returncode, self.stdout = rc, out
     t("a failed `claude agents --json` is None, never an empty fleet",
       list_agents(lambda *a, **k: P(1, "[]")) is None and list_agents(lambda *a, **k: P(0, "")) is None
-      and list_agents(lambda *a, **k: P(0, "{}")) is None and list_agents(lambda *a, **k: P(0, "[]")) == [])
+      and list_agents(lambda *a, **k: P(0, "{}")) is None and list_agents(lambda *a, **k: P(0, "[]")) == []
+      and list_agents(lambda *a, **k: P(0, "[" * 100_000 + "]" * 100_000)) is None)
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         def tx(name, lines):
@@ -496,6 +499,21 @@ def self_test():
                                                   "timestamp": "2026-10-21T06:09:44.505Z"})])
         t("a 300 KB first record, an instructions attachment's size class (one measured at 246,617 B), is still read",
           seat_started(big, use_birthtime=False) == parse_ts("2026-10-21T06:09:44Z"))
+        deep = tx("deep.jsonl", ["[" * 100_000 + "]" * 100_000,
+                                 json.dumps({"type": "user", "timestamp": "2026-10-21T06:09:44.505Z"})])
+        t("a line nested deeper than the parser allows is skipped like any unreadable line, never a crash",
+          seat_started(deep, use_birthtime=False) == parse_ts("2026-10-21T06:09:44Z"))
+        origin_sid = "abcdef12-" + "0" * 27      # the session pattern, without a UUID's shape
+        tx(origin_sid + ".jsonl", ['{"x": ' + "[" * 100_000 + '"<command-name>/pause</command-name>"' + "]" * 100_000 + "}"])
+        t("an origin transcript line nested past the parser's depth reads as not typed there, never a crash",
+          typed_in_origin({"session": origin_sid, "ts": "2026-10-21T06:09:44Z", "skill": "pause"},
+                          os.path.join(d, "receiver.jsonl")) is False)
+        tx(origin_sid + ".jsonl", ['{"x": ' + "[" * 100_000 + '"<command-name>/pause</command-name>"' + "]" * 100_000 + "}",
+                                  json.dumps({"type": "user", "timestamp": "2026-10-21T06:09:45.000Z", "message": {
+                                      "content": "<command-name>/pause</command-name><command-args>--fleet</command-args>"}})])
+        t("and the owner's typed record after such a line still reads as typed: the deep line is skipped, not the end of the read",
+          typed_in_origin({"session": origin_sid, "ts": "2026-10-21T06:09:44Z", "skill": "pause"},
+                          os.path.join(d, "receiver.jsonl")) is True)
         older = rec("2026-10-21T06:05:00Z")
         t("a fleet command typed before that start is not owed to the seat",
           pending(older, "me", None, seat_started(first, use_birthtime=False), parse_ts("2026-10-21T06:12:00Z")) is None)
