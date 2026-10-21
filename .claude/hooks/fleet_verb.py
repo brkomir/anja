@@ -32,6 +32,9 @@ VERBS = ("pause", "pre-compact")
 WINDOW_S = 600
 LOG_TAIL = 1_048_576        # the window is 10 minutes; the log grows ~31 KB a day
 ORIGIN_TAIL = 8_388_608     # the origin's typed record is at most WINDOW_S old
+SEAT_HEAD = 1_048_576       # where Linux reads a seat's start (seat_started); the first timestamped record is sized by
+                            # what the repository injects at session start, and ended by 247,025 B in the 330 of 332
+                            # transcripts that have one
 # The args travel as typed, flags or plain words alike ("--resume 15m", "and resume in 58 minutes from now"):
 # the earlier filter (at most 6 words of [-A-Za-z0-9:.]{1,16}) refused plain-English wording, and 14 typed /pause
 # commands would not have travelled. Only the command itself travels: the line is cut at the first `&&` or `;`
@@ -179,6 +182,43 @@ def directive(rec):
                 rec.get("ts"), command))
 
 
+def seat_started(tp, use_birthtime=True):
+    """When this seat's transcript began, or None when that cannot be told (the relay then treats the seat as old,
+    as it always has). The file's creation time where the platform keeps one (macOS); Linux keeps none, so there
+    it is the EARLIEST timestamp among the records in the head of the file, never the first one met: a resumed file
+    can open with a queue-operation record stamped after the file was created and ahead of its older history (one
+    of 330 transcripts measured read 70 s younger than its creation time that way, and a seat read younger skips a
+    command that was typed for it). Never the modified time: it moves on every write. Measured 2026-10-21 over the
+    transcripts of one workspace: the earliest timestamp is the SessionStart hook's record, 3 to 24 s before the
+    file's creation time in most; where it is minutes or hours earlier the seat sat open before its first prompt
+    (the file is written at that prompt), so there Linux reads the seat's real opening. The first timestamped
+    record (a SessionStart hook attachment in 323 of the 330 of 332 transcripts that have one) ended by line 29 and
+    byte 247,025; a record cut by SEAT_HEAD fails to parse and is skipped, so a head holding no whole timestamped
+    record gives None."""
+    try:
+        st = os.stat(tp)
+    except OSError:
+        return None
+    if use_birthtime and getattr(st, "st_birthtime", None) is not None:
+        return st.st_birthtime
+    try:
+        with open(tp, "rb") as f:
+            head = f.read(SEAT_HEAD)
+    except OSError:
+        return None
+    earliest = None
+    for raw in head.split(b"\n"):
+        try:
+            r = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get("timestamp"):
+            t = parse_ts(str(r.get("timestamp"))[:19] + "Z")
+            if t is not None and (earliest is None or t < earliest):
+                earliest = t
+    return earliest
+
+
 def check(inp, root, state_dir, sid8, now=None):
     """-> the directive text for this seat, or None. Records the handled mark as a side effect."""
     session = str(inp.get("session_id") or "")
@@ -200,10 +240,7 @@ def check(inp, root, state_dir, sid8, now=None):
     started = None
     tp = inp.get("transcript_path")
     if isinstance(tp, str) and os.path.isfile(tp):
-        try:
-            started = getattr(os.stat(tp), "st_birthtime", None)
-        except OSError:
-            started = None
+        started = seat_started(tp)
     elif isinstance(tp, str):
         started = now       # the harness writes the transcript AFTER the first prompt's hooks: this session is new
     owed = candidates(log_text, session, handled, started, now)
@@ -429,6 +466,39 @@ def self_test():
     t("a failed `claude agents --json` is None, never an empty fleet",
       list_agents(lambda *a, **k: P(1, "[]")) is None and list_agents(lambda *a, **k: P(0, "")) is None
       and list_agents(lambda *a, **k: P(0, "{}")) is None and list_agents(lambda *a, **k: P(0, "[]")) == [])
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        def tx(name, lines):
+            p = os.path.join(d, name)
+            with open(p, "w") as f:
+                f.write("\n".join(lines) + "\n")
+            return p
+        meta = [json.dumps({"type": "mode"}), json.dumps({"type": "permission-mode"}), "not json"]
+        first = tx("first.jsonl", meta + [json.dumps({"type": "user", "timestamp": "2026-10-21T06:09:44.505Z"}),
+                                          json.dumps({"type": "assistant", "timestamp": "2026-10-21T07:00:00.000Z"})])
+        t("on a platform with no creation time, the seat starts at its transcript's earliest timestamped record",
+          seat_started(first, use_birthtime=False) == parse_ts("2026-10-21T06:09:44Z"))
+        resumed = tx("resumed.jsonl", meta + [json.dumps({"type": "queue-operation", "timestamp": "2026-10-21T07:21:02.678Z"}),
+                                              json.dumps({"type": "system", "timestamp": "2026-10-21T00:33:59.921Z"})])
+        t("a resumed file opening with a later queue-operation record reads its earliest timestamp, never younger",
+          seat_started(resumed, use_birthtime=False) == parse_ts("2026-10-21T00:33:59Z"))
+        os.utime(first, (now + 3600, now + 3600))
+        t("and never at the file's modified time, which moves on every write",
+          seat_started(first, use_birthtime=False) == parse_ts("2026-10-21T06:09:44Z"))
+        t("a transcript with no timestamped record, or no file at all, has no known start (None, as before)",
+          seat_started(tx("none.jsonl", meta), use_birthtime=False) is None
+          and seat_started(os.path.join(d, "absent.jsonl"), use_birthtime=False) is None)
+        late = tx("late.jsonl", [json.dumps({"type": "mode"})] * 2 + ["x" * (SEAT_HEAD + 10)]
+                  + [json.dumps({"type": "user", "timestamp": "2026-10-21T06:09:44.505Z"})])
+        t("a timestamp past the head that is read is not found (None, never a guess)",
+          seat_started(late, use_birthtime=False) is None)
+        big = tx("big.jsonl", meta + [json.dumps({"type": "attachment", "content": "x" * 300_000,
+                                                  "timestamp": "2026-10-21T06:09:44.505Z"})])
+        t("a 300 KB first record, an instructions attachment's size class (one measured at 246,617 B), is still read",
+          seat_started(big, use_birthtime=False) == parse_ts("2026-10-21T06:09:44Z"))
+        older = rec("2026-10-21T06:05:00Z")
+        t("a fleet command typed before that start is not owed to the seat",
+          pending(older, "me", None, seat_started(first, use_birthtime=False), parse_ts("2026-10-21T06:12:00Z")) is None)
     print("\nself-test: ALL PASS" if ok else "\nself-test: FAILURES")
     return 0 if ok else 1
 
