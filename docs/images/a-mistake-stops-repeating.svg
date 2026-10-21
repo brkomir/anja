@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" width="1200" height="720" role="img" aria-labelledby="anja1v2-title anja1v2-desc">
+<title id="anja1v2-title">How a mistake stops repeating</title>
+<desc id="anja1v2-desc">A mistake happens and you correct it. The lesson is written down in memory, which survives the session. If the mistake comes back, the lesson becomes a rule, read by every session it applies to. If it still comes back, it becomes a guard, which refuses or warns at the moment of the act. Then it is measured: did the mistake stop?</desc>
+<style>
+@media (prefers-color-scheme: dark) {
+.anja1v2-card{fill:#090909;stroke:#2a2a2a}
+.anja1v2-t{fill:#fafafa}.anja1v2-mu{fill:#a3a3a3}
+.anja1v2-ink{fill:#00c292}
+.anja1v2-ln{stroke:#00c292}.anja1v2-nd{fill:#00c292}
+.anja1v2-s1{fill:#081614}.anja1v2-s2{fill:#081e18}.anja1v2-s3{fill:#082820}
+.anja1v2-mc{fill:#111111;stroke:#00c292}
+.anja1v2-flr{stroke:#2e2e2e}
+}
+</style>
+<defs><marker id="anja1v2-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#199d78" class="anja1v2-nd"/></marker></defs>
+<rect x="0.5" y="0.5" width="1199" height="719" rx="20" fill="#f7f7f7" stroke="#dcdcdc" stroke-width="1" class="anja1v2-card"/>
+<text x="48" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anja1v2-t">How a mistake</text>
+<text x="48" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anja1v2-t">stops repeating</text>
+<path d="M48,664 H1152" fill="none" stroke="#dcdcdc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-flr"/>
+<rect x="360" y="452" width="264" height="212" rx="0" fill="#e4f8ef" class="anja1v2-s1"/>
+<rect x="624" y="334" width="264" height="330" rx="0" fill="#d3f4e6" class="anja1v2-s2"/>
+<rect x="888" y="216" width="264" height="448" rx="0" fill="#c0efdb" class="anja1v2-s3"/>
+<path d="M360,664 V452 H624 V334 H888 V216 H1152 V664" fill="none" stroke="#199d78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln"/>
+<path d="M360,452 H624" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln"/>
+<path d="M624,334 H888" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln"/>
+<path d="M888,216 H1152" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln"/>
+<text x="386" y="504" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anja1v2-t">the lesson is</text>
+<text x="386" y="540" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anja1v2-t">written down</text>
+<text x="386" y="580" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anja1v2-mu">it survives the session</text>
+<text x="386" y="615" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anja1v2-mu">memory</text>
+<circle cx="360" cy="452" r="7" fill="#199d78" class="anja1v2-nd"/>
+<text x="650" y="386" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anja1v2-t">it becomes</text>
+<text x="650" y="422" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anja1v2-t">a rule</text>
+<text x="650" y="462" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anja1v2-mu">read by every session</text>
+<text x="650" y="489" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anja1v2-mu">it applies to</text>
+<text x="650" y="524" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anja1v2-mu">.claude/rules/</text>
+<circle cx="624" cy="334" r="7" fill="#199d78" class="anja1v2-nd"/>
+<text x="914" y="268" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anja1v2-t">it becomes</text>
+<text x="914" y="304" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anja1v2-t">a guard</text>
+<text x="914" y="344" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anja1v2-mu">refuses or warns</text>
+<text x="914" y="371" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anja1v2-mu">at the moment</text>
+<text x="914" y="398" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anja1v2-mu">of the act</text>
+<text x="914" y="433" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anja1v2-mu">.claude/hooks/</text>
+<circle cx="888" cy="216" r="7" fill="#199d78" class="anja1v2-nd"/>
+<path d="M604,440 V338" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln" marker-end="url(#anja1v2-head)"/>
+<text x="588" y="401" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" text-anchor="end" fill="#057558" class="anja1v2-ink">it comes back?</text>
+<path d="M868,322 V220" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln" marker-end="url(#anja1v2-head)"/>
+<text x="852" y="283" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" text-anchor="end" fill="#057558" class="anja1v2-ink">still comes back?</text>
+<path d="M56,534 V590" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln" marker-end="url(#anja1v2-head)"/>
+<circle cx="56" cy="511" r="7" fill="#199d78" class="anja1v2-nd"/>
+<circle cx="56" cy="597" r="7" fill="#199d78" class="anja1v2-nd"/>
+<text x="76" y="520" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="26" font-weight="650" fill="#171717" class="anja1v2-t">a mistake happens</text>
+<text x="76" y="606" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="26" font-weight="650" fill="#171717" class="anja1v2-t">you correct it</text>
+<path d="M286.0,597 H352" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln" marker-end="url(#anja1v2-head)"/>
+<rect x="752" y="60" width="400" height="112" rx="14" fill="#ffffff" stroke="#199d78" stroke-width="2" class="anja1v2-mc"/>
+<text x="952" y="112" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" text-anchor="middle" fill="#171717" class="anja1v2-t">measured: did it stop?</text>
+<text x="952" y="146" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" text-anchor="middle" fill="#595959" class="anja1v2-mu">scripts/</text>
+<path d="M1020.0,208 V184" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anja1v2-ln" marker-end="url(#anja1v2-head)"/>
+</svg>

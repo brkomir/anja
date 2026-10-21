@@ -1,0 +1,17 @@
+# Written at run time by the hooks, the scripts and the status line. Keep them out of git: the logs
+# record fragments of commands and of what was typed, the state directory holds session mail,
+# compaction checkpoints and usage readings, and worktrees/ holds agent checkouts. No trailing slash
+# on the first two, so the links the settings file asks Claude Code to make for them inside a
+# worktree are ignored too. The four lines after /logs re-include the real logs directory (a link
+# is not a directory to git, so it stays ignored), ignore its contents again, and re-include the
+# two audit ledgers the expert-review skill tracks, so a plain `git add` takes them.
+/state
+/logs
+!/logs/
+/logs/*
+!/logs/audit-runs.jsonl
+!/logs/audit-findings.jsonl
+/worktrees/
+/settings.local.json
+/skills/*/.roll.lock
+/skills/*/.roll-staging-*/

@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 856" width="1200" height="856" role="img" aria-labelledby="anjaflc-title anjaflc-desc">
+<title id="anjaflc-title">A feature, from request to done</title>
+<desc id="anjaflc-desc">You ask for a feature in a sentence or two. Only when there is a real design choice, a panel of experts weighs it first: they advise, you pick an option. Agents build it in parallel, each on its own files, and none of them commits. Your session commits it once the tests pass, with only its own files. A fresh panel of reviewers reads it, in a second session or in this one. Only if changes are requested, the fixes you accept land in one commit, and a review hub checks them again. Only if you keep a tracker, the feature is marked complete after a final check. Then it is done, and the next piece starts.</desc>
+<style>
+@media (prefers-color-scheme: dark) {
+.anjaflc-card{fill:#090909;stroke:#2a2a2a}
+.anjaflc-t{fill:#fafafa}.anjaflc-mu{fill:#a3a3a3}
+.anjaflc-ink{fill:#00c292}
+.anjaflc-ln{stroke:#00c292}.anjaflc-nd{fill:#00c292}
+.anjaflc-s1{fill:#081614}.anjaflc-s2{fill:#081e18}.anjaflc-s3{fill:#082820}
+.anjaflc-mc{fill:#111111;stroke:#00c292}
+.anjaflc-dc{fill:#090909;stroke:#00c292}
+}
+</style>
+<defs><marker id="anjaflc-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#199d78" class="anjaflc-nd"/></marker></defs>
+<rect x="0.5" y="0.5" width="1199" height="855" rx="20" fill="#f7f7f7" stroke="#dcdcdc" stroke-width="1" class="anjaflc-card"/>
+<text x="48" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjaflc-t">A feature, from</text>
+<text x="48" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjaflc-t">request to done</text>
+<rect x="48" y="248" width="252" height="240" rx="0" fill="#e4f8ef" class="anjaflc-s1"/>
+<path d="M48,248 L300,248" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln"/>
+<circle cx="48" cy="248" r="7" fill="#199d78" class="anjaflc-nd"/>
+<text x="68" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">you ask for</text>
+<text x="68" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">a feature</text>
+<text x="68" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">in a sentence or two</text>
+<text x="332" y="226" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" fill="#057558" class="anjaflc-ink">a real design choice?</text>
+<rect x="333" y="248" width="250" height="239" rx="0" fill="#f7f7f7" stroke="#199d78" stroke-width="2" stroke-dasharray="7 6" class="anjaflc-dc"/>
+<path d="M332,248 L584,248" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14 9" class="anjaflc-ln"/>
+<circle cx="332" cy="248" r="7" fill="#199d78" class="anjaflc-nd"/>
+<text x="352" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">a panel</text>
+<text x="352" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">weighs it</text>
+<text x="352" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">experts advise,</text>
+<text x="352" y="403" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">you pick an option</text>
+<text x="352" y="438" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjaflc-mu">/expert-review</text>
+<rect x="616" y="248" width="252" height="240" rx="0" fill="#e4f8ef" class="anjaflc-s1"/>
+<path d="M616,248 L868,248" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln"/>
+<circle cx="616" cy="248" r="7" fill="#199d78" class="anjaflc-nd"/>
+<text x="636" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">agents build</text>
+<text x="636" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">in parallel</text>
+<text x="636" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">each on its own files,</text>
+<text x="636" y="403" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">and none commits</text>
+<text x="636" y="438" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjaflc-mu">/agent-work</text>
+<rect x="900" y="248" width="252" height="240" rx="0" fill="#e4f8ef" class="anjaflc-s1"/>
+<path d="M900,248 L1152,248" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln"/>
+<circle cx="900" cy="248" r="7" fill="#199d78" class="anjaflc-nd"/>
+<text x="920" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">your session</text>
+<text x="920" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">commits it</text>
+<text x="920" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">once the tests pass,</text>
+<text x="920" y="403" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">only its own files</text>
+<text x="920" y="438" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjaflc-mu">safe-commit.sh</text>
+<path d="M303,248 L321,248" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln" marker-end="url(#anjaflc-head)"/>
+<path d="M587,248 L605,248" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln" marker-end="url(#anjaflc-head)"/>
+<path d="M871,248 L889,248" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln" marker-end="url(#anjaflc-head)"/>
+<path d="M1152,251 L1152,512 L48,512 L48,557" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln" marker-end="url(#anjaflc-head)"/>
+<rect x="48" y="568" width="252" height="240" rx="0" fill="#d3f4e6" class="anjaflc-s2"/>
+<path d="M48,568 L300,568" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln"/>
+<circle cx="48" cy="568" r="7" fill="#199d78" class="anjaflc-nd"/>
+<text x="68" y="620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">a fresh panel</text>
+<text x="68" y="656" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">reads it</text>
+<text x="68" y="696" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">in a second session</text>
+<text x="68" y="723" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">or this one</text>
+<text x="68" y="758" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjaflc-mu">/review-hub</text>
+<text x="68" y="783" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjaflc-mu">/expert-review</text>
+<text x="332" y="546" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" fill="#057558" class="anjaflc-ink">changes requested?</text>
+<rect x="333" y="568" width="250" height="239" rx="0" fill="#f7f7f7" stroke="#199d78" stroke-width="2" stroke-dasharray="7 6" class="anjaflc-dc"/>
+<path d="M332,568 L584,568" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14 9" class="anjaflc-ln"/>
+<circle cx="332" cy="568" r="7" fill="#199d78" class="anjaflc-nd"/>
+<text x="352" y="620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">fixes land in</text>
+<text x="352" y="656" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">one commit</text>
+<text x="352" y="696" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">the ones you accept</text>
+<text x="352" y="723" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">a hub checks</text>
+<text x="352" y="750" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">them again</text>
+<text x="616" y="546" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" fill="#057558" class="anjaflc-ink">you keep a tracker?</text>
+<rect x="617" y="568" width="250" height="239" rx="0" fill="#f7f7f7" stroke="#199d78" stroke-width="2" stroke-dasharray="7 6" class="anjaflc-dc"/>
+<path d="M616,568 L868,568" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14 9" class="anjaflc-ln"/>
+<circle cx="616" cy="568" r="7" fill="#199d78" class="anjaflc-nd"/>
+<text x="636" y="620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">marked</text>
+<text x="636" y="656" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">complete</text>
+<text x="636" y="696" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">after a final check</text>
+<text x="636" y="731" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjaflc-mu">/audit-check</text>
+<text x="636" y="756" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjaflc-mu">/features</text>
+<rect x="901" y="568" width="250" height="239" rx="0" fill="#ffffff" stroke="#199d78" stroke-width="2" class="anjaflc-mc"/>
+<path d="M900,568 L1152,568" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln"/>
+<circle cx="900" cy="568" r="7" fill="#199d78" class="anjaflc-nd"/>
+<text x="920" y="620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjaflc-t">done</text>
+<text x="920" y="660" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjaflc-mu">the next piece starts</text>
+<path d="M303,568 L321,568" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln" marker-end="url(#anjaflc-head)"/>
+<path d="M587,568 L605,568" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln" marker-end="url(#anjaflc-head)"/>
+<path d="M871,568 L889,568" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjaflc-ln" marker-end="url(#anjaflc-head)"/>
+</svg>

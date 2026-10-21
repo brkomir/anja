@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 756" width="1200" height="756" role="img" aria-labelledby="anjacyc-title anjacyc-desc">
+<title id="anjacyc-title">Each session leaves something for the next</title>
+<desc id="anjacyc-desc">Each session leaves something for the next. Sessions run one after another, and each one starts by reading a shared store: the rules, commands, memories and lessons. At its wrap a session writes down what you corrected or approved: lessons go straight in, proposed changes to rules and commands wait for your yes. Now and then, when you run it, a maintenance check compares the store against the live system; small fixes are made at once and bigger ones wait for you.</desc>
+<style>
+@media (prefers-color-scheme: dark) {
+.anjacyc-card{fill:#090909;stroke:#2a2a2a}
+.anjacyc-t{fill:#fafafa}.anjacyc-mu{fill:#a3a3a3}
+.anjacyc-ink{fill:#00c292}
+.anjacyc-ln{stroke:#00c292}.anjacyc-nd{fill:#00c292}
+.anjacyc-s1{fill:#081614}.anjacyc-s2{fill:#081e18}.anjacyc-s3{fill:#082820}
+.anjacyc-mc{fill:#111111;stroke:#00c292}
+.anjacyc-flr{stroke:#2e2e2e}
+}
+</style>
+<defs><marker id="anjacyc-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#199d78" class="anjacyc-nd"/></marker></defs>
+<rect x="0.5" y="0.5" width="1199" height="755" rx="20" fill="#f7f7f7" stroke="#dcdcdc" stroke-width="1" class="anjacyc-card"/>
+<text x="48" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjacyc-t">Each session leaves</text>
+<text x="48" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjacyc-t">something for the next</text>
+<rect x="48" y="214" width="300" height="80" rx="14" fill="#e4f8ef" class="anjacyc-s1"/>
+<path d="M64.0,214 H332.0" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln"/>
+<text x="198" y="264" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" text-anchor="middle" fill="#171717" class="anjacyc-t">a session</text>
+<rect x="450" y="214" width="300" height="80" rx="14" fill="#e4f8ef" class="anjacyc-s1"/>
+<path d="M466.0,214 H734.0" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln"/>
+<text x="600" y="264" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" text-anchor="middle" fill="#171717" class="anjacyc-t">the next session</text>
+<rect x="852" y="214" width="300" height="80" rx="14" fill="#e4f8ef" class="anjacyc-s1"/>
+<path d="M868.0,214 H1136.0" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln"/>
+<text x="1002" y="264" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" text-anchor="middle" fill="#171717" class="anjacyc-t">the one after</text>
+<rect x="48" y="392" width="1104" height="170" rx="14" fill="#ffffff" stroke="#199d78" stroke-width="2" class="anjacyc-mc"/>
+<text x="76" y="440" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjacyc-t">what the next session starts with</text>
+<text x="76" y="478" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" fill="#171717" class="anjacyc-t">rules · commands · memories · lessons</text>
+<text x="76" y="514" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacyc-mu">each wrap writes down what you corrected or approved</text>
+<text x="76" y="541" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacyc-mu">lessons go straight in, proposed changes to rules and commands wait for your yes</text>
+<path d="M198.0,384 V304" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln" marker-end="url(#anjacyc-head)"/>
+<text x="214" y="351" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" fill="#057558" class="anjacyc-ink">reads</text>
+<path d="M600.0,384 V304" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln" marker-end="url(#anjacyc-head)"/>
+<text x="616" y="351" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" fill="#057558" class="anjacyc-ink">reads</text>
+<path d="M1002.0,384 V304" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln" marker-end="url(#anjacyc-head)"/>
+<text x="1018" y="351" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" fill="#057558" class="anjacyc-ink">reads</text>
+<path d="M356.0,254.0 H387.0" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln"/>
+<path d="M411.0,254.0 H440.0" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln" marker-end="url(#anjacyc-head)"/>
+<circle cx="399" cy="254" r="7" fill="#199d78" class="anjacyc-nd"/>
+<path d="M399.0,268.0 V382" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln" marker-end="url(#anjacyc-head)"/>
+<text x="415" y="351" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" fill="#057558" class="anjacyc-ink">writes</text>
+<text x="383" y="351" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" text-anchor="end" fill="#595959" class="anjacyc-mu">/wrap</text>
+<path d="M758.0,254.0 H789.0" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln"/>
+<path d="M813.0,254.0 H842.0" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln" marker-end="url(#anjacyc-head)"/>
+<circle cx="801" cy="254" r="7" fill="#199d78" class="anjacyc-nd"/>
+<path d="M801.0,268.0 V382" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln" marker-end="url(#anjacyc-head)"/>
+<text x="817" y="351" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" fill="#057558" class="anjacyc-ink">writes</text>
+<text x="785" y="351" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" text-anchor="end" fill="#595959" class="anjacyc-mu">/wrap</text>
+<rect x="48" y="612" width="1104" height="96" rx="14" fill="#d3f4e6" class="anjacyc-s2"/>
+<path d="M600.0,604 V572" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacyc-ln" marker-end="url(#anjacyc-head)"/>
+<text x="616" y="595" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" fill="#057558" class="anjacyc-ink">checks</text>
+<text x="76" y="656" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjacyc-t">now and then</text>
+<text x="76" y="686" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjacyc-mu">/meta maintain</text>
+<text x="376" y="652" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacyc-mu">when you run it, it checks the store against the live system</text>
+<text x="376" y="679" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacyc-mu">small fixes are made at once, bigger ones wait for you</text>
+</svg>

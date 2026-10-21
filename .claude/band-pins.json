@@ -1,0 +1,27 @@
+{
+  "_": "Per-file byte pins for the ALWAYS-LOADED band (CLAUDE.md, AGENTS.md, .claude/rules/*.md). Read by .claude/hooks/check-memory-budget.sh ARM 3, which WARNS (never denies) when a write would take a file past its pin and the edit GROWS it. Regenerate after a displacement commit with: bash .claude/hooks/check-memory-budget.sh --refresh-pins  — that mode ratchets DOWN only, so raising a pin is a deliberate hand edit of this file.",
+  "refreshed": "2026-09-29",
+  "pins": {
+    ".claude/rules/actions.md": 1753,
+    ".claude/rules/active-recall.md": 54760,
+    ".claude/rules/api-routes.md": 9694,
+    ".claude/rules/bash-environment.md": 33845,
+    ".claude/rules/behavioral-anti-patterns.md": 29773,
+    ".claude/rules/components.md": 33234,
+    ".claude/rules/copy.md": 23438,
+    ".claude/rules/i18n.md": 36827,
+    ".claude/rules/migrations.md": 12050,
+    ".claude/rules/nextjs.md": 17325,
+    ".claude/rules/processing.md": 6418,
+    ".claude/rules/prompts.md": 27392,
+    ".claude/rules/security.md": 24232,
+    ".claude/rules/session-cadence.md": 22098,
+    ".claude/rules/supabase.md": 14667,
+    ".claude/rules/tests-e2e.md": 13369,
+    ".claude/rules/tests-integration.md": 15237,
+    ".claude/rules/tests-unit.md": 64804,
+    ".claude/rules/typescript.md": 8513,
+    "AGENTS.md": 1535,
+    "CLAUDE.md": 10292
+  }
+}

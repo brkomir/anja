@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 874" width="1200" height="874" role="img" aria-labelledby="anjahub-title anjahub-desc">
+<title id="anjahub-title">The review-hub loop: a second session reviews the work</title>
+<desc id="anjahub-desc">Your session asks the review hub, a second session, to review its commits: what changed and what to check. The hub queues the request and replies with its place in line. A fresh panel of reviewers reads it; its author never sits on the panel, and a code-design expert always sits on a review of code. The hub checks each finding at its file and line, and the verdict goes back: approved, or changes requested with patches. If approved, the loop closes. If changes are requested, the work is on hold until fixed: your session fixes it in one commit and reports back, and the hub confirms that commit. If anything is still open, it goes back for another fix. The loop closes with a row in the review ledger.</desc>
+<style>
+@media (prefers-color-scheme: dark) {
+.anjahub-card{fill:#090909;stroke:#2a2a2a}
+.anjahub-t{fill:#fafafa}.anjahub-mu{fill:#a3a3a3}
+.anjahub-ink{fill:#00c292}
+.anjahub-ln{stroke:#00c292}.anjahub-nd{fill:#00c292}
+.anjahub-s1{fill:#081614}.anjahub-s2{fill:#081e18}.anjahub-s3{fill:#082820}
+.anjahub-mc{fill:#111111;stroke:#00c292}
+.anjahub-dc{fill:#090909;stroke:#00c292}
+}
+</style>
+<defs><marker id="anjahub-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#199d78" class="anjahub-nd"/></marker></defs>
+<rect x="0.5" y="0.5" width="1199" height="873" rx="20" fill="#f7f7f7" stroke="#dcdcdc" stroke-width="1" class="anjahub-card"/>
+<text x="48" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjahub-t">A second session</text>
+<text x="48" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjahub-t">reviews the work</text>
+<rect x="48" y="248" width="252" height="214" rx="0" fill="#e4f8ef" class="anjahub-s1"/>
+<path d="M48,248 L300,248" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln"/>
+<circle cx="48" cy="248" r="7" fill="#199d78" class="anjahub-nd"/>
+<text x="68" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">your session</text>
+<text x="68" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">asks the hub</text>
+<text x="68" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">its commits,</text>
+<text x="68" y="403" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">what changed,</text>
+<text x="68" y="430" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">what to check</text>
+<rect x="332" y="248" width="252" height="214" rx="0" fill="#e4f8ef" class="anjahub-s1"/>
+<path d="M332,248 L584,248" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln"/>
+<circle cx="332" cy="248" r="7" fill="#199d78" class="anjahub-nd"/>
+<text x="352" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">the hub</text>
+<text x="352" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">queues it</text>
+<text x="352" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">and replies with</text>
+<text x="352" y="403" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">its place in line</text>
+<text x="352" y="438" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjahub-mu">/review-hub</text>
+<rect x="616" y="248" width="252" height="214" rx="0" fill="#e4f8ef" class="anjahub-s1"/>
+<path d="M616,248 L868,248" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln"/>
+<circle cx="616" cy="248" r="7" fill="#199d78" class="anjahub-nd"/>
+<text x="636" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">a fresh panel</text>
+<text x="636" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">reads it</text>
+<text x="636" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">never its author</text>
+<text x="636" y="403" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">a code-design expert</text>
+<text x="636" y="430" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">always sits on code</text>
+<rect x="900" y="248" width="252" height="214" rx="0" fill="#e4f8ef" class="anjahub-s1"/>
+<path d="M900,248 L1152,248" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln"/>
+<circle cx="900" cy="248" r="7" fill="#199d78" class="anjahub-nd"/>
+<text x="920" y="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">each finding</text>
+<text x="920" y="336" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">is checked</text>
+<text x="920" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">by the hub, at its</text>
+<text x="920" y="403" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">file and line</text>
+<path d="M303,248 L321,248" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<path d="M587,248 L605,248" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<path d="M871,248 L889,248" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<path d="M1152,251 L1152,537" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<rect x="900" y="548" width="252" height="214" rx="0" fill="#d3f4e6" class="anjahub-s2"/>
+<path d="M900,548 L1152,548" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln"/>
+<circle cx="1152" cy="548" r="7" fill="#199d78" class="anjahub-nd"/>
+<text x="920" y="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">the verdict</text>
+<text x="920" y="636" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">goes back</text>
+<text x="920" y="676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">approved, or</text>
+<text x="920" y="703" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">changes requested,</text>
+<text x="920" y="730" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">with patches</text>
+<text x="332" y="526" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" fill="#057558" class="anjahub-ink">changes requested: on hold until fixed</text>
+<rect x="617" y="548" width="250" height="213" rx="0" fill="#f7f7f7" stroke="#199d78" stroke-width="2" stroke-dasharray="7 6" class="anjahub-dc"/>
+<path d="M616,548 L868,548" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14 9" class="anjahub-ln"/>
+<circle cx="868" cy="548" r="7" fill="#199d78" class="anjahub-nd"/>
+<text x="636" y="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">your session</text>
+<text x="636" y="636" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">fixes it</text>
+<text x="636" y="676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">in one commit,</text>
+<text x="636" y="703" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">then reports back</text>
+<rect x="333" y="548" width="250" height="213" rx="0" fill="#f7f7f7" stroke="#199d78" stroke-width="2" stroke-dasharray="7 6" class="anjahub-dc"/>
+<path d="M332,548 L584,548" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14 9" class="anjahub-ln"/>
+<circle cx="584" cy="548" r="7" fill="#199d78" class="anjahub-nd"/>
+<text x="352" y="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">the hub</text>
+<text x="352" y="636" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">confirms it</text>
+<text x="352" y="676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">it checks the</text>
+<text x="352" y="703" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">fix commit</text>
+<rect x="49" y="548" width="250" height="213" rx="0" fill="#ffffff" stroke="#199d78" stroke-width="2" class="anjahub-mc"/>
+<path d="M48,548 L300,548" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln"/>
+<circle cx="300" cy="548" r="7" fill="#199d78" class="anjahub-nd"/>
+<text x="68" y="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">the loop</text>
+<text x="68" y="636" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjahub-t">closes</text>
+<text x="68" y="676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">recorded in the</text>
+<text x="68" y="703" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjahub-mu">review ledger</text>
+<path d="M897,548 L879,548" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<path d="M613,548 L595,548" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<path d="M329,548 L311,548" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<path d="M1000,545 L1000,490 L300,490 L300,537" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<text x="986" y="518" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" text-anchor="end" fill="#057558" class="anjahub-ink">approved</text>
+<path d="M458,765 L458,790 L742,790 L742,773" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjahub-ln" marker-end="url(#anjahub-head)"/>
+<text x="600" y="822" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" text-anchor="middle" fill="#057558" class="anjahub-ink">still open?</text>
+</svg>

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 782" width="1200" height="782" role="img" aria-labelledby="anjacomp-title anjacomp-desc">
+<title id="anjacomp-title">What survives a compaction</title>
+<desc id="anjacomp-desc">A compaction cuts the session in two. Three things cross the cut whole: the repository, with every file and every commit; the working plan, which says where the work stands; and the memory files, which hold lessons and decisions. Two things do not: the conversation's detail, of which only a summary is left; and rules that were loaded for certain files, which come back when such a file is read again. Before you compact, have the agent write what must carry over into the plan (the pre-compact command). After it, the agent rebuilds its place from the plan, the last exchanges and the mail, and writes only the plan.</desc>
+<style>
+@media (prefers-color-scheme: dark) {
+.anjacomp-card{fill:#090909;stroke:#2a2a2a}
+.anjacomp-t{fill:#fafafa}.anjacomp-mu{fill:#a3a3a3}
+.anjacomp-ink{fill:#00c292}
+.anjacomp-ln{stroke:#00c292}.anjacomp-nd{fill:#00c292}
+.anjacomp-s1{fill:#081614}.anjacomp-s2{fill:#081e18}.anjacomp-s3{fill:#082820}
+.anjacomp-mc{fill:#111111;stroke:#00c292}
+.anjacomp-nb{fill:#111111;stroke:#2e2e2e}
+.anjacomp-sb{fill:#081e18;stroke:#00c292}
+.anjacomp-gh{stroke:#6b6b6b}
+.anjacomp-cut{stroke:#a3a3a3}
+.anjacomp-flr{stroke:#2e2e2e}
+}
+</style>
+<defs><marker id="anjacomp-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#199d78" class="anjacomp-nd"/></marker></defs>
+<rect x="0.5" y="0.5" width="1199" height="781" rx="20" fill="#f7f7f7" stroke="#dcdcdc" stroke-width="1" class="anjacomp-card"/>
+<text x="48" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjacomp-t">What survives</text>
+<text x="48" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjacomp-t">a compaction</text>
+<text x="640" y="200" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" text-anchor="middle" fill="#171717" class="anjacomp-t">compaction</text>
+<text x="48" y="234" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">before</text>
+<text x="670" y="234" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">after</text>
+<path d="M640,214 V618" fill="none" stroke="#595959" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 7" class="anjacomp-cut"/>
+<rect x="48" y="254" width="1104" height="58" rx="12" fill="#e4f8ef" stroke="#199d78" stroke-width="2" class="anjacomp-sb"/>
+<text x="72" y="291" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacomp-t">the repository</text>
+<text x="670" y="290" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">every file and every commit</text>
+<rect x="48" y="326" width="1104" height="58" rx="12" fill="#e4f8ef" stroke="#199d78" stroke-width="2" class="anjacomp-sb"/>
+<text x="72" y="363" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacomp-t">the working plan</text>
+<text x="670" y="362" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">where the work stands</text>
+<rect x="48" y="398" width="1104" height="58" rx="12" fill="#e4f8ef" stroke="#199d78" stroke-width="2" class="anjacomp-sb"/>
+<text x="72" y="435" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacomp-t">the memory files</text>
+<text x="670" y="434" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">lessons and decisions</text>
+<rect x="48" y="470" width="576" height="58" rx="12" fill="#ffffff" stroke="#dcdcdc" stroke-width="1.5" class="anjacomp-nb"/>
+<rect x="656" y="470" width="496" height="58" rx="12" fill="none" stroke="#8c8c8c" stroke-width="1.5" stroke-dasharray="6 6" class="anjacomp-gh"/>
+<text x="72" y="507" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacomp-t">the conversation's detail</text>
+<text x="670" y="506" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">only a summary of it is left</text>
+<rect x="48" y="542" width="576" height="58" rx="12" fill="#ffffff" stroke="#dcdcdc" stroke-width="1.5" class="anjacomp-nb"/>
+<rect x="656" y="542" width="496" height="58" rx="12" fill="none" stroke="#8c8c8c" stroke-width="1.5" stroke-dasharray="6 6" class="anjacomp-gh"/>
+<text x="72" y="579" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacomp-t">rules loaded for certain files</text>
+<text x="670" y="578" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">back when such a file is read again</text>
+<circle cx="56" cy="645" r="7" fill="#199d78" class="anjacomp-nd"/>
+<text x="76" y="654" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacomp-t">before you compact<tspan dx="14" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" font-weight="400" fill="#595959" class="anjacomp-mu">/pre-compact</tspan></text>
+<text x="76" y="685" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">have the agent write what must</text>
+<text x="76" y="712" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">carry over into the plan</text>
+<circle cx="678" cy="645" r="7" fill="#199d78" class="anjacomp-nd"/>
+<text x="698" y="654" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacomp-t">after it<tspan dx="14" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" font-weight="400" fill="#595959" class="anjacomp-mu">/post-compact</tspan></text>
+<text x="698" y="685" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">the agent rebuilds its place from the plan,</text>
+<text x="698" y="712" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">the last exchanges and the mail,</text>
+<text x="698" y="739" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacomp-mu">and writes only the plan</text>
+</svg>

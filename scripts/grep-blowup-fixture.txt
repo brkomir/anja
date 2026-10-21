@@ -1,0 +1,1 @@
+grep -oE "filed: [0-9-]+ by [0-9a-f]{8}" <(grep -F "$R" | head -1) | head -1

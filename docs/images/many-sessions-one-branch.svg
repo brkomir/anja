@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 808" width="1200" height="808" role="img" aria-labelledby="anjabr-title anjabr-desc">
+<title id="anjabr-title">Many sessions, one branch</title>
+<desc id="anjabr-desc">Three sessions work in one shared checkout and each commits, in turn, onto one shared branch. When an arc of work would leave files dirty for the others, one session steps off onto its own branch in its own worktree, and the others keep committing on the shared branch meanwhile. When that work is done, its branch is merged back onto the shared branch. Production is a separate exit from the shared branch: a pull request, merged on your word.</desc>
+<style>
+@media (prefers-color-scheme: dark) {
+.anjabr-card{fill:#090909;stroke:#2a2a2a}
+.anjabr-t{fill:#fafafa}.anjabr-mu{fill:#a3a3a3}
+.anjabr-ink{fill:#00c292}
+.anjabr-ln{stroke:#00c292}.anjabr-nd{fill:#00c292}
+.anjabr-s1{fill:#081614}.anjabr-s2{fill:#081e18}.anjabr-s3{fill:#082820}
+.anjabr-mc{fill:#111111;stroke:#00c292}
+.anjabr-dc{fill:#090909;stroke:#00c292}
+.anjabr-flr{stroke:#2e2e2e}
+}
+</style>
+<defs><marker id="anjabr-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#199d78" class="anjabr-nd"/></marker></defs>
+<rect x="0.5" y="0.5" width="1199" height="807" rx="20" fill="#f7f7f7" stroke="#dcdcdc" stroke-width="1" class="anjabr-card"/>
+<text x="48" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjabr-t">Many sessions,</text>
+<text x="48" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjabr-t">one branch</text>
+<rect x="48" y="232" width="250" height="112" rx="14" fill="#e4f8ef" class="anjabr-s1"/>
+<path d="M64,232 H282" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjabr-ln"/>
+<text x="72" y="278" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjabr-t">a session</text>
+<text x="72" y="312" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjabr-mu">commits as it goes</text>
+<path d="M173,352 V391" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjabr-ln" marker-end="url(#anjabr-head)"/>
+<text x="187" y="380" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#057558" class="anjabr-ink">commits</text>
+<rect x="330" y="232" width="250" height="112" rx="14" fill="#e4f8ef" class="anjabr-s1"/>
+<path d="M346,232 H564" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjabr-ln"/>
+<text x="354" y="278" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjabr-t">a second one</text>
+<text x="354" y="312" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjabr-mu">commits as it goes</text>
+<path d="M455,352 V391" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjabr-ln" marker-end="url(#anjabr-head)"/>
+<text x="469" y="380" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#057558" class="anjabr-ink">commits</text>
+<rect x="612" y="232" width="250" height="112" rx="14" fill="#e4f8ef" class="anjabr-s1"/>
+<path d="M628,232 H846" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjabr-ln"/>
+<text x="636" y="278" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjabr-t">a third one</text>
+<text x="636" y="312" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjabr-mu">commits as it goes</text>
+<path d="M737,352 V391" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjabr-ln" marker-end="url(#anjabr-head)"/>
+<text x="751" y="380" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#057558" class="anjabr-ink">commits</text>
+<rect x="48" y="401" width="814" height="58" rx="12" fill="#d3f4e6" class="anjabr-s2"/>
+<text x="72" y="438" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjabr-t">the shared branch</text>
+<path d="M300,430 H889" fill="none" stroke="#199d78" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="anjabr-ln" marker-end="url(#anjabr-head)"/>
+<circle cx="320" cy="430" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="385" cy="430" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="450" cy="430" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="520" cy="430" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="590" cy="430" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="660" cy="430" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="730" cy="430" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="800" cy="430" r="7" fill="#199d78" class="anjabr-nd"/>
+<text x="48" y="490" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjabr-mu">in one checkout, shared by all</text>
+<text x="625" y="490" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" text-anchor="middle" fill="#595959" class="anjabr-mu">the others keep committing</text>
+<rect x="900" y="355" width="252" height="150" rx="14" fill="#ffffff" stroke="#199d78" stroke-width="2" class="anjabr-mc"/>
+<text x="924" y="401" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjabr-t">production</text>
+<text x="924" y="433" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjabr-mu">a pull request,</text>
+<text x="924" y="460" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjabr-mu">merged only</text>
+<text x="924" y="487" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjabr-mu">on your word</text>
+<rect x="430" y="560" width="410" height="200" rx="14" fill="#f7f7f7" stroke="#199d78" stroke-width="2" stroke-dasharray="7 6" class="anjabr-dc"/>
+<path d="M444,560 H826" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14 9" class="anjabr-ln"/>
+<path d="M450,437 C450,580 480,620 510,620 H720 C770,620 800,580 800,442" fill="none" stroke="#199d78" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="anjabr-ln" marker-end="url(#anjabr-head)"/>
+<circle cx="560" cy="620" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="615" cy="620" r="7" fill="#199d78" class="anjabr-nd"/>
+<circle cx="670" cy="620" r="7" fill="#199d78" class="anjabr-nd"/>
+<text x="454" y="672" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjabr-t">its own branch,</text>
+<text x="454" y="708" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjabr-t">in its own worktree</text>
+<text x="454" y="742" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjabr-mu">until that work is done</text>
+<text x="425" y="530" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" text-anchor="end" fill="#057558" class="anjabr-ink">would leave files dirty</text>
+<text x="425" y="557" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" text-anchor="end" fill="#057558" class="anjabr-ink">for the others?</text>
+<text x="850" y="530" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" fill="#057558" class="anjabr-ink">merged back onto</text>
+<text x="850" y="557" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="650" fill="#057558" class="anjabr-ink">the shared branch</text>
+</svg>

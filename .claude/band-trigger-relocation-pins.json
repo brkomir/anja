@@ -1,0 +1,54 @@
+{
+  "_": "Trigger cells whose RELOCATION into .claude/orchestrator/*.md was adjudicated. band-directive-preservation.mjs credits a relocated trigger cell ONLY when its sha1 is here; an unpinned relocation counts as lost. Written only by --pin-trigger-relocations --ruled <text>; never by hand.",
+  "adjudicated": [
+    {
+      "sha1": "a0974e078bc919c55e72dfa493adb41337db3b88",
+      "preview": "About to commit a structural change (refactor / rename / move / extract) together with a behavio",
+      "file": ".claude/rules/active-recall.md",
+      "ruled": "relocation into the orchestrator file approved; a review verdict proposed the pin",
+      "pinned": "2026-09-03"
+    },
+    {
+      "sha1": "65fec297755ac4f52840390776f9879d2b2d3422",
+      "preview": "About to write the word \"peer\" / \"peer session\" / \"being edited by a peer\" / \"the peer's change ",
+      "file": ".claude/rules/active-recall.md",
+      "ruled": "relocation into the orchestrator file approved; a review verdict proposed the pin",
+      "pinned": "2026-09-03"
+    },
+    {
+      "sha1": "3e40ef15cea5e993eb0b5bf24cfc30abe901d811",
+      "preview": "About to self-certify a `/wrap` or checklist step \"complete\" / \"N/N steps ran\" / \"nothing hangin",
+      "file": ".claude/rules/active-recall.md",
+      "ruled": "relocation into the orchestrator file approved; a review verdict proposed the pin",
+      "pinned": "2026-09-03"
+    },
+    {
+      "sha1": "8a82421cc57506191d5a4dbd778a77a92a1db709",
+      "preview": "About to write \"no question open\" / \"nothing owed\" — OR to close ANY question YOU raised because",
+      "file": ".claude/rules/active-recall.md",
+      "ruled": "relocation into the orchestrator file approved; a review verdict proposed the pin",
+      "pinned": "2026-09-03"
+    },
+    {
+      "sha1": "9114798f3829ba84c3aaa2fef49ab4823be6aa25",
+      "preview": "About to restate a tool/script's summary LABEL as fact (a peer \"active\" / \"winding down\", \"N res",
+      "file": ".claude/rules/active-recall.md",
+      "ruled": "relocation into the orchestrator file approved; a review verdict proposed the pin",
+      "pinned": "2026-09-03"
+    },
+    {
+      "sha1": "17d7b867168b542045b57f47a53678fae592d53c",
+      "preview": "About to write a tracker gate / \"blocked on X\" defer / synthesis COMPLETE-gate / \"can't run Y\" c",
+      "file": ".claude/rules/active-recall.md",
+      "ruled": "relocation into the orchestrator file approved; a review verdict proposed the pin",
+      "pinned": "2026-09-03"
+    },
+    {
+      "sha1": "18a185edf66a1d681dd0d605bc0966922bbbc74d",
+      "preview": "About to run bare `git commit -m \"msg\"` OR `git commit --amend` (no `--only`/`-o`/`--` pathspec)",
+      "file": ".claude/rules/active-recall.md",
+      "ruled": "relocation into the orchestrator file approved; a review verdict proposed the pin",
+      "pinned": "2026-09-03"
+    }
+  ]
+}

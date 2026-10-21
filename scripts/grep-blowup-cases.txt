@@ -1,0 +1,12 @@
+FP|procsub, unquoted parens, shell pipe inside|grep -oE "a[0-9-]+b" <(cat f | head -1)
+FP|procsub after quote-close, same shape|grep -oE 'x[0-9]+y' <(sort f | uniq)
+FP|command substitution (fixed)|grep -oE 'x[0-9]+y' "$(ls | head -1)"
+FP|backtick substitution|grep -oE 'x[0-9]+y' `ls | head -1`
+FP|the real 19:30:20Z denial, verbatim but for the filename|grep -oE "filed: [0-9-]+ by [0-9a-f]{8}" <(grep -F "$R" f | head -1)
+FP|-E with escaped parens: LITERAL parens, no alternation, NOT a hazard|grep -E [0-9]+.*\(alpha\|beta\) f
+TP|canonical backtracking shape, quoted group|grep -oE '[^"\\]{0,400}(alpha|beta|gamma)' f
+TP|literal angle brackets round a group, quoted|grep -E '[0-9]+.*<(alpha|beta)>' f
+TP|space before quoted group with alternation|grep -E '[0-9]+ (alpha|beta)' f
+TP|hard case: space then literal-angle group, quoted|grep -E '[0-9]+ <(alpha|beta)>' f
+TP|double-quoted regex|grep -oE ".{0,400}(alpha|beta)" f
+TP|BRE escaped parens: a real group and a real alternation|grep [0-9]*.*\(alpha\|beta\) f

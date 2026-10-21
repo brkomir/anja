@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 772" width="1200" height="772" role="img" aria-labelledby="anjatwo-title anjatwo-desc">
+<title id="anjatwo-title">Two sessions, you in the middle</title>
+<desc id="anjatwo-desc">Two sessions work in one shared checkout; the first works on one goal and commits its work. Each one listens for mail, and mail goes both ways between them. A session shows the mail it receives to you as advice and acts on it only with your go-ahead; you decide which session does what. The second session can have its own goal or review the first one's commits. You can see what each session is doing, and park one until your next message, which stops its listener.</desc>
+<style>
+@media (prefers-color-scheme: dark) {
+.anjatwo-card{fill:#090909;stroke:#2a2a2a}
+.anjatwo-t{fill:#fafafa}.anjatwo-mu{fill:#a3a3a3}
+.anjatwo-ink{fill:#00c292}
+.anjatwo-ln{stroke:#00c292}.anjatwo-nd{fill:#00c292}
+.anjatwo-s1{fill:#081614}.anjatwo-s2{fill:#081e18}.anjatwo-s3{fill:#082820}
+.anjatwo-mc{fill:#111111;stroke:#00c292}
+.anjatwo-nb{fill:#111111;stroke:#2e2e2e}
+.anjatwo-sb{fill:#081e18;stroke:#00c292}
+.anjatwo-gh{stroke:#6b6b6b}
+.anjatwo-cut{stroke:#a3a3a3}
+.anjatwo-flr{stroke:#2e2e2e}
+}
+</style>
+<defs><marker id="anjatwo-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#199d78" class="anjatwo-nd"/></marker></defs>
+<rect x="0.5" y="0.5" width="1199" height="771" rx="20" fill="#f7f7f7" stroke="#dcdcdc" stroke-width="1" class="anjatwo-card"/>
+<text x="48" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjatwo-t">Two sessions,</text>
+<text x="48" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjatwo-t">you in the middle</text>
+<rect x="48" y="242" width="330" height="250" rx="14" fill="#e4f8ef" class="anjatwo-s1"/>
+<path d="M62,242 H364" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln"/>
+<text x="72" y="290" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjatwo-t">a session</text>
+<text x="72" y="322" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjatwo-mu">works on one goal</text>
+<text x="72" y="349" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjatwo-mu">and commits its work</text>
+<circle cx="79" cy="431" r="7" fill="#199d78" class="anjatwo-nd"/>
+<text x="96" y="438" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#057558" class="anjatwo-ink">listening for mail</text>
+<rect x="822" y="242" width="330" height="250" rx="14" fill="#e4f8ef" class="anjatwo-s1"/>
+<path d="M836,242 H1138" fill="none" stroke="#199d78" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln"/>
+<text x="846" y="290" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="650" fill="#171717" class="anjatwo-t">a second session</text>
+<text x="846" y="322" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjatwo-mu">another goal, or review</text>
+<text x="846" y="349" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjatwo-mu">the first one's commits</text>
+<text x="846" y="380" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjatwo-mu">/review-hub</text>
+<circle cx="853" cy="431" r="7" fill="#199d78" class="anjatwo-nd"/>
+<text x="870" y="438" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#057558" class="anjatwo-ink">listening for mail</text>
+<text x="600" y="262" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="650" text-anchor="middle" fill="#057558" class="anjatwo-ink">mail</text>
+<path d="M388,284 H812" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln" marker-end="url(#anjatwo-head)"/>
+<path d="M812,304 H388" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln" marker-end="url(#anjatwo-head)"/>
+<circle cx="600" cy="412" r="58" fill="#ffffff" stroke="#199d78" stroke-width="2" class="anjatwo-mc"/>
+<text x="600" y="424" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="34" font-weight="700" text-anchor="middle" fill="#171717" class="anjatwo-t">you</text>
+<text x="600" y="508" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" text-anchor="middle" fill="#595959" class="anjatwo-mu">decide which session</text>
+<text x="600" y="535" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" text-anchor="middle" fill="#595959" class="anjatwo-mu">does what</text>
+<path d="M388,390 H534.334368540005" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln" marker-end="url(#anjatwo-head)"/>
+<path d="M540.334368540005,434 H388" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln" marker-end="url(#anjatwo-head)"/>
+<text x="461.167" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" text-anchor="middle" fill="#057558" class="anjatwo-ink">advice</text>
+<text x="461.167" y="466" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" text-anchor="middle" fill="#057558" class="anjatwo-ink">go-ahead</text>
+<path d="M812,390 H665.665631459995" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln" marker-end="url(#anjatwo-head)"/>
+<path d="M659.665631459995,434 H812" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln" marker-end="url(#anjatwo-head)"/>
+<text x="738.833" y="376" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" text-anchor="middle" fill="#057558" class="anjatwo-ink">advice</text>
+<text x="738.833" y="466" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" text-anchor="middle" fill="#057558" class="anjatwo-ink">go-ahead</text>
+<rect x="48" y="566" width="1104" height="58" rx="12" fill="#d3f4e6" class="anjatwo-s2"/>
+<text x="600" y="603" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" text-anchor="middle" fill="#171717" class="anjatwo-t">one checkout, shared by both</text>
+<path d="M213.0,492 V566" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln"/>
+<path d="M987.0,492 V566" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjatwo-ln"/>
+<text x="48" y="676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjatwo-mu">see what each one is doing</text>
+<text x="48" y="705" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjatwo-mu">/peers</text>
+<text x="640" y="676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjatwo-mu">park one until your next message</text>
+<text x="640" y="703" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjatwo-mu">its listener stops</text>
+<text x="640" y="732" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjatwo-mu">/standby</text>
+</svg>

@@ -1,0 +1,6 @@
+# Code owners — a review from an owner is required before a change to these paths merges.
+# The hooks run on every tool call, commit and push and call scripts under scripts/, so these trees stay with the maintainer.
+/.claude/hooks/        @brkomir
+/.claude/settings.json @brkomir
+/.githooks/            @brkomir
+/scripts/              @brkomir

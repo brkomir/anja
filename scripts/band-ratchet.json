@@ -1,0 +1,103 @@
+{
+  "_doc": [
+    "Ratchet state for scripts/check-band-budget.mjs. By design, the always-loaded",
+    "band ceiling RATCHETS DOWN automatically after a displacement, and moves UP only on an owner",
+    "ruling. ⛔ IT IS BOTH HALVES SINCE 2026-09-21, AND LINES 2-5 SAID THE OPPOSITE UNTIL THEN. The open",
+    "question was which ritual governs an UP move — BLOCK_BYTES under the .mjs RATCHET LOG (what this file",
+    "claimed) or a hand re-baseline here recorded as a history entry (what the fleet twice did in",
+    "practice) — and it was settled that the PRACTICE is the real one. So: a re-baseline UP",
+    "is a HAND edit of observedMin in this file, recorded as a history entry QUOTING THE OWNER'S WORDS. It is now",
+    "ENFORCED, not merely documented — check-band-budget.mjs REFUSES a raise whose history entry carries",
+    "no `owner verbatim:` quotation, and REFUSES an observedMin that disagrees with its own newest history",
+    "entry (the silent hand-raise, which no prose could ever catch). BLOCK_BYTES stays the hard BACKSTOP",
+    "and is NOT the up-move ritual; it has not been the binding ceiling since 2026-08-13. ⚠️ The check reads",
+    "a PROSE field, so it verifies a quotation is PRESENT, never that the owner said it: it stops a silent raise,",
+    "it does not authenticate one.",
+    "",
+    "effectiveCeiling = min(BLOCK_BYTES, observedMin + marginBytes)",
+    "",
+    "observedMin is the LOWEST band total ever recorded on the HEAD plane (what a push publishes,",
+    "never the worktree — a mid-edit worktree could otherwise lock the fleet's ceiling to a",
+    "transient value). It is written by `node scripts/check-band-budget.mjs --ratchet`, which can ONLY move it",
+    "DOWN (check-band-budget.mjs: `if (headTotal >= ratchet.observedMin) return { kind: \"none\" }`). ⛔ IT IS",
+    "ALSO RAISED BY HAND, AND THIS PARAGRAPH DENIED THAT UNTIL 2026-09-21 WHILE THE HISTORY BELOW RECORDED",
+    "TWO SUCH RAISES (2026-08-26 +88,870 B, 2026-09-07 +33,673 B), BOTH RECORDED AS APPROVED UP MOVES IN",
+    "THEIR ENTRIES. A re-baseline UP is an OWNER decision, hand-written here, and recorded as a history entry;",
+    "the tool never does it. Either way the resulting change is committed like any other edit. Saying otherwise made this file a gate that could not fail for the reason it exists.",
+    "The plain check and the",
+    "purity-pinned `--check` never write.",
+    "",
+    "marginBytes is the headroom the ratchet preserves across a cut. It was set at adoption so the",
+    "effective ceiling EQUALS BLOCK_BYTES exactly (740437 + 84563 = 825000): the ratchet ships as a",
+    "NO-OP against the current band and starts binding only as displacement lands. That is the same",
+    "ratchet-at-current discipline the byte ceiling itself uses — baseline passes, growth blocks —",
+    "and it is why this can ship into a BLOCKING push gate without a calibration round. Tightening",
+    "marginBytes is the lever if displacement keeps regrowing (measured 2026-08-13: 39% of the",
+    "largest-ever displacement regrew within 24h); that is a calibration call for a fresh-context",
+    "seat, not for the author of the mechanism."
+  ],
+  "observedMin": 625598,
+  "marginBytes": 68403,
+  "history": [
+    {
+      "ts": "2026-08-13",
+      "observedMin": 740437,
+      "note": "adoption — HEAD-plane band total; margin sized so effectiveCeiling == BLOCK_BYTES (no-op at ship)"
+    },
+    {
+      "ts": "2026-08-13",
+      "observedMin": 721152,
+      "note": "ratcheted down 19285 B from 740437 (HEAD plane)"
+    },
+    {
+      "ts": "2026-08-13",
+      "observedMin": 684787,
+      "note": "ratcheted down 36365 B from 721152 (HEAD plane)"
+    },
+    {
+      "ts": "2026-08-16",
+      "observedMin": 672299,
+      "note": "ratcheted down 12488 B from 684787 (HEAD plane)"
+    },
+    {
+      "ts": "2026-08-16",
+      "observedMin": 631587,
+      "note": "ratcheted down 40712 B from 672299 (HEAD plane)"
+    },
+    {
+      "ts": "2026-08-16",
+      "observedMin": 561657,
+      "note": "ratcheted down 69930 B from 631587 (HEAD plane)"
+    },
+    {
+      "ts": "2026-08-16",
+      "observedMin": 528717,
+      "note": "ratcheted down 32940 B from 561657 (HEAD plane)"
+    },
+    {
+      "ts": "2026-08-16",
+      "observedMin": 519054,
+      "note": "ratcheted down 9663 B from 528717 (HEAD plane)"
+    },
+    {
+      "ts": "2026-08-26",
+      "observedMin": 607924,
+      "note": "APPROVED RAISE (3rd precedent) — re-baseline at the current HEAD-plane total after a pilot revert re-added 21.6 KB; the approved move: raise the ceiling to the current total plus a 35 KB margin. margin re-sized 84563 -> 35840; effectiveCeiling 607924+35840=643764. Adoption-pattern re-baseline (observedMin=current, margin=chosen headroom); the DOWN-ratchet resumes from here. owner verbatim: '<the approving words, withheld from this copy>'"
+    },
+    {
+      "ts": "2026-09-07",
+      "observedMin": 641597,
+      "note": "APPROVED RAISE (4th precedent) — re-baseline at the current HEAD-plane total after the spinoff compression pass (13,025 B displaced + the #1 relocation) landed 2,167 B under the old 643,764 ceiling with fleet growth measured at ~20 KB per 4 days; the approved move: raise the ceiling to 710k. marginBytes = 710000 - 641597 = 68403 (~3 rounds of that growth). Same adoption-pattern re-baseline as 2026-08-26; BLOCK_BYTES untouched; the DOWN-ratchet resumes from here. owner verbatim: '<the approving words, withheld from this copy>'"
+    },
+    {
+      "ts": "2026-09-21",
+      "observedMin": 641597,
+      "note": "RAISED to 725452 and REVERTED THE SAME DAY — net zero, the baseline is unchanged at the 2026-09-07 value. The raise accompanied the plane change and was justified by the corpus total THEN (725,452 B against a 710,000 ceiling). The shell-trap split then removed ~72 KB, so the corpus plane reads 654,150 B and passes the ORIGINAL ceiling with 55,850 B of headroom: the raise was no longer buying anything. Reverted because a reviewer found, correctly, that it went UP through a file documenting itself as DOWN-only and bypassed the BLOCK_BYTES review ritual the design puts on the UP path — and because the cheapest answer to a governance objection is to stop needing the exception. BLOCK_BYTES was never touched and remains 825000. The two PRIOR raises stand: they were approved UP moves, and this revert does not undo them."
+    },
+    {
+      "ts": "2026-10-05",
+      "observedMin": 625598,
+      "note": "ratcheted down 15999 B from 641597 (HEAD plane)"
+    }
+  ]
+}

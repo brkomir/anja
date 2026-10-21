@@ -1,0 +1,346 @@
+#!/usr/bin/env bash
+# pre-commit — skill-spec authoring drift gate.
+#
+# When .claude/skills/**/*.md, other .claude infrastructure, or .claude/project-memory/*.md files are
+# in the staged set, runs scripts/skill-lint.mjs against the project and surfaces any
+# Layer-1 anti-pattern findings (EMPTY_DESCRIPTION, MISSING_TRIGGER,
+# BLOATED_SKILL, ORPHAN_REFERENCE, MISSING_FRONTMATTER + meta-MEMORY
+# ordering checks).
+#
+# Currently WARN-MODE: prints findings, exits 0 (allows commit).
+# Promote to BLOCK-MODE (exit non-zero on findings) after 5 commits with
+# no false positives observed. Escape hatch in either mode: SKIP_SKILL_LINT=1.
+#
+# Enable this hook (and any other hook in this directory) by configuring once per clone:
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# --- router-staleness arm (the DETECT half of the router-staleness fix;
+# the REPAIR half is `memory-tier-split.mjs --heal`, run at /wrap Step 6b) ---
+# A commit whose STAGED memory shards disagree with their staged router ships entries that are
+# grep-invisible from the router digest index (occurrence 5: 8 shards, 0 routers;
+# occurrence 6 within the hour of the fix landing, via a legitimate 5-line peer ride-along).
+# Fires only when memory-family files are staged. WARN-MODE — never blocks; promote
+# after observation. Escape: SKIP_ROUTER_STALENESS_CHECK=1 (its OWN escape — it sits ABOVE the
+# skill-lint escape on purpose, so SKIP_SKILL_LINT cannot silence it).
+# ⛔ READS THE STAGED TREE (git write-tree -> git archive of .claude/skills), NOT the worktree.
+# The first version scanned the worktree and documented the wrong direction: a staged shard
+# append whose router refresh is UNSTAGED is the MISS under a worktree read (the refreshed
+# router is on disk, the scan reads current, the arm is silent) — and --heal's shard renames
+# escalate that miss from STALE to UNLOADABLE. Scanning the staged tree catches it, and a
+# peer's unstaged worktree append can no longer cause a false fire either.
+if [[ "${SKIP_ROUTER_STALENESS_CHECK:-0}" != "1" ]]; then
+  STAGED_MEMORY_FAMILY="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^\.claude/skills/[^/]+/MEMORY(-ARCHIVE-[^/]*)?\.md$' || true)"
+  if [[ -n "$STAGED_MEMORY_FAMILY" && -f scripts/memory-tier-split.mjs ]]; then
+    set +e
+    STAGED_TREE="$(git write-tree 2>/dev/null)"
+    SCAN_OUT=""; SCAN_RC=0
+    if [[ -n "$STAGED_TREE" ]]; then
+      RS_TMPD="$(mktemp -d "${TMPDIR:-/tmp}/router-staleness.XXXXXX")"
+      git archive "$STAGED_TREE" .claude/skills 2>/dev/null | tar -x -C "$RS_TMPD" 2>/dev/null
+      SCAN_OUT="$(node scripts/memory-tier-split.mjs --scan-routers "$RS_TMPD/.claude/skills" 2>&1)"
+      SCAN_RC=$?
+      rm -rf "$RS_TMPD"
+    fi
+    set -e
+    if [[ $SCAN_RC -ne 0 ]]; then
+      STALE_TOUCHED=""
+      while IFS= read -r sk; do
+        [[ -z "$sk" ]] && continue
+        if printf '%s\n' "$SCAN_OUT" | grep -E '^(STALE|ROLL-DUE|BROKEN|ERROR)' | grep -qF "/$sk/"; then
+          STALE_TOUCHED="$STALE_TOUCHED $sk"
+        fi
+      done <<< "$(printf '%s\n' "$STAGED_MEMORY_FAMILY" | sed -E 's|^\.claude/skills/([^/]+)/.*|\1|' | sort -u)"
+      if [[ -n "$STALE_TOUCHED" ]]; then
+        echo ""
+        echo "→ router-staleness warn-mode: as STAGED, these skills' routers disagree with their shards:"
+        echo "   $STALE_TOUCHED"
+        echo "  Entries in a shard are grep-invisible from its router until re-indexed (BROKEN = unloadable)."
+        echo "  Fix (seconds, conservation-gated, skips peer-dirty targets):  node scripts/memory-tier-split.mjs --heal"
+        echo "  then stage the refreshed router(s) with the shard(s)."
+        echo "  WARN-MODE — commit allowed. Escape: SKIP_ROUTER_STALENESS_CHECK=1"
+        echo ""
+      fi
+    fi
+  fi
+fi
+
+# --- tsc gate (warn-mode) ---
+# NEW class: scripts the push gate types but nothing types at commit time (the rejected inverse
+# was excluding plans/ and eval/ from tsconfig).
+# WHY: 159 tracked .mts files, 157 outside src/, sit inside tsconfig's `**/*.mts` include, so the
+# whole-project `tsc --noEmit` that pre-deploy-check runs at step 1 (and pre-push aborts on) types
+# every one of them — but they are executed with tsx, which transpiles without typechecking, and
+# until this gate NOTHING at commit time typed them. A typo in plans/ or eval/ therefore reds every
+# seat's push on the shared tree, found by a third seat: twice in 17 days (2026-09-01, 2026-09-18).
+# TRIGGER: the staged set holds at least one .ts/.tsx/.mts OUTSIDE tests/ (tests/ is excluded by
+# tsconfig, so the push gate never types it either; every other directory counts, src/ included).
+# ACTION: the SAME whole-project run the push gate makes — measured 17 s cold, rc=0 (2026-09-18) —
+# so what fires here is exactly what would have fired at push. Both flags are load-bearing
+# (the shell-traps file, `tsc` HAS TWO INDEPENDENT FALSE-ZERO MECHANISMS): `--pretty false` because a
+# coloured run writes ESC between `error` and `TS` and `grep -c 'error TS'` reads 0 over real
+# errors — measured 2026-09-18 on a planted TS2322: default flags under FORCE_COLOR=3 read 0 with 18
+# ESC bytes, `--pretty false` read 1 with 0 ESC bytes in both environments — and
+# `--incremental false` because tsconfig sets incremental:true and a stale build cache answers a
+# flag-only change. FORCE_COLOR=0 and the ESC scrub below are belt-and-braces over that measurement.
+# ⚠️ tsc READS THE WORKTREE, NOT THE INDEX (measured by a smoke arm): a staged error whose disk copy
+# is already fixed is silent here, and an unstaged error on disk fires here. That is the same
+# population the push gate types, which is the point; it is not a staged-tree typecheck.
+# ⚠️ A CONFIG error (TS5xxx) is formatted `error TS` too and FIRES the banner — correct, because it
+# reds the push gate just the same; read the line, it names the config.
+# OUTPUT: silent when nothing relevant is staged or the run is clean (house style — the skill-lint
+# gate above exits silently on a clean run too). On errors: every error line, UNCAPPED, a banner
+# naming the class, ONE JSONL record to .claude/logs/tsc-gate-fires.jsonl via
+# .claude/hooks/lib/fires-log.sh (honours HOOK_FIRES_LOG_DIR, so the smoke suite's fixture fires
+# never reach the real ledger), and exit 0. A missing toolchain is a LOUD skip, never a silent pass.
+# ESCAPE: SKIP_TSC_GATE=1 — its OWN escape, and it sits ABOVE the skill-lint escape on purpose (the
+# router arm's precedent: SKIP_SKILL_LINT must not silence an unrelated gate). The skip line
+# prints only when the gate would otherwise have run, so an exported escape is silent on a commit
+# that stages nothing relevant.
+# PROMOTION to block-mode is a SEPARATE decision, taken once the gate has fired a few times and
+# read off the fires ledger, never off this comment.
+TSC_GATE_STAGED="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx|mts)$' | grep -Ev '^tests/' || true)"
+if [[ -n "$TSC_GATE_STAGED" ]]; then
+  TSC_GATE_STAGED_LINE="$(printf '%s\n' "$TSC_GATE_STAGED" | paste -sd ' ' -)"
+  if [[ "${SKIP_TSC_GATE:-0}" == "1" ]]; then
+    echo "→ tsc gate SKIPPED (SKIP_TSC_GATE=1) — staged .ts/.tsx/.mts outside tests/ NOT typechecked: $TSC_GATE_STAGED_LINE"
+  elif [[ ! -x node_modules/.bin/tsc ]]; then
+    echo ""
+    echo "⛔ tsc gate: node_modules/.bin/tsc is missing or not executable — NOTHING was typechecked."
+    echo "   Staged: $TSC_GATE_STAGED_LINE"
+    echo "   This is NOT a clean observation (run npm ci). WARN-MODE — commit allowed. Escape: SKIP_TSC_GATE=1"
+    echo ""
+  else
+    TSC_GATE_OUT="$(mktemp "${TMPDIR:-/tmp}/tsc-gate.XXXXXX")"
+    set +e
+    env FORCE_COLOR=0 node_modules/.bin/tsc --noEmit --pretty false --incremental false > "$TSC_GATE_OUT" 2>&1
+    TSC_GATE_RC=$?
+    set -e
+    # Fixed-string count over colour-scrubbed output; `grep -c` prints 0 AND exits 1 on no match, so the
+    # `|| true` adds nothing to the value (the shell-traps file, § NEVER `|| echo 0` ON `grep -c`).
+    TSC_GATE_ERRS="$(sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' "$TSC_GATE_OUT" | grep -F 'error TS' || true)"
+    TSC_GATE_N="$(printf '%s' "$TSC_GATE_ERRS" | grep -c '' || true)"
+    if [[ "${TSC_GATE_N:-0}" -gt 0 ]]; then
+      TSC_GATE_FIRST="$(printf '%s\n' "$TSC_GATE_ERRS" | head -1)"
+      echo ""
+      echo "⚠️  tsc gate warn-mode: $TSC_GATE_N typecheck error(s) in the whole-project run (the check the source project's push gate runs)."
+      echo "   Staged trigger: $TSC_GATE_STAGED_LINE"
+      echo ""
+      printf '%s\n' "$TSC_GATE_ERRS" | sed 's/^/  /'
+      echo ""
+      echo "   A typecheck error in a script under plans/ or eval/ reds any push gate that runs this check (the source project's pre-deploy-check does, at step 1) —"
+      echo "   fix before pushing or set SKIP_TSC_GATE=1. (The errors may be outside your staged files: tsc types the worktree.)"
+      echo "   WARN-MODE — commit allowed. Fire recorded in .claude/logs/tsc-gate-fires.jsonl;"
+      echo "   promotion to BLOCK-MODE is a separate decision read off that ledger. Escape: SKIP_TSC_GATE=1 git commit."
+      echo ""
+      # ONE JSONL record, in a subshell with the lib's documented fallback: an unloadable lib degrades to no
+      # record, never to a broken hook. Every value braced (an unset expansion at the call site is outside
+      # the subshell). Keys: staged (space-joined trigger files), errors (count), first (first error line).
+      _tsc_gate_fire() {
+        ( fires_log() { :; }
+          . "$REPO_ROOT/.claude/hooks/lib/fires-log.sh"
+          fires_log tsc-gate "$@"
+        ) >/dev/null 2>&1 || true
+      }
+      _tsc_gate_fire staged "${TSC_GATE_STAGED_LINE:-}" errors "${TSC_GATE_N:-}" first "${TSC_GATE_FIRST:-}"
+    elif [[ $TSC_GATE_RC -ne 0 ]]; then
+      # Non-zero exit with no `error TS` line: tsc produced no reading (crash, unreadable tsconfig, a
+      # node failure). Report it as an instrument failure, never as a clean run — same disposition as the
+      # skill-lint INSTRUMENT FAILURE branch below.
+      echo ""
+      echo "⛔ tsc gate INSTRUMENT FAILURE — tsc exited $TSC_GATE_RC with no 'error TS' line, so NOTHING can be read from this run:"
+      sed 's/^/  /' "$TSC_GATE_OUT"
+      echo ""
+      echo "   Staged: $TSC_GATE_STAGED_LINE"
+      echo "   This is NOT a clean observation. WARN-MODE — commit allowed. Escape: SKIP_TSC_GATE=1"
+      echo ""
+    fi
+    rm -f "$TSC_GATE_OUT"
+  fi
+fi
+
+if [[ "${SKIP_SKILL_LINT:-0}" == "1" ]]; then
+  exit 0
+fi
+
+# Detect staged files in infrastructure paths that drive architecture.md drift.
+# This covers the new-infra-file sweep and the ARCH_DOC_DRIFT trigger.
+STAGED_SKILL_FILES="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^\.claude/skills/.+\.md$' || true)"
+STAGED_INFRA_FILES="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^\.claude/(skills/[^/]+/|agents/|hooks/|rules/|commands/|templates/)' || true)"
+STAGED_DOC_FILE="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^\.claude/docs/architecture\.md$' || true)"
+STAGED_META_MEMORY="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^\.claude/skills/meta/MEMORY\.md$' || true)"
+# The project-memory root of skill-lint's MEMORY_ENVELOPE_DEBRIS scan. No pattern above reaches it, so a commit that
+# staged only project-memory files never ran the lint, and CI's --severity=fail cannot print a warn at all. The
+# pattern mirrors what lintMemoryEnvelopes() reads there: top-level, non-hidden *.md, nothing nested.
+STAGED_PROJECT_MEMORY="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^\.claude/project-memory/[^/.][^/]*\.md$' || true)"
+
+# Skip entirely if no relevant files staged
+if [[ -z "$STAGED_SKILL_FILES" && -z "$STAGED_INFRA_FILES" && -z "$STAGED_DOC_FILE" && -z "$STAGED_META_MEMORY" && -z "$STAGED_PROJECT_MEMORY" ]]; then
+  exit 0
+fi
+
+if [[ ! -f scripts/skill-lint.mjs ]]; then
+  exit 0
+fi
+
+# Run the linter against the whole skills tree (cheap, ~2s).
+# This includes the ARCH_DOC_DRIFT detector which calls architecture-counts.mjs.
+set +e
+LINT_OUTPUT="$(node scripts/skill-lint.mjs 2>&1)"
+LINT_EXIT=$?
+set -e
+# Run ledger: ONE row per skill-lint run, clean included; "void" = a run the bar must not bank.
+_w1_fire() { local _r=$? _c="${BASH_COMMAND:-}"; case "$_c" in exit|exit[[:space:]]*) ;; *) [ "$_r" != 0 ] || { _r=abort; } ;; esac; ( [ "${HOOK_SMOKE_EXEC:-0}" != 1 ] || [ -n "${HOOK_FIRES_LOG_DIR:-}" ] || exit 0; fires_log() { :; }; . "$REPO_ROOT/.claude/hooks/lib/fires-log.sh"
+  fires_log pre-commit-skill-lint sid "${CLAUDE_CODE_SESSION_ID:-}" via pre-commit outcome "$(if [ "$_r" = abort ]; then echo abort; elif [ "${LINT_EXIT:-1}" != 0 ] || [ "${COUNT_PARSED:-0}" != 1 ]; then echo void; elif [ "${FINDING_COUNT:-0}" = 0 ]; then echo clean; else echo found; fi)" findings "${FINDING_COUNT:-}" ) >/dev/null 2>&1 || true; [ "$_r" != abort ] || exit 1; }; trap _w1_fire EXIT
+
+# ⛔ GATE ON THE FINDING COUNT, NOT ON THE EXIT CODE — THIS WARN TIER WAS DEAD CODE FOR ITS
+# WHOLE LIFE, AND THE OBVIOUS ONE-LINE REPAIR DOES NOT REVIVE IT.
+# `skill-lint.mjs` exits 0 unless `--severity=fail` is passed AND an ERROR-severity finding
+# exists. ⛔ THAT SENTENCE IS NO LONGER THE WHOLE TRUTH, corrected 2026-09-13: the
+# tool ALSO exits **2** with no flag at all, when
+# it REFUSES TO SCAN (no skills root, or a root it cannot read). An additions-only commit left
+# this comment stale, which is the `+86/-0` question answering itself. This hook passes no flag, so `LINT_EXIT` was ALWAYS 0, so the early return below
+# ALWAYS fired and the whole print block underneath it never ran once: every finding was
+# captured into `LINT_OUTPUT` and discarded. The hook's own promote-to-block criterion —
+# "5 commits with no false positives" — was therefore never observable by anyone.
+# ⛔ AND THE PRESCRIBED FIX (add `--severity=fail` here) IS INSUFFICIENT, measured rather than
+# reasoned: at the time of writing the tree has 14 findings, ALL warn-level, and the flag
+# returns rc=0 on exactly that input — byte-identical to the bare call. It would revive the
+# tier only for ERROR findings, which is the class CI already fails on, and leave the warn
+# population — the one this tier exists to show — as silent as before.
+# So the exit code answers "did the tool run"; the finding count answers "did it find
+# anything", and they are different questions. Keep them separate. ⛔ THIS SENTENCE READ
+# "a crash has no `Total findings:` line, so it falls through to the print block too, which is
+# correct" UNTIL 2026-09-13, AND IT IS HALF WRONG ON EXACTLY THE HALF THE rc=2 BRANCH BELOW
+# EXISTS FOR. Falling through is correct for
+# VISIBILITY — `LINT_OUTPUT` captures stderr via `2>&1`, so the reader does see the crash. It is
+# NOT correct that the same path prints the promotion criterion, which is the sentence that turns
+# a non-observation into an observation. Measured by driving THIS hook with a stubbed invocation
+# at four states: rc=1 with no count reached "Promote to BLOCK-MODE" exactly as rc=2 used to.
+# The guard below is therefore keyed on `-ne 0 && count 0`, not on a list of exit codes.
+# `set -u` is safe here — every variable the print block reads is assigned unconditionally
+# with `|| true` above — and the `[[ ]] && echo` lines below are mid-block with an explicit
+# `exit 0` after them, so under `set -e` they continue (measured both ways: mid-script rc=0,
+# last-command rc=1). This hook stays WARN-MODE and cannot block a commit.
+# ⛔ THE COUNT LINE IS A STRING CONTRACT WITH skill-lint, AND AN UNPARSED LINE IS NOT A ZERO.
+# The emitter is the `Total findings:` console.log in skill-lint.mjs's summary block (grep it; a line cite here rotted) — note
+# the THREE spaces. This extraction survived only because `: *` tolerated them; one level of leading
+# indentation, or any rewording of that literal, produced an EMPTY capture that `${FINDING_COUNT:-0}`
+# turned into a genuine-looking 0. And because this hook invokes skill-lint with NO `--severity`
+# flag, LINT_EXIT is 0 on every real run — so an unparsed line did NOT reach the INSTRUMENT FAILURE
+# branch below. It took the clean early exit and printed NOTHING over a run with real findings, then
+# banked as one of the five clean observations the promotion bar rests on. Measured 2026-09-13:
+# `Findings total: 14` and `  Total findings:   14` both went silent with 14 real findings.
+# TWO repairs, and the second is the load-bearing one — whitespace-tolerance alone still goes silent
+# on a reworded line, so PARSED is tracked separately from the value.
+FINDING_COUNT_RAW="$(printf '%s\n' "$LINT_OUTPUT" | sed -n 's/^[[:space:]]*Total findings:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | tail -1)"
+if [[ -n $FINDING_COUNT_RAW ]]; then
+  COUNT_PARSED=1
+  FINDING_COUNT="$FINDING_COUNT_RAW"
+else
+  COUNT_PARSED=0
+  FINDING_COUNT=0
+fi
+
+# A clean early exit now requires that the count was actually READ. `-eq 0` alone cannot tell a
+# genuine zero from a line this hook could not parse.
+if [[ $LINT_EXIT -eq 0 && $FINDING_COUNT -eq 0 && $COUNT_PARSED -eq 1 ]]; then
+  exit 0
+fi
+
+# ⛔ UNPARSED COUNT — the scan may have found anything, and this hook cannot tell. Same disposition
+# as an instrument failure: report it, do NOT bank it as a clean observation, stay warn-mode.
+# ⛔ ORDER IS LOAD-BEARING: guarded to LINT_EXIT -eq 0 so a CRASH or a REFUSAL still reaches the
+# INSTRUMENT FAILURE branch below with its own wording. An unguarded `COUNT_PARSED -eq 0` catches
+# rc=1 and rc=2 first (they have no count either) and tells the developer the summary line was
+# unreadable when the tool actually died — same disposition, worse diagnostic, and it displaces
+# the message that branch exists to print. Measured in a detached worktree before shipping: the
+# unguarded form moved rc=1 and rc=2 off INSTRUMENT-FAILURE onto this branch.
+if [[ $LINT_EXIT -eq 0 && $COUNT_PARSED -eq 0 ]]; then
+  echo ""
+  echo "⛔ skill-lint COUNT LINE UNPARSED — it ran, but this hook could not read its summary line,"
+  echo "   so the number of findings is UNKNOWN. This is NOT a clean run:"
+  echo "$LINT_OUTPUT" | sed 's/^/  /'
+  echo ""
+  # ⛔ This wording deliberately avoids the literal the parse above keys on. It used to print that
+  # literal, so an UNANCHORED needle in a harness matched this diagnostic as though it were a count
+  # line — text meaning the opposite. The shipped parse is ^-anchored and was
+  # never fooled; the next person writing a harness would have been.
+  echo "  Expected skill-lint's summary line: the words Total and findings, a colon, then a number."
+  echo "  (emitter: scripts/skill-lint.mjs)"
+  echo "  This does NOT count toward the warn-mode promotion bar."
+  echo "  Escape: SKIP_SKILL_LINT=1 git commit."
+  echo ""
+  exit 0
+fi
+
+# ⛔ AN INSTRUMENT REFUSAL IS NOT A FINDING, AND IT MUST NOT BANK A PROMOTION OBSERVATION.
+# A NON-ZERO EXIT WITH NO REPORTED COUNT means skill-lint produced NO observations, whatever the
+# code. rc=2 is the REFUSAL case (skill-lint.mjs assertUsableRoot() and listSkills() — read, not counted; the
+# other `process.exit(2)` matches there are comments or self-test stub text, so a `grep -c` over-counts).
+# rc=1 is an UNCAUGHT THROW: the tool's one real `process.exit(1)` (in its failOnFindings block) sits behind
+# `if (hasErrors)` and needs `--severity=fail`, which this hook does not pass. ⛔ It is NOT the
+# tool's only exit-1 PATH — the --self-test reporter ends in `process.exit(fail ? 1 : 0)`,
+# unreachable from this hook's plain invocation but reachable by anyone who adds a flag. Read
+# exit PATHS, not literal matches: a `grep -c 'process.exit(1)'` count mixes stub text with the real
+# call and misses that ternary, and a literal count is the reason an earlier "only exit-1 path" claim
+# looked safe. ⛔ And every `--severity` match in this
+# file is a COMMENT, this sentence included, so READ THE INVOCATION LINE and never the count:
+# writing this clause moved it from 3 to 4, which is the self-contaminating probe in one edit.
+# Both codes must reach the same branch, which is why keying on `-eq 2` was wrong.
+# Before this branch existed, rc=2 fell through to the block below and printed "findings on
+# staged infrastructure file(s)" over a run that scanned NOTHING, then
+# "Promote to BLOCK-MODE after 5 commits with no false positives" — so a harness that never ran
+# was silently banked as one of the five clean observations the promotion rests on.
+# That is an instrument failure laundered into evidence ABOUT the instrument. Measured
+# end-to-end on a no-skills-root fixture. Still warn-mode; still exit 0.
+if [[ $LINT_EXIT -ne 0 && $FINDING_COUNT -eq 0 ]]; then
+  echo ""
+  echo "⛔ skill-lint INSTRUMENT FAILURE — it exited non-zero and reported no count, so NOTHING was linted:"
+  echo "$LINT_OUTPUT" | sed 's/^/  /'
+  echo ""
+  echo "  This is NOT a finding and does NOT count toward the warn-mode promotion bar."
+  echo "  Escape: SKIP_SKILL_LINT=1 git commit."
+  echo ""
+  exit 0
+fi
+
+# Skill-lint had findings. Print them; in warn-mode we still allow the commit.
+echo ""
+echo "→ skill-lint warn-mode: findings on staged infrastructure file(s)"
+echo "  Staged skill files:" "${STAGED_SKILL_FILES:-(none)}"
+echo "  Staged infra files:" "${STAGED_INFRA_FILES:-(none)}"
+[[ -n "$STAGED_DOC_FILE" ]] && echo "  Staged doc files: $STAGED_DOC_FILE"
+[[ -n "$STAGED_META_MEMORY" ]] && echo "  Staged meta/MEMORY.md (new lessons may need architecture.md count refresh)"
+[[ -n "$STAGED_PROJECT_MEMORY" ]] && echo "  Staged project-memory files: $STAGED_PROJECT_MEMORY"
+echo ""
+echo "$LINT_OUTPUT" | sed 's/^/  /'
+echo ""
+if echo "$LINT_OUTPUT" | grep -q "ARCH_DOC_DRIFT\|ARCH_DOC_LISTING\|COMPARISON_BANNER_DRIFT"; then
+  echo "  → For architecture.md / comparison-record banner drift, run: node scripts/architecture-counts.mjs fix"
+fi
+# ⛔ A NON-ZERO EXIT THAT STILL PRINTED A COUNT reaches this block too — the one cell the three guards
+# above leave unclaimed (the earlier version had the identical hole, so it was
+# inherited, not opened). Under this hook's plain invocation skill-lint only exits non-zero from a
+# refusal or a crash, so a count followed by a non-zero exit means the run died AFTER printing its
+# summary: the findings are a partial scan, and banking that as a promotion observation is the exact
+# laundering the branches above exist to prevent. ⚠️ It is deliberately NOT reclassified as
+# INSTRUMENT FAILURE: if a future invocation passes the tool's fail flag, rc=1 with a count means
+# genuine ERROR findings, and collapsing that into "nothing was linted" would mislabel a real result.
+# So the findings still print; only the promotion sentence is withheld, and the exit is named.
+if [[ $LINT_EXIT -ne 0 ]]; then
+  echo "  ⚠️ skill-lint EXITED $LINT_EXIT after printing a count — the scan may be partial, so these"
+  echo "     findings are NOT a complete run and do NOT count toward the warn-mode promotion bar."
+  echo "  WARN-MODE — commit allowed. Escape: SKIP_SKILL_LINT=1 git commit."
+else
+  echo "  WARN-MODE — commit allowed. Promote to BLOCK-MODE after"
+  echo "  5 commits with no false positives. Escape: SKIP_SKILL_LINT=1 git commit."
+fi
+echo ""
+
+# Exit 0 — warn-mode. Flip to '$LINT_EXIT' when promoting to block.
+exit 0

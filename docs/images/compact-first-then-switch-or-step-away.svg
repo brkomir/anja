@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-labelledby="anjacache-title anjacache-desc">
+<title id="anjacache-title">Compact first, then switch or step away</title>
+<desc id="anjacache-desc">Compact first, then switch or step away. A timeline of one long session. While you work on the model that holds the cache, the cache is warm. Write what must carry over into the plan, then compact on that same model, so the compaction reads the cache. Only then switch to a different model, or take time away: the cache is lost there. The first message afterwards writes a small new cache, the start of the session and the short summary but not the whole history, and the rest is rebuilt from the plan. The wrong order is to switch first: the compaction then re-reads everything uncached.</desc>
+<style>
+@media (prefers-color-scheme: dark) {
+.anjacache-card{fill:#090909;stroke:#2a2a2a}
+.anjacache-t{fill:#fafafa}.anjacache-mu{fill:#a3a3a3}
+.anjacache-ink{fill:#00c292}
+.anjacache-ln{stroke:#00c292}.anjacache-nd{fill:#00c292}
+.anjacache-s1{fill:#081614}.anjacache-s2{fill:#081e18}.anjacache-s3{fill:#082820}
+.anjacache-mc{fill:#111111;stroke:#00c292}
+.anjacache-nb{fill:#111111;stroke:#2e2e2e}
+.anjacache-sb{fill:#081e18;stroke:#00c292}
+.anjacache-gh{stroke:#6b6b6b}
+.anjacache-cut{stroke:#a3a3a3}
+.anjacache-flr{stroke:#2e2e2e}
+}
+</style>
+<defs><marker id="anjacache-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#199d78" class="anjacache-nd"/></marker></defs>
+<rect x="0.5" y="0.5" width="1199" height="639" rx="20" fill="#f7f7f7" stroke="#dcdcdc" stroke-width="1" class="anjacache-card"/>
+<text x="48" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjacache-t">Compact first,</text>
+<text x="48" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#171717" class="anjacache-t">then switch or step away</text>
+<path d="M48,300 H716" fill="none" stroke="#199d78" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" class="anjacache-ln"/>
+<path d="M716,300 H936" fill="none" stroke="#595959" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 7" class="anjacache-cut"/>
+<path d="M936,300 H1148" fill="none" stroke="#199d78" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" class="anjacache-ln"/>
+<path d="M1112,300 H1152" fill="none" stroke="#199d78" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="anjacache-ln" marker-end="url(#anjacache-head)"/>
+<text x="48" y="276" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#057558" class="anjacache-ink">the cache is warm</text>
+<text x="738" y="276" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#595959" class="anjacache-mu">cache lost</text>
+<text x="958" y="276" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#057558" class="anjacache-ink">a small new cache</text>
+<circle cx="56" cy="300" r="9" fill="#199d78" class="anjacache-nd"/>
+<text x="48" y="354" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacache-t">work</text>
+<text x="48" y="385" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">on the model that</text>
+<text x="48" y="412" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">holds the cache</text>
+<circle cx="276" cy="300" r="9" fill="#199d78" class="anjacache-nd"/>
+<text x="268" y="354" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacache-t">write the plan</text>
+<text x="268" y="385" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">everything that</text>
+<text x="268" y="412" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">must carry over</text>
+<text x="268" y="443" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjacache-mu">/pre-compact</text>
+<circle cx="496" cy="300" r="9" fill="#199d78" class="anjacache-nd"/>
+<text x="488" y="354" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacache-t">compact</text>
+<text x="488" y="385" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">same model, so</text>
+<text x="488" y="412" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">it reads the cache</text>
+<text x="488" y="443" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjacache-mu">/compact</text>
+<circle cx="716" cy="300" r="9" fill="#199d78" class="anjacache-nd"/>
+<text x="708" y="354" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacache-t">switch or break</text>
+<text x="708" y="385" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">a different model,</text>
+<text x="708" y="412" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">or time away</text>
+<text x="708" y="443" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjacache-mu">/model</text>
+<circle cx="936" cy="300" r="9" fill="#199d78" class="anjacache-nd"/>
+<text x="928" y="354" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="650" fill="#171717" class="anjacache-t">first message</text>
+<text x="928" y="385" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">writes the summary</text>
+<text x="928" y="412" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">the rest is rebuilt</text>
+<text x="928" y="439" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#595959" class="anjacache-mu">from the plan</text>
+<text x="928" y="497" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" fill="#595959" class="anjacache-mu">/post-compact</text>
+<rect x="48" y="548" width="1104" height="56" rx="12" fill="none" stroke="#8c8c8c" stroke-width="1.5" stroke-dasharray="6 6" class="anjacache-gh"/>
+<text x="72" y="584" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="650" fill="#595959" class="anjacache-mu">wrong order<tspan dx="16" font-weight="400">switch first: the compaction re-reads everything uncached</tspan></text>
+</svg>
