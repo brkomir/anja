@@ -618,9 +618,10 @@ SHIM
       ok "ARM 18: the listing SHOWS a deleted line whose content starts with --" ;;
     *) bad "ARM 18: the listing SHOWS a deleted line whose content starts with -- (got: $dout)" ;; esac
 
-  # ARM 19 — AN ABSENT SESSION ID MUST SAY SO. `${VAR%%-*}` suppresses set -u's unbound check,
-  # so unset and empty both fell through to a trailerless commit in silence, on exactly the
-  # contended files where attribution matters most. MUTATION: delete the NOTE and this reds.
+  # ARM 19 — AN ABSENT SESSION ID MUST SAY SO. On bash 3.2 the bare `${VAR%%-*}` skipped set -u's
+  # unbound check (bash 4+ aborts on it; ARM 19b), so unset and empty both fell through to a
+  # trailerless commit in silence, on exactly the contended files where attribution matters most.
+  # MUTATION: delete the NOTE and this reds.
   git init -q "$tmp/notrail"; cd "$tmp/notrail"
   git config user.email t@t; git config user.name t
   printf 'a\n' > n.txt; git add .; git commit -qm base
@@ -633,6 +634,27 @@ SHIM
   [ "$(git log -1 --format='%(trailers:key=Claude-Session,valueonly)' | tr -d '\n')" = "" ] \
     && ok "ARM 19: and it still commits, with no trailer rather than an empty one" \
     || bad "ARM 19: and it still commits, with no trailer rather than an empty one"
+  # the base commit has no trailer either, so the check above passes with no commit at all; this one cannot
+  [ "$(git show HEAD:n.txt 2>/dev/null | tail -1)" = "mine" ] \
+    && ok "ARM 19: and the commit lands, carrying the change" \
+    || bad "ARM 19: and the commit lands, carrying the change"
+  # ARM 19b — TRULY UNSET, not empty. Bash 4+ aborts on the bare `${VAR%%-*}` under set -u (this
+  # script exits 1 on 5.2.15; 3.2.57 reads it as empty), so this arm reds only on bash 4 or later,
+  # never on macOS's /bin/bash. MUTATION: restore the bare form, run under bash 5 (Linux).
+  printf 'a\nmine\nmore\n' > n.txt
+  nout="$(env -u CLAUDE_CODE_SESSION_ID bash "$self" -F "$tmp/msg" -- n.txt 2>&1)" || true
+  case "$nout" in *"NO Claude-Session"*)
+      ok "ARM 19b: an UNSET session id warns on every bash (bash 4+ aborted on the bare form)" ;;
+    *) bad "ARM 19b: an UNSET session id warns (got: $nout)" ;; esac
+  [ "$(git show HEAD:n.txt 2>/dev/null | tail -1)" = "more" ] \
+    && ok "ARM 19b: and the commit lands, carrying the change" \
+    || bad "ARM 19b: and the commit lands, carrying the change"
+  # ARM 19c — the same defect where no bash 4 runs: macOS's /bin/bash and the push gate, which
+  # exempts this self-test. No pattern operator touches the variable itself, only its :- copy.
+  local sidop; sidop="CLAUDE_CODE_SESSION_ID"'%'
+  [ "$(grep -v '^[[:space:]]*#' "$self" | grep -cF "$sidop")" = "0" ] \
+    && ok "ARM 19c: the session id is never pattern-stripped bare (reds on every bash)" \
+    || bad "ARM 19c: a bare pattern strip of the session id is back; bash 4+ aborts on it when unset"
 
   # ARM 20 — THE SEAM WITH THE SCRIPT AT A REPO ROOT. ARM 14 varies the INVOCATION SPELLING
   # (relative vs absolute $0) and the CWD, and always leaves the script in `scripts/` — so it
@@ -1320,15 +1342,18 @@ if [ "$TREE" = "$PARENT_TREE" ]; then
   exit 4
 fi
 
-SID8="${CLAUDE_CODE_SESSION_ID%%-*}"
+SID8="${CLAUDE_CODE_SESSION_ID:-}"; SID8="${SID8%%-*}"   # read through :- first: bash 4+ aborts on the bare ${VAR%%-*} when VAR is unset
 MSG_T="$(dirname "$IDX")/msg.trailered"
 if [ -n "$SID8" ]; then
   # --if-exists doNothing: idempotent, so a message already carrying the trailer keeps one line.
   git interpret-trailers --if-exists doNothing --trailer "Claude-Session: $SID8" "$MSG" > "$MSG_T"
 else
-  # ⛔ SAY SO. An absent CLAUDE_CODE_SESSION_ID lands here SILENTLY: `${VAR%%-*}` suppresses
-  # `set -u`'s unbound check (measured — truly unset yields empty at rc=0, no abort), so both
-  # unset and empty fall through to a commit with NO `Claude-Session` trailer and no signal.
+  # ⛔ SAY SO. An absent CLAUDE_CODE_SESSION_ID lands here SILENTLY. The bare `${VAR%%-*}` skips
+  # `set -u`'s unbound check on bash 3.2 only; bash 4 and later abort on it (measured 2026-10-21:
+  # 3.2.57 reads it as empty; on 5.2.15 this script exits 1, and a `set -euo pipefail` probe exits 1
+  # on 4.3 and 4.4 too — 127 is what a bare `bash -c 'set -u; …'` returns, not this script), hence
+  # the `:-` read above, so both unset and empty reach this
+  # branch on every bash and fall through to a commit with NO `Claude-Session` trailer.
   # That trailer is the fleet's primary attribution instrument, and this tool is reached for
   # precisely on contended shared files, so dropping it quietly is worst exactly where it
   # costs most. Omitting it stays right — an empty trailer is worse than none — but it is now
