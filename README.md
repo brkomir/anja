@@ -38,11 +38,13 @@ This is a typical run, described rather than transcribed.
 
 You open a session and run `/orient`: it shows the branch, the last commits, uncommitted work and which other sessions are active. You say what you want in a sentence or two. `/expert-review` seats a panel of the specialists the question touches; each reads the codebase in a fresh context with its own knowledge file and memory, and the panel comes back with a position, the trade-offs and the findings that can be fixed in code. You confirm what ships and what waits, and the panel's hand-off is a ready `/agent-work` brief. `/agent-work` then gives the files to between one and five specialists working in parallel, each editing its own part. The lead session integrates the parts, runs the tests and commits through a tool that refuses if anything besides the files it named is staged.
 
+![A feature, from request to done: you ask for a feature; for a real design choice a panel weighs it first and you pick an option; agents build it in parallel and none commits; your session commits it once the tests pass; a fresh panel reads it, in a second session or in this one; if changes are requested, the fixes you accept land in one commit, and a review hub checks them again; only if you keep a tracker, the feature is marked complete after a final check; then it is done and the next piece starts.](docs/images/a-feature-from-request-to-done.svg)
+
 A second session running `/review-hub` picks the commits up. It seats a panel that does not include the agent that wrote them, with a code-design expert on any code, verifies each finding at its file and line, and mails back a verdict with patches. You choose which fixes land; the lead session commits them; the hub verifies the fix and closes the loop.
 
 When you correct the agent along the way, `/wrap` and `/meta learn` write the correction down at the end of the session, so the next session starts with it. `/summary` tells you at any point where the session stands and what is waiting on you, and a working plan on disk carries the session through a compaction.
 
-[A working day with Anja](docs/a-working-day.md) walks through all of this, with diagrams of a session from first message to last, a second session reviewing the work, and what survives a compaction.
+[A working day with Anja](docs/a-working-day.md) walks through all of this step by step, with more diagrams: a session from first message to last, a second session reviewing the work, what survives a compaction, and what each session leaves for the next.
 
 ## A correction becomes a lesson, a rule, then a guard
 
@@ -78,11 +80,13 @@ One example from this repository's own history. Several sessions commit to one b
 
 **The lead session leads.** (The copy's own files call it the main session.) It plans, builds and commits. Rules that only it can act on reach it alone, through a [session-start hook](.claude/hooks/orchestrator-inject.sh), so specialists start without rules they cannot use.
 
-**Commands run the work.** 54 commands, and 5 older command files under `.claude/commands/`, cover the session rhythm (`/orient`, `/summary`, `/wrap`), review (`/expert-review`, `/review-hub`), hand-offs (`/mail`, `/spinoff`), recovery (`/post-compact`, `/circuit-break`) and the system's own upkeep (`/meta`). `/help` maps a task to its command.
+**Commands run the work.** 54 commands cover the session rhythm (`/orient`, `/summary`, `/wrap`), review (`/expert-review`, `/review-hub`), hand-offs (`/mail`, `/spinoff`), recovery (`/post-compact`, `/circuit-break`) and the system's own upkeep (`/meta`). `/help` maps a task to its command.
 
 **33 specialists bring the depth.** Security, accessibility, performance, QA, architecture, code design, UX design, UX copy, prompt engineering, context and memory architecture, pricing, SEO, launch, legal and more. Each has its own knowledge file and builds a memory as you use it; the copy ships the knowledge, and the memories are yours. Specialists hand their work back to the lead session, which commits it; their primer tells them not to commit, and the lead session writes their memory for them, since [a hook](.claude/hooks/block-subagent-memory-write.sh) refuses a specialist's direct edit of a memory file.
 
-**Several sessions, one branch.** Run more than one session and they share one branch in one checkout. [The commit tool](scripts/safe-commit.sh) stages exactly the paths you name and refuses if anything else is staged. [`session-manifest.py check-overlap`](scripts/session-manifest.py) refuses a change to code another session is already editing. Sessions mail each other: a mail waits for a session that is not running, can go to every session at once, and stays on record. Claude Code's agent teams split one task among teammates under one lead; Anja is the structure around every session you run.
+**Several sessions, one branch.** Run more than one session and they share one branch in one checkout. [The commit tool](scripts/safe-commit.sh) stages exactly the paths you name and refuses if anything else is staged. [`session-manifest.py check-overlap`](scripts/session-manifest.py) refuses a change to code another session is already editing. Work that would leave files dirty for the others moves to its own branch in its own worktree and merges back when it is done. Sessions mail each other: a mail waits for a session that is not running, can go to every session at once, and stays on record. Claude Code's agent teams split one task among teammates under one lead; Anja is the structure around every session you run.
+
+![Many sessions, one branch: several sessions commit in turn onto one shared branch in one shared checkout; when a piece of work would leave files dirty for the others, one session steps off onto its own branch in its own worktree while the others keep committing; when that work is done it is merged back onto the shared branch; production is a separate exit, a pull request merged only on your word.](docs/images/many-sessions-one-branch.svg)
 
 ## What was measured
 
@@ -104,7 +108,7 @@ The copy's own smoke suite, run in a fresh repository holding only this copy, pa
 - **[`.claude/commands/`](.claude/commands/)**: 5 older command files (`/status`, `/verify`, `/external-audit` and two aliases).
 - **[`.claude/hooks/`](.claude/hooks/)**: 63 hook scripts that refuse, warn, log or inject on the harness's events. [The settings file](.claude/settings.json) wires 56 of them, and 2 more run when another hook calls them.
 - **[`.claude/rules/`](.claude/rules/)**: 9 rule files, about 326 KB in all; 7 carry `paths:` and load only when a session reads, writes or edits a matching file.
-- **[`.claude/orchestrator/`](.claude/orchestrator/)**: 4 files of rules for the lead session alone; 2 are delivered at every start, 1 with the first commit command, the 4th only by a hook the shipped settings turn off.
+- **[`.claude/orchestrator/`](.claude/orchestrator/)**: 4 files of rules for the lead session alone. Two arrive at every start, one with the first commit command, and the fourth only through a hook the shipped settings switch off.
 - **[`scripts/`](scripts/)**: the commit tool, sessions and mail, the smoke suite and mutation matrix, self-tests and drift checks.
 - **[`.githooks/`](.githooks/)**: the pre-commit hook and the notes on wiring git hooks; the pre-push hook is yours to write.
 - **[`docs/starters/`](docs/starters/)**: a `CLAUDE.md` starter and four blank audit registers.

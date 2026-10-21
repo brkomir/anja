@@ -649,12 +649,17 @@ SHIM
   [ "$(git show HEAD:n.txt 2>/dev/null | tail -1)" = "more" ] \
     && ok "ARM 19b: and the commit lands, carrying the change" \
     || bad "ARM 19b: and the commit lands, carrying the change"
-  # ARM 19c — the same defect where no bash 4 runs: macOS's /bin/bash and the push gate, which
-  # exempts this self-test. No pattern operator touches the variable itself, only its :- copy.
-  local sidop; sidop="CLAUDE_CODE_SESSION_ID"'%'
-  [ "$(grep -v '^[[:space:]]*#' "$self" | grep -cF "$sidop")" = "0" ] \
-    && ok "ARM 19c: the session id is never pattern-stripped bare (reds on every bash)" \
-    || bad "ARM 19c: a bare pattern strip of the session id is back; bash 4+ aborts on it when unset"
+  # ARM 19c — the same defect where no bash 4 runs, as on macOS's /bin/bash, read from the source.
+  # No operator touches the variable itself, only its :- copy: no suffix strip (%, %%), prefix
+  # strip (#, ##), substitution (/, //) or substring (:N), all of which 3.2 reads as empty when
+  # unset and bash 4+ aborts on. The planted line is the control.
+  local sidre sidn sidplant
+  sidre='CLAUDE_CODE_SESSION_ID''(%|#|/|:[^-+=?])'
+  sidn="$(grep -v '^[[:space:]]*#' "$self" | grep -cE "$sidre" || true)"
+  sidplant="$(printf 'x="${%s:0:8}"\n' CLAUDE_CODE_SESSION_ID | grep -cE "$sidre" || true)"
+  [ "$sidn" = "0" ] && [ "$sidplant" = "1" ] \
+    && ok "ARM 19c: no strip, substitution or substring operator touches the session id bare (reds on every bash)" \
+    || bad "ARM 19c: a bare operator on the session id is back, or the count is blind (count=$sidn, control=$sidplant)"
 
   # ARM 20 — THE SEAM WITH THE SCRIPT AT A REPO ROOT. ARM 14 varies the INVOCATION SPELLING
   # (relative vs absolute $0) and the CWD, and always leaves the script in `scripts/` — so it
@@ -1289,7 +1294,7 @@ git diff --cached -U0 "$HEAD0"
 
 # ── PARSE GATE over the STAGED BLOBS — the only gate here that reads CONTENT ──
 # Every other gate in this file is on the NAME plane (declared paths vs the staged
-# set), and `tsc` plus `.githooks/pre-push` both compile the WORKTREE. So nothing
+# set), and `tsc` (and the source project's pre-push hook) compiles the WORKTREE. So nothing
 # in this repo reads the tree being COMMITTED, and a green tsc has twice coexisted
 # with a broken blob in the commit: once a `const` spliced between a
 # declaration and its initializer in a page component, and once a blob carrying
