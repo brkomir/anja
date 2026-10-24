@@ -60,6 +60,8 @@ const EXPERTS = {
     "DevOps and deployment expert. Use when configuring CI/CD, designing deploy pipelines, managing Vercel/Supabase environments, planning rollbacks, configuring preview deploys, or hardening the release process.",
   "engagement-psychologist":
     "Expert in behavioral psychology, game theory, and gamification of user experience. Designs engagement loops, retention mechanics, and incentive structures for SaaS products. Use when designing features for user retention, planning gamification, analyzing user motivation, designing onboarding, building habit loops, or evaluating engagement mechanics.",
+  "external-fagemx-edda":
+    "External-system expert on fagemx/edda, a solo Rust workspace (one `edda` binary, 23 crates) that gives coding agents a hash-chained SQLite ledger of decisions and sessions, a peers board with path claims and heartbeats, and a review gate that refuses an author session as its own reviewer, grades the reviewer's model, keeps a standing \"changes requested\" over a later approval, pins approval to a head sha and voids a review when the base moves over a changed file, all in code; plus a session-end post-mortem whose learned rules fade on a 30/60/90-day clock. Use when calibrating reviewer independence, verdict precedence, head and base pinning at promote, peer claims and heartbeats, or rule lifecycles that decay. (external-* entry: the live description is read from its SKILL.md frontmatter at generate-time; this string is only a fallback.)",
   "frontend-developer":
     "React/Next.js App Router implementation expert for this project. Covers component architecture, server vs client component decisions, hooks patterns, state management, form handling, optimistic UI, Suspense boundaries, base-ui primitive wrapping, error boundaries, and production-grade React patterns. Use when building or refactoring components, splitting large files, deciding server vs client boundaries, wiring server actions, implementing forms, adding loading/error states, or wrapping base-ui primitives into project UI components.",
   "growth-analyst":
@@ -125,7 +127,7 @@ const DEFAULT_TOOLS = "Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch"
 // at repo root). Sub-agents never commit, so every one of those is an orphan the
 // orchestrator carries or reverts. The token saving is ~0 — do not argue it that way.
 //
-// MEMBERSHIP is derived, never guessed. Two legs:
+// MEMBERSHIP is derived, never guessed. Three legs:
 //  (a) `.claude/skills/agent-work/SKILL.md` § 2 agent-eligibility table, row
 //      "Never for execution": CRO experts, personas, economists, marketing, legal.
 //  (b) `.claude/skills/expert-review/references/department-directory.md` resolves
@@ -134,6 +136,10 @@ const DEFAULT_TOOLS = "Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch"
 //      "marketing" is saas-launch-marketing alone (market-researcher is Product &
 //      Business research, brand-naming-expert + seo-content-strategist are
 //      Content & Brand).
+//  (c) the `external-*` roster has no department in that directory. Its only
+//      dispatch surface is `/external-audit`'s calibration panel, and the one write
+//      in its domain, the stat-block refresh, is done by one research agent per
+//      candidate (`.claude/skills/scout/SKILL.md` § 3), not by the `external-<name>` type.
 // ⛔ A TYPE IN DOUBT IS LEFT OUT — a wrongly-restricted builder breaks
 //    `/agent-work`; a wrongly-permitted reviewer is only the status quo. So:
 //    seo-content-strategist is OUT (it advises on `generateMetadata`, which is
@@ -186,6 +192,8 @@ const READ_ONLY_EXPERTS = new Set([
   "saas-economist",
   "saas-launch-marketing",
   "legal-advisor",
+  // (c) external-system calibrators — catalog analysts, no execution surface
+  "external-fagemx-edda",
 ]);
 
 const READ_ONLY_TOOLS = "Read, Glob, Grep, Bash, WebFetch, WebSearch";

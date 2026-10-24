@@ -85,7 +85,7 @@ In a local terminal session this project skill replaces Claude Code's own `/help
 
 - **`/deploy-check`** — Types, tests, migrations, environment settings and known blockers before a production push.
 - **`/push`** — Push the working branch so the staging build rebuilds.
-- **`/promote`** — Ship the working branch to production by pull request, merged only on your explicit word.
+- **`/promote`** — Ship the working branch to production by pull request, merged only on your explicit word (or on your advance go for that head, once CI and every other iron rule 1b condition read clean).
 
 ### `planning`
 

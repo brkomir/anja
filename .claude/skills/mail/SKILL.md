@@ -131,7 +131,7 @@ On the go-condition it prints the match + exits 0 → the session wakes with tha
 **Boundary:** this wakes a session that is OPEN + idle (the "sitting there waiting" case). It can NOT resurrect a fully `/exit`-ed session — that needs a cloud scheduled-agent (out of scope).
 
 **When to arm — the decision rule (arm-on-block).** When you're about to tell the owner "I'll wait for peer X," arm `mail-await` instead of going idle — but ONLY as a last resort:
-1. **First run the check:** can I get this info another way, proceed on a sound assumption, or do other useful work first (parallelize with background agents)? If yes, do that — don't arm. Arming is for genuine dead-ends, not first-friction (else it becomes a passivity crutch — saas-architect, 2026-06-21 consult).
+1. **First run the check:** can I get this info another way, proceed on a sound assumption, or do other useful work first (parallelize with background agents)? If yes, do that — don't arm. Arming is for genuine dead-ends, not first-friction (else it becomes a passivity crutch).
 2. **Prefer the most precise observable:** `--on-commit <the deliverable's path>` when you need a specific artifact (waits for the thing, zero cooperation — but it matches ANY commit touching the path, incl. your own + unrelated HEAD-moves, so scope the pathspec narrowly); `--peer-done <sid>` only for "wait until the peer is done-for-now" (caveat: fires on its FIRST `/wrap`, can't distinguish wrapped-done from wrapped-reopened); `--signal <tok>` for an explicit human/agent go.
 3. **Persist before you block:** write a one-line "waiting on X → then do Y" note so the woken turn knows what to resume.
 4. **On wake, verify before acting:** a wake is artifact-PRESENT, not content-CORRECT — a `--peer-done` wake means "B wrapped," not "B's work is right." Confirm the predicate actually delivered, then resume YOUR plan; never take your next action from the wake payload itself.
@@ -154,7 +154,7 @@ Each new message surfaces as the same `MAIL_PREAMBLE`-wrapped ADVISORY block `/m
 
 **When to use:** a session left idle as a coordination hub that needs to *see* peer mail live. NOT for an actively-worked session (every inbound = a full agent turn = noise — the batch surfaces SessionStart + `/wrap`-peek + `/mail check` are better there). Kill it with `TaskStop` (or it ends with the session). ⛔ **An OWNER-ordered stop is `/standby`, not a bare `TaskStop`:** it also stamps the state peers read (`⏸ standby`) and stops every re-arm directive from silently undoing the park; the owner's next message runs `/standby resume`, which re-arms and reads the inbox.
 
-**Flags:** `--poll N` (scan cadence, default 30s) · `--since-ns <ns>` (ns floor; default arm-time) · `--once` (single scan-then-exit — testing; cron use must advance `--since-ns` externally each run).
+**Flags:** `--poll N` (scan cadence, default 30s) · `--since-ns <ns>` (ns floor; default: where this session's previous listener run stopped, back as far as the store keeps unread mail (72 h), else arm-time — so a re-arm after the 30-minute expiry catches mail that landed in between; added 2026-10-23) · `--once` (single scan-then-exit — testing; cron use must advance `--since-ns` externally each run).
 
 ## THIS MAIL PLANE IS NOT THE ONLY CHANNEL — pick by DURABILITY, and never carry a hold on the other one
 

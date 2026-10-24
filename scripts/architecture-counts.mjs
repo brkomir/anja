@@ -69,6 +69,9 @@ function metaRulesRowCount() {
   const n = (tok) => shInt(`cat ${GLOB} 2>/dev/null | grep -c '${tok}' || true`);
   const nBegin = n("RULES-SPLIT:MANIFEST-BEGIN");
   const nEnd = n("RULES-SPLIT:MANIFEST-END");
+  // no meta/RULES*.md at all (a project that keeps no rules catalog): no rows, like every other count
+  // here when its files are absent; the throw below is for a catalog that exists with a broken sentinel
+  if (nBegin === 0 && nEnd === 0 && shInt(`ls ${GLOB} 2>/dev/null | wc -l`) === 0) return 0;
   if (nBegin !== 1 || nEnd !== 1) {
     throw new Error(
       `metaRulesRows: manifest sentinel is not unique across ${GLOB} ` +

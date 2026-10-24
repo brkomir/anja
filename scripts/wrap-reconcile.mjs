@@ -47,6 +47,7 @@ import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { smokeSkippedProbes } from "./lib/wrap-reconcile-smoke-skip.mjs";
+import { blankBase64Payloads, stripTranscriptLine, strippedTranscriptBytes } from "./lib/transcript-strip.mjs";
 
 // Repo root, anchored to THIS FILE — never the cwd. A hook's cwd is not guaranteed
 // (`settings.json` anchors a hook's SCRIPT PATH, not its working directory), and the smoke suite
@@ -719,23 +720,10 @@ const deepPassArtifactInToolUse = (jsonlLines) => jsonlLines.some((l) => {
     && [c.input.command, c.input.prompt].some((s) => typeof s === "string" && DEEP_PASS_ARTIFACT_RE.test(s)));
 });
 
-// DEEP-PASS CORPUS STRIP — module scope, so the runtime gate below AND the self-test consume the
-// SAME function (the replica warning at the STAGE-1 CORPUS block: two copies existed and breaking
-// the runtime one left the suite ALL PASS). This was computed INLINE in the runtime block until
-// 2026-09-15, so zero self-test arms could see it.
-// ⛔ THE HARNESS WRITES AN IMAGE PAYLOAD UNDER TWO KEYS — `source.data` and `toolUseResult.file.base64`
-// — and a pattern naming only `data` kept 397,933,828 B across 250 transcripts, one post-blank line at
-// 3,102,592 B (1.55x a whole 2 MB agent slice). A DELETE filter was key-agnostic by accident because it
-// dropped the record; converting delete to BLANK turned that into a predicate that must enumerate the
-// keys. An enumeration over the store closed it: `base64` is the only surviving key, the
-// 200-char floor excludes no real payload (smallest 1,208 chars), key order is irrelevant.
-const BASE64_PAYLOAD_RE = /"(data|base64)":"[^"]{200,}"/g;
-function blankBase64Payloads(line) {
-  return line.includes('"type":"base64"') ? line.replace(BASE64_PAYLOAD_RE, '"$1":"<stripped>"') : line;
-}
-function strippedTranscriptBytes(lineArr) {
-  return Buffer.byteLength(lineArr.map(blankBase64Payloads).join("\n"), "utf8");
-}
+// DEEP-PASS CORPUS STRIP — blankBase64Payloads / stripTranscriptLine / strippedTranscriptBytes live in
+// scripts/lib/transcript-strip.mjs (imported at the top), so the runtime gate below, the self-test AND
+// a parity test consume the SAME function. That test runs this form beside
+// wrap-preflight.py's transcript_bytes and both SKILL.md one-liners on one fixture, line by line.
 // A clock label typed from impression rather than read off a commit, mail or `date -u`: the
 // rounded minute ("20:3xZ", "10:xxZ") and the approximate estimate ("~18:50Z", "≈14:05Z",
 // a tilde range "~08:45-09:10Z"). No zone is required, so CEST / local / bare forms count too.
@@ -1050,6 +1038,24 @@ if (args.includes("--self-test")) {
     blankBase64Payloads(`{"data":"${_pay}"}`) === `{"data":"${_pay}"}`);
   t("strip: the fire gate reads stripped bytes, so 3,000 image-heavy records of tiny text stay under 3 MB",
     strippedTranscriptBytes(Array.from({ length: 3000 }, () => _toolShot)) < 3_000_000);
+  const _req = `{"type":"api-request","sessionId":"s","timestamp":"2026-10-20T00:00:00Z","params":{"m":"${"x".repeat(30000)}"}}`;
+  const _blob = `{"type":"api-request-blob","sessionId":"s","hash":"h","message":"${"y".repeat(5000)}"}`;
+  // Prose quoting the type is JSON-escaped (`{\\"type\\"`) and cannot match either form; the case the PREFIX
+  // separates from a substring test is a record that NESTS an unescaped object of that type.
+  const _nested = `{"type":"attachment","attachment":{"type":"api-request-blob","note":"kept"}}`;
+  // Every conjunct must be FALSE on the unstubbed line: a parse-and-read-type check holds for the input
+  // too, so a pattern that stubs only the bare `api-request` type passed this arm.
+  const _shape = `{"type":"api-request-shape","sessionId":"s","shape":"${"z".repeat(500)}"}`;
+  t("strip: a request copy becomes a one-line stub that keeps its record type and parses",
+    stripTranscriptLine(_req) === '{"type":"api-request","stripped":"request copy"}'
+      && stripTranscriptLine(_blob) === '{"type":"api-request-blob","stripped":"request copy"}'
+      && JSON.parse(stripTranscriptLine(_shape)).stripped === "request copy");
+  t("strip: a record that NESTS a request-copy object is NOT stubbed (prefix test, never substring)",
+    stripTranscriptLine(_nested) === _nested);
+  t("strip: the fire gate reads request copies as stubs, so 200 of 30 KB each count under 20 KB",
+    strippedTranscriptBytes(Array.from({ length: 200 }, () => _req)) < 20_000);
+  t("strip: an image record still goes through the payload blank",
+    !stripTranscriptLine(_toolShot).includes(_pay));
   // (2c) DURABLE-HOME SET (REAL DURABLE_HOMES). The always-loaded specs are the whole point:
   //      omitting AGENTS.md once produced a 6/6 FALSE ACCUSATION, and the fix that widened
   //      the set shipped with no arm, so it could regress in silence.
@@ -2297,7 +2303,7 @@ probe("step-7h defer-triggers", () => {
   const mR = out.match(/(\d+)\s+reconcile/);
   const mS = out.match(/(\d+)\s+stale/);
   if (mR && Number(mR[1]) > 0) notes.push(`⚠️  STEP 7h RECONCILE: ${mR[1]} item(s) whose done-when went TRUE while the box is still [ ] — VERIFY each deliverable yourself, then flip. Never auto-flip (the human-verified path already misfires ~2 in 35).`);
-  if (mS && Number(mS[1]) > 0) notes.push(`⚠️  STEP 7h STALE: ${mS[1]} meta: predicate(s) pointing at a missing path or an unrecognized kind — fix the block inline; a stale predicate never fires and reads as coverage.`);
+  if (mS && Number(mS[1]) > 0) notes.push(`⚠️  STEP 7h STALE: ${mS[1]} meta: predicate(s) pointing at a missing path or an unrecognized kind — open each row first: one whose text names its STALE detail as its fire is a FIRE to report, never re-point it; otherwise fix the block inline (a rotted predicate never fires and reads as coverage).`);
   // ⛔ THE FIFTH MATCH — the SAME class as the fourth, one commit later, caught by the sentence right
   // below it (2026-09-07). That commit routed hot-path commit-touches rows OUT of
   // doable-now into a LATCHED bucket on line 1, and this probe's doable-now figure fell 71 -> 16 with

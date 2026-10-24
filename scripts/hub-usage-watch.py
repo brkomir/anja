@@ -18,6 +18,16 @@ is an event; a decision line is printed once and the process exits 0.
                                            before E, the same on a reading whose reset is not E, or whose
                                            share sits SAME_STEP_MARGIN or more under N (an account switch),
                                            printing `USAGE-RESUME pct=<p> account-switch resets_at=<ISO-UTC>`
+  --weekly-pause-at W (default 97)         the weekly line, read in every mode: a trusted reading with
+                                           seven_day_pct >= W prints `USAGE-PAUSE cause=weekly pct=<w>
+                                           resets_at=<ISO-UTC|unknown>` and exits 0. In pause mode it is read before the
+                                           five-hour line, whose wait it outlasts; in either resume mode it is
+                                           the line printed in place of a resume while the weekly figure is
+                                           still at or over W, so a resume never lands on a weekly pause
+  --sid S --pause-at N --resume-weekly     until the pause marker reads `cause=usage` and a trusted reading has
+                                           seven_day_pct < W, then print `USAGE-RESUME cause=weekly pct=<w>`
+                                           and exit 0; if the five-hour line is then at or over N it prints
+                                           that line's `USAGE-PAUSE pct=<p> resets_at=<ISO-UTC>` instead
   --once                                   one evaluation, print the decision, exit 0 if it fires, 1 if not
   an unexpected fault                      prints `usage watch: internal error (<what>)` and exits 3, so a crash
                                            never reads as the "holding" exit 1 and a Monitor still gets a line
@@ -51,7 +61,33 @@ Both paths test the percentage, so a resume never lands on a reading that meets 
 marker: a pause the owner typed rewrites it to `until=owner`, and such a pause still waits for the owner, so
 the watch cannot print the line that lifts one (the hub checks the marker as well, § ⏸ step 8).
 
-No trusted reading never fires either mode. In a loop it prints `usage watch: no trusted reading (<reason>)` at
+THE WEEKLY LINE trusts by the same `ts` rule and a finite, non-boolean `seven_day_pct`, read from the same file
+and never needing the five-hour fields: right at a five-hour reset the feed reads five_hour_pct None beside a
+live seven_day_pct (22:20Z on 2026-10-21: None and 18), and the weekly line still decides on it while the
+five-hour line reports `no trusted reading (no five_hour_pct)` as it always has. `seven_day_resets_at`
+(scripts/statusline.py writes it since this line was added) only decides trust when it is a number already
+past (a boolean counts, as in the guard), the old window's figure not yet cleared; any other value, absent, a
+string, milliseconds or further ahead than seven days, prints `resets_at=unknown` and leaves the reading
+trusted, because nothing waits on it. The guard's weekly line (its WEEKLY_THRESHOLD_PCT) trusts by exactly this rule, with no difference.
+The weekly resume waits on no epoch, on this evidence from the usage meter's readings (121,638 readings,
+to 2026-10-21T22:41Z): no session's seven_day_pct ever fell between two readings within one account's week.
+Of its 177 falls, the 13 under 10 points all came with a changed five-hour reset (another account), 133 of
+10 or more did too, and the other 31 each land in the same minute in 4 to 6 sessions at once, to 0-3 (a new
+week, or a fresh account: 10-08, 10-11, 10-12, 10-21) or to 38-65 (another account: 10-07, 10-10, 10-14).
+So a trusted reading under W is itself the reset or the switch, needs no epoch to be told from the old window,
+and cannot flap. At the 2026-10-21 weekly reset (18:00:00Z) six sessions read seven_day_pct None within 57 s
+of it, the hub's own included, and showed the new week (0 to 3) one to three minutes later, as the five-hour
+fields do at their reset; so in weekly resume mode an untrusted reading of a fresh file prints the dead-feed
+notice like the five-hour one after E, the line that wakes an idle paused hub, whose figures move only with its
+own next model call. A stale file prints it only once that file's own seven_day_resets_at is past (a missing,
+unreadable or ts-less file prints at once):
+a hub's status line can stop re-rendering while it sits idle or the machine sleeps (one hub's meter log
+holds 68 gaps over 10 minutes, to 2026-10-21), and a stale file would wake it for nothing, as before E.
+While it waits on a figure at or over W it prints nothing.
+The two resume modes each check the other line before printing a resume; the weekly resume ignores the five-hour
+line when it is untrusted (a five-hour reset clears its fields every five hours).
+
+No trusted reading never fires any mode. In a loop it prints `usage watch: no trusted reading (<reason>)` at
 most once per NOTICE_EVERY_S within one run (a re-armed Monitor is a new run, whose first dead reading prints at
 once), so the hub sees a dead feed rather than a quiet one; before E the resume watch reads the file only for an
 account switch and reports no dead feed (the old window's reset is still ahead, so a dead feed would only wake
@@ -70,6 +106,8 @@ NOTICE_EVERY_S = 600  # at most one dead-feed line per this many seconds
 WINDOW_S = 5 * 3600   # one five-hour window: a reset further ahead than this is not this window's
 LAST_ISO_EPOCH = 253402300799  # 9999-12-31T23:59:59Z, the last second the ISO form can spell
 SAME_STEP_MARGIN = 5  # points under N that E's own window cannot fall to on one account (the log's largest fall: 4)
+WEEKLY_PAUSE_AT = 97  # the weekly line for the hub
+WEEK_S = 7 * 86400    # one weekly window: a seven_day_resets_at further ahead than this prints as unknown
 
 
 def iso(epoch):
@@ -83,8 +121,8 @@ def _number(v):
         return False
 
 
-def reading(path, now):
-    """(record, None) for a trusted reading, else (None, reason)."""
+def load(path, now):
+    """(the raw record, None) when the file is an object with a fresh `ts`, else (None, reason)."""
     try:
         with open(path) as fh:
             rec = json.load(fh)
@@ -94,13 +132,45 @@ def reading(path, now):
         return None, "unreadable status-line file"
     if not isinstance(rec, dict):
         return None, "status-line file is not an object"
-    ts, pct, reset = rec.get("ts"), rec.get("five_hour_pct"), rec.get("five_hour_resets_at")
+    ts = rec.get("ts")
     if not _number(ts):
         return None, "no ts"
     if now - ts > MAX_AGE_S:
         return None, f"stale, {now - ts:.0f}s old"
     if now - ts < 0:
         return None, "ts in the future"
+    return rec, None
+
+
+def reading(path, now):
+    """(five-hour record, None) for a trusted reading, else (None, reason)."""
+    return five_hour(*load(path, now), now)
+
+
+def weekly_reading(path, now):
+    """(weekly record, None) for a trusted reading, else (None, reason)."""
+    return weekly(*load(path, now), now)
+
+
+def weekly(rec, why, now):
+    """The weekly line's trust over a loaded record: {"pct", "reset" (an epoch, or None when unknown)}."""
+    if rec is None:
+        return None, why
+    pct, reset = rec.get("seven_day_pct"), rec.get("seven_day_resets_at")
+    if not _number(pct):
+        return None, "no seven_day_pct"
+    # the guard's test, character for character: any number at or before now, -Infinity and a boolean included
+    if isinstance(reset, (int, float)) and reset <= now:
+        return None, "weekly window already reset"
+    if not (_number(reset) and reset - now <= WEEK_S + MAX_AGE_S):
+        reset = None
+    return {"pct": pct, "reset": reset}, None
+
+
+def five_hour(rec, why, now):
+    if rec is None:
+        return None, why
+    pct, reset = rec.get("five_hour_pct"), rec.get("five_hour_resets_at")
     if not _number(pct):
         return None, "no five_hour_pct"
     if not _number(reset):
@@ -121,29 +191,90 @@ def paused_by_usage(marker):
         return False
 
 
-def decide(path, now, pause_at, resume_after, marker):
+def five_hour_pause_line(rec):
+    """The five-hour line's `USAGE-PAUSE pct=<p> resets_at=<ISO-UTC>`, printed by pause mode and by the weekly
+    resume's hand-off: one spelling, because review-hub/SKILL.md § ⏸ reads the same line from either."""
+    return f"USAGE-PAUSE pct={rec['pct']:g} resets_at={iso(rec['reset'])}"
+
+
+def weekly_pause(raw, why, now, weekly_at):
+    """The weekly line's `USAGE-PAUSE cause=weekly …` when a trusted reading sits at or over W, else None."""
+    wk, _ = weekly(raw, why, now)
+    if wk is None or wk["pct"] < weekly_at:
+        return None
+    reset = iso(wk["reset"]) if wk["reset"] is not None else "unknown"
+    return f"USAGE-PAUSE cause=weekly pct={wk['pct']:g} resets_at={reset}"
+
+
+def decide(path, now, pause_at, resume_after, marker, weekly_at=WEEKLY_PAUSE_AT, resume_weekly=False):
     """(fires, line, dead) — `dead` is the reason when a refusal the hub should see decided it (an untrusted
     reading, or in resume mode a pause marker that is not the limit's)."""
+    raw, raw_why = load(path, now)
+    if resume_weekly:
+        return decide_weekly_resume(raw, raw_why, now, pause_at, weekly_at, marker, path)
     if resume_after is not None and now < resume_after:
-        rec, _ = reading(path, now)
+        rec, _ = five_hour(raw, raw_why, now)
         switched = rec is not None and (rec["reset"] != resume_after or rec["pct"] <= pause_at - SAME_STEP_MARGIN)
         if switched and rec["pct"] < pause_at and paused_by_usage(marker):
+            # the other account's week may be the one at its line: then this is a weekly pause, not a resume
+            line = weekly_pause(raw, raw_why, now, weekly_at)
+            if line:
+                return True, line, None
             return True, f"USAGE-RESUME pct={rec['pct']:g} account-switch resets_at={iso(rec['reset'])}", None
         return False, f"usage watch: waiting for the reset at {iso(resume_after)}", None
     if resume_after is not None and not paused_by_usage(marker):
         why = "the pause marker does not read cause=usage"
         return False, f"usage watch: not resuming ({why})", why
-    rec, why = reading(path, now)
+    if resume_after is None:
+        line = weekly_pause(raw, raw_why, now, weekly_at)
+        if line:
+            return True, line, None
+    rec, why = five_hour(raw, raw_why, now)
     if rec is None:
         return False, f"usage watch: no trusted reading ({why})", why
     pct = rec["pct"]
     if resume_after is None:
         if pct >= pause_at:
-            return True, f"USAGE-PAUSE pct={pct:g} resets_at={iso(rec['reset'])}", None
+            return True, five_hour_pause_line(rec), None
         return False, f"usage watch: holding, pct={pct:g} below {pause_at:g}, resets_at={iso(rec['reset'])}", None
     if pct < pause_at:
+        line = weekly_pause(raw, raw_why, now, weekly_at)
+        if line:
+            return True, line, None
         return True, f"USAGE-RESUME pct={pct:g}", None
     return False, f"usage watch: holding, post-reset pct={pct:g} still at or above {pause_at:g}", None
+
+
+def week_reset_since(path, now):
+    """Whether the status-line file, fresh or stale, names a seven_day_resets_at already past."""
+    try:
+        with open(path) as fh:
+            reset = json.load(fh).get("seven_day_resets_at")
+    except (OSError, ValueError, RecursionError, AttributeError):
+        return False
+    return isinstance(reset, (int, float)) and not isinstance(reset, bool) and reset <= now
+
+
+def decide_weekly_resume(raw, raw_why, now, pause_at, weekly_at, marker, path=None):
+    """--resume-weekly: lift a weekly pause on a trusted reading under W, unless the five-hour line now binds."""
+    if not paused_by_usage(marker):
+        why = "the pause marker does not read cause=usage"
+        return False, f"usage watch: not resuming ({why})", why
+    wk, why = weekly(raw, raw_why, now)
+    if wk is None:
+        # A stale file (an idle or asleep session stops re-rendering the status line) says nothing about the week,
+        # so, as the five-hour watch before E, it wakes the paused hub only once its last reading's own weekly reset
+        # has passed; a fresh file whose figure the reset cleared is the dead feed that wakes it, and a missing,
+        # unreadable or ts-less file is reported at once, as every other untrusted reading is.
+        stale = raw is None and why.startswith("stale")
+        dead = why if not stale or (path is not None and week_reset_since(path, now)) else None
+        return False, f"usage watch: no trusted reading ({why})", dead
+    if wk["pct"] >= weekly_at:
+        return False, f"usage watch: holding, weekly pct={wk['pct']:g} still at or above {weekly_at:g}", None
+    five, _ = five_hour(raw, raw_why, now)
+    if five is not None and five["pct"] >= pause_at:
+        return True, five_hour_pause_line(five), None
+    return True, f"USAGE-RESUME cause=weekly pct={wk['pct']:g}", None
 
 
 def _sid(s):
@@ -187,7 +318,11 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Usage watch for /review-hub --pause --when usage>=N (read-only).")
     p.add_argument("--sid", required=True, type=_sid, help="this session's sid8")
     p.add_argument("--pause-at", required=True, type=_pct, help="the pause threshold N, in percent")
-    p.add_argument("--resume-after", type=_when, help="resume mode: the reset the pause waits for")
+    p.add_argument("--weekly-pause-at", type=_pct, default=float(WEEKLY_PAUSE_AT),
+                   help=f"the weekly threshold W, in percent (default {WEEKLY_PAUSE_AT})")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--resume-after", type=_when, help="resume mode: the five-hour reset the pause waits for")
+    mode.add_argument("--resume-weekly", action="store_true", help="resume mode for a weekly pause")
     p.add_argument("--once", action="store_true", help="one evaluation; exit 0 if it fires, 1 if not")
     p.add_argument("--poll", type=_poll, default=60.0, help="seconds between readings (default 60)")
     p.add_argument("--state-dir", default=os.path.join(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd(),
@@ -198,7 +333,7 @@ def main(argv=None):
     last_notice = None
     while True:
         now = time.time()
-        fires, line, dead = decide(path, now, a.pause_at, a.resume_after, marker)
+        fires, line, dead = decide(path, now, a.pause_at, a.resume_after, marker, a.weekly_pause_at, a.resume_weekly)
         if a.once or fires:
             print(line, flush=True)
             return 0 if fires else 1

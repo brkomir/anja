@@ -146,7 +146,7 @@ batch promotion (BACKLOG.md's founder-gate) and the evidence-backed status flips
      entry is archived — the archive is explicitly a permanent record (step 4, *"DO NOT delete"*) and other
      trackers cite archived numbers, so an archived `#N` is a live reservation, not a freed one. ⚠️ **This is
      the SAME defect one generation on: the clause exists to fix a rule that named the wrong form set, and it
-     named the wrong form set** (*"a rule naming THE defining form of a
+     named the wrong form set** (`.claude/traps/shell-traps.md`, the bullet under its False-zeros provenance header: *"a rule naming THE defining form of a
      corpus — this one manufactured the false zero it exists to prevent"*). **Re-derive the form set from the
      file before trusting any structural predicate here, including this one** — a bare
      `grep -oE '^[^A-Za-z]*.{0,24}#[0-9]+' BACKLOG.md | sed 's/[0-9][0-9]*/N/g' | sort | uniq -c` prints every

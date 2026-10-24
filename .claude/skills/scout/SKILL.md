@@ -79,6 +79,8 @@ A draft written from an audit's contents-API reads is not an expert yet: the rep
 
 First instance: 2026-10-09, `external-cosmix-loom` — drafted from wave 0, then sent to one clone seat (the draft stays `catalog-basis: DRAFT` until its PATCH lands) at `108aebd59463fca710963f378acfb96cb83de952`. (A licence read now precedes the clone.)
 
+A worked example of the body this section produces ships as `.claude/skills/external-fagemx-edda/SKILL.md`, deep-cataloged from a full clone of fagemx/edda at `46bf30ec` on 2026-10-09.
+
 ## Anti-scope
 - **Never report a candidate as a finding without Step-3 verification.** This is the entire reason the skill exists.
 - **Don't do `/external-audit`'s job** — scout discovers + first-pass-verifies; it does NOT re-score the matrix, write the comparison record's cells, or build `external-*` experts. It hands survivors over.

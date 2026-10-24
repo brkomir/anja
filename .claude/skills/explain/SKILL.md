@@ -72,8 +72,8 @@ before writing a word:
    number, not the number's memory.
 2. **Closure** — has a peer closed it? `grep -nF '<ROW-NAME>' todo.txt`, read the checkbox NOW,
    then `git log --oneline -5 -G '^- \[x\] <ROW-NAME>' -- todo.txt`.
-3. **Authority** — if the row says the decision is the owner's, name what makes it the owner's: a taste call, an
-   external fact, an irreversible action. **If you cannot name one, it was never the owner's**, and the
+3. **Authority** — if the row says the decision is the owner's, name which of the six owner-only reasons
+   makes it the owner's (the owner-column row in `.claude/orchestrator/conventions.md` lists them). **If you cannot name one, it was never the owner's**, and the
    expansion says so and takes it back.
 4. **Size** — if the row states a cost or a LOC figure, derive it again. An offer's size is the
    half nobody checks; it has been measured 4.1x understated.
@@ -93,7 +93,7 @@ the defect a compressed row hid is the yield. Do not let the expansion become a 
 4. **Then expand, in this order** — skip any part that does not apply, never pad:
    - **What it is** — the compressed nouns, in ordinary English.
    - **How I know** — what I just ran, and what it said (check 7).
-   - **Why it is yours** — the taste call, external fact, or irreversible action.
+   - **Why it is yours** — which of the six owner-only reasons it has (the owner-column row in `.claude/orchestrator/conventions.md` lists them).
    - **The options and what each costs** — if it is a fork (check 8).
    - **What happens if you say nothing** — the cost of silence.
    - **What I did not check** — named, not implied; an owner-only unknown is an ask (check 11).

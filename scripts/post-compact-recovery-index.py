@@ -328,6 +328,9 @@ TEXT_CAP = 2000          # per record; a cut is ANNOUNCED with the index to read
 # SEGMENT with finditer — one message can carry several rulings.
 QUOTE_SHAPE = re.compile(r'^\s*["“](.*)["”]\s*-\s*(\S.*)$', re.DOTALL)
 QUOTE_PAIR = re.compile(r'["“](.*?)["”]\s*-\s*(.*?)(?=\s*["“]|\Z)', re.DOTALL)
+QUOTE_MARK = re.compile('["“”]')
+QUOTE_OPEN = re.compile(r'^\s*["“]')
+RULING_END = re.compile(r"[;.!?:)\]]$")   # an answer that ends here can be followed by a new pair
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 RECOMMENDED = re.compile(r"\s*\(Recommended\)\s*$")
 
@@ -359,10 +362,44 @@ def _tag(text, name):
 
 
 def quote_rulings(text):
-    """[(quoted-my-text, the-owner's-answer)] for the quote-then-instruct shape, else []."""
+    """[(quoted-my-text, the-owner's-answer)] for the quote-then-instruct shape, else [].
+
+    A split that is not clean returns [] so the record is read whole, never mis-cut: a quoted half
+    holding an odd number of quote marks means the lazy pair stopped inside my text
+    ('"run the "fast" - path then stop" - yes' cuts at 'run the "fast'), and text outside every
+    pair means the owner's words were dropped ('"x" - yes, and "y" too' loses '"y" too'). Measured
+    over 336 transcripts: 46 messages carried the first shape, 113 the second.
+    A later pair that starts on the same line as an answer with no closing mark (; . ! ? : ) ]) is
+    refused too: it is the owner's own quoted word ('- no, call it "launch" - better') or an inch mark
+    ('12" - wide or 8" - narrow'), not a new ruling (measured: this refuses 15 of 4,912
+    accepted splits in the 336 transcripts, 6 of them the owner's own words printed as the
+    assistant's quote; the other 9 print whole as UNSPLIT)."""
     if not text or not QUOTE_SHAPE.match(text):
         return []
-    return [(q.strip(), a.strip()) for q, a in QUOTE_PAIR.findall(text)]
+    pairs, rest, pos, prev = [], [], 0, None
+    for m in QUOTE_PAIR.finditer(text):
+        if len(QUOTE_MARK.findall(m.group(1))) % 2:
+            return []
+        if prev and "\n" not in text[prev.end():m.start()] and not RULING_END.search(prev.group(2)):
+            return []
+        prev = m
+        rest.append(text[pos:m.start()])
+        pos = m.end()
+        pairs.append((m.group(1).strip(), m.group(2).strip()))
+    if ("".join(rest) + text[pos:]).strip():
+        return []
+    return pairs
+
+
+QUOTE_TEXT_POPS = ("a", "b", "b2", "c", "e")
+
+
+def unsplit_quote(e):
+    """True for a text record that opens with a quote and got no pairs from quote_rulings (no
+    quote-then-rule shape, or a split refused as unclean): read it whole. The ONE definition both
+    render_owner and scripts/owner-words.py use, so the two can never disagree on a record."""
+    return (e.get("pop") in QUOTE_TEXT_POPS and not e.get("rulings")
+            and bool(QUOTE_OPEN.match(e.get("text") or "")))
 
 
 def classify_answer(question, answer, labels):
@@ -700,6 +737,9 @@ def render_owner(win, cache, bank=None):
         for q, a in e.get("rulings") or []:
             L.append("        QUOTE-RULING: the owner answered %r on the item the owner quoted: %r"
                      % (a[:400], q[:200]))
+        if unsplit_quote(e):
+            L.append("        UNSPLIT-QUOTE: opens with a quote and has no clean quote-then-rule split; the "
+                     "quoted part is most likely my text, so read it whole and take his words from after it")
     return "\n".join(L)
 
 
@@ -1366,6 +1406,38 @@ def self_test():
         else:
             print("  ARM 8q ok: a two-ruling quote message splits into 2 pairs")
 
+        # ARM 8q2 — a split that would cut inside my quote, or drop his words, gives NO pairs:
+        # the record is then read whole, never mis-attributed.
+        unclean = {
+            'quote inside my quote': '"run the "fast" - path then stop" - yes do it',
+            'his words after the pair': '"x" - yes, and "y" too',
+            'his second quote unanswered': '" the plan" - hold this; " item 12 - what does it cover',
+            'his own quoted word': '"Call it the release plan?" - no, call it "launch" - that reads better',
+            'two inch marks': '"Print at 12" - wide or 8" - narrow?" - wide',
+        }
+        bad = {k: quote_rulings(v) for k, v in unclean.items() if quote_rulings(v)}
+        clean = quote_rulings('"The second check?" - yes go ahead')
+        clean2 = quote_rulings('"A?" - yes\n"B?" - no')   # a line break still starts a new pair
+        # unsplit_quote is the shared UNSPLIT signal (this file's render_owner and owner-words.py):
+        # a refused split and a quote with no ruling shape are unsplit; a clean split, a message not
+        # opening with a quote, and a non-text population are not.
+        cases = [({"pop": "a", "text": t, "rulings": quote_rulings(t)}, True) for t in unclean.values()]
+        cases += [({"pop": "c", "text": "“just my pasted line”", "rulings": []}, True),
+                  ({"pop": "b", "text": '"my line, queued"', "rulings": []}, True),
+                  ({"pop": "b2", "text": '"my line, as a suggestion"', "rulings": []}, True),
+                  ({"pop": "e", "text": '"my line, as an /eli5 argument"', "rulings": []}, True),
+                  ({"pop": "a", "text": '"The second check?" - yes go ahead', "rulings": clean}, False),
+                  ({"pop": "a", "text": "no quote here", "rulings": []}, False),
+                  ({"pop": "f", "text": '"x"', "rulings": []}, False)]
+        wrong = [(e["pop"], e["text"]) for e, want in cases if unsplit_quote(e) is not want]
+        if bad or clean != [("The second check?", "yes go ahead")] or clean2 != [("A?", "yes"), ("B?", "no")] or wrong:
+            ok = fail("ARM 8q2", "unclean splits must give [] and a clean one its pair, and "
+                      "unsplit_quote must mark exactly the unsplit text records, got", (bad, clean, clean2, wrong))
+        else:
+            print("  ARM 8q2 ok: %d unclean quote splits give no pairs; a clean one still splits; "
+                  "unsplit_quote marks the %d unsplit records and none of the %d others"
+                  % (len(unclean), sum(w for _, w in cases), sum(not w for _, w in cases)))
+
         ds = by("d")
         if len(ds) != 1 or ds[0].get("output") != "Kept model as Opus":
             ok = fail("ARM 8d", "(d) must pair command + output into ONE entry, got", ds)
@@ -1391,6 +1463,21 @@ def self_test():
                       "cross-check the window; got", txt[-600:])
         else:
             print("  ARM 8r ok: render lists UNRECOGNISED, the positive control, and a window control that can fail")
+
+        # ARM 8r2 — the rendered UNSPLIT-QUOTE line (a mutant deleting it left every arm green). An unclean quote message gets the line under
+        # its record; a clean quote-ruling and a plain message do not.
+        def _one(text, idx):
+            return {"where": "post", "idx": idx, "ts": "2026-10-23T09:00:00.000Z", "pop": "a",
+                    "text": text, "rulings": quote_rulings(text)}
+        extra = [_one('"x" - yes, and "y" too', 900001), _one('"The second check?" - yes go ahead', 900002),
+                 _one("no quote here", 900003)]
+        r_lines = render_owner(dict(win, entries=list(win["entries"]) + extra), cw).splitlines()
+        flagged = [r_lines[i - 1].split()[1] for i, ln in enumerate(r_lines)
+                   if ln.strip().startswith("UNSPLIT-QUOTE:") and i > 0]
+        if flagged != ["900001"]:
+            ok = fail("ARM 8r2", "UNSPLIT-QUOTE must sit under the unclean record only (900001), got", flagged)
+        else:
+            print("  ARM 8r2 ok: render prints UNSPLIT-QUOTE under the unclean quote record and nowhere else")
 
         # ARM 8m — main() itself: prints the section, and names a schema-triggered rebuild.
         os.makedirs(os.path.join(d, STATE_DIR))

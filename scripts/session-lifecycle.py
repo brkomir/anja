@@ -140,6 +140,12 @@ def finished_path(sid):
     return os.path.join(STATE_DIR, f'session-finished-{sid}')
 
 
+def resumed_path(sid):
+    """Where a superseded session-finished marker goes when the same session starts again
+    (gate step 4). Deliberately NOT a `session-finished-*` name, so no exit reader sees it."""
+    return os.path.join(STATE_DIR, f'session-exit-resumed-{sid}')
+
+
 def standby_path(sid):
     return session_status.standby_marker(STATE_DIR, sid)
 
@@ -258,7 +264,8 @@ def cmd_gate(args):
     # 1) GC: drop markers older than GC_DAYS (housekeeping; session_id-keyed
     #    markers would otherwise accumulate — staleness hygiene).
     for p in (glob.glob(os.path.join(STATE_DIR, 'session-wrapped-*')) +
-              glob.glob(os.path.join(STATE_DIR, 'session-finished-*'))):
+              glob.glob(os.path.join(STATE_DIR, 'session-finished-*')) +
+              glob.glob(os.path.join(STATE_DIR, 'session-exit-resumed-*'))):
         try:
             if now - os.path.getmtime(p) > GC_DAYS * 86400:
                 os.remove(p)
@@ -311,6 +318,41 @@ def cmd_gate(args):
         print(f'⏎ session-lifecycle: this session already ran /wrap ({when}). '
               f'You are REOPENING, not starting fresh — restate intent before mutating durable '
               f'state; re-run /wrap when the new work is done.', file=sys.stderr)
+
+    # 4) A SessionStart for a sid whose OWN session-finished marker exists means that session is
+    #    running again: the owner restarted it (SessionEnd wrote the marker, the resume brought the
+    #    same sid back). Left on disk, the marker kept every exit reader one record-race from a
+    #    false EXITED — `lifecycle_status` read ACTIVE again only because the transcript had newer
+    #    records (2026-10-20).
+    #    Supersede it rather than drop it: its body plus the resume go to session-exit-resumed-<sid>,
+    #    so the exit stays on record and nothing that globs `session-finished-*` sees it.
+    #    ORDER: this runs AFTER step 3, which reads finished_path(sid) — the resume advisory keeps
+    #    exactly the inputs it had before this step existed.
+    if sid and src:
+        fp = finished_path(sid)
+        if os.path.exists(fp):
+            try:
+                with open(fp, encoding='utf-8') as f:
+                    prev = f.read()
+                # A wrap stamped at or before this exit is a state the session has since left;
+                # session_status.lifecycle_status silences it only WHILE the exit marker exists, so
+                # it goes with the marker, or the resumed seat reads WRAPPED/CHECKPOINT to peers.
+                wp = wrapped_path(sid)
+                stale_wrap = os.path.exists(wp) and _read_wrap(wp)[1] <= session_status.read_finished(fp)[0]
+                wbody = open(wp, encoding='utf-8').read().strip() if stale_wrap else ''
+                with open(resumed_path(sid), 'a', encoding='utf-8') as f:
+                    if prev:
+                        f.write(prev if prev.endswith('\n') else prev + '\n')
+                    if stale_wrap:
+                        f.write(f'{now} superseded-wrap {wbody}\n')
+                    f.write(f'{now} resumed source={src}\n')
+                os.remove(fp)
+                if stale_wrap:
+                    os.remove(wp)
+                print(f'session-lifecycle: this session ({sid}) had exited and is running again — '
+                      f'its exit marker moved to session-exit-resumed-{sid}', file=sys.stderr)
+            except OSError:
+                pass
     return 0
 
 

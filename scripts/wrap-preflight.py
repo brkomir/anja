@@ -22,7 +22,7 @@ WHY THIS EXISTS
   (it is free); it is simply not what stands between a wrap and an OOM.
 
 WHAT THIS MEASURES
-  transcript  : raw bytes, base64 bytes, stripped bytes, widest residual line
+  transcript  : raw bytes, base64 bytes, request-copy bytes, stripped bytes, widest residual line
   slicing     : slices at 2MB, after the hard clamp, bytes per agent
   machine     : free+inactive RAM, swap free, resident `claude` count + RSS
   projection  : agents x observed mean context vs available headroom
@@ -35,38 +35,55 @@ USAGE
 """
 import argparse, json, os, re, subprocess, sys
 
-PROJECT_DIR = os.path.expanduser("~/.claude/projects/<project-key>")
+# Claude Code names a project's transcript folder after its path, every character that is not a letter or a
+# digit turned into a dash; the repository is the directory above scripts/, or CLAUDE_PROJECT_DIR when set.
+_ROOT = os.environ.get("CLAUDE_PROJECT_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_DIR = os.path.expanduser("~/.claude/projects/" + re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(_ROOT)))
 SLICE_TARGET = 2_000_000      # spec: ~2 MB NET window-fit slice (wrap SKILL.md)
 AGENT_CLAMP = 10              # spec: concurrency ceiling 10 (raised from 6; this constant once sat stale at 6)
 GB = 1073741824
 
 
 # The deep-pass strip BLANKS each image payload and keeps the line (wrap/SKILL.md and
-# deep-pass/SKILL.md, blankBase64Payloads in scripts/wrap-reconcile.mjs). This function used the
+# deep-pass/SKILL.md, blankBase64Payloads in scripts/lib/transcript-strip.mjs). This function used the
 # older DELETE model (the whole base64-bearing line counted as stripped) until 2026-09-15, so on an
 # image-heavy session it under-reported the stripped corpus: measured 62.6 MB against a true 149.9 MB on a
 # transcript with 370 base64 lines, failing toward GO on the instrument meant to stop an OOM. The payload
 # sits under TWO keys, `source.data` and `toolUseResult.file.base64`.
 B64_PAYLOAD = re.compile(rb'"(data|base64)":"[^"]{200,}"')
+# The harness's request copies (`api-request`, `api-request-blob`, `api-request-shape`, since harness 2.1.300, first seen 2026-10-14) are
+# 52-65% of a transcript's bytes from their first appearance; the strip blanks each to a one-line stub that
+# keeps the line. Same stub as stripTranscriptLine in
+# scripts/lib/transcript-strip.mjs and the spec's python one-liner; the test is a PREFIX, never a substring.
+API_REQUEST = re.compile(rb'^\{"type":"(api-request[a-z-]*)"')
+
+
+def request_stub(m):
+    return b'{"type":"' + m.group(1) + b'","stripped":"request copy"}\n'
 
 
 def transcript_bytes(path):
-    """(raw, base64_bytes_removed, widest_residual_line). Streams — never loads the file.
+    """(raw, base64_bytes_removed, request_bytes_removed, widest_residual_line). Streams — never loads the file.
 
-    base64_bytes_removed is what blanking the payloads takes out; a blanked line is still
-    a residual line and counts toward widest."""
-    raw = b64 = widest = 0
+    base64_bytes_removed is what blanking the image payloads takes out; request_bytes_removed is what
+    stubbing the request copies takes out; a blanked or stubbed line is still a residual line and counts
+    toward widest."""
+    raw = b64 = req = widest = 0
     with open(path, "rb") as fh:
         for line in fh:
             n = len(line)
             raw += n
             kept = n
-            if b'"type":"base64"' in line:
+            m = API_REQUEST.match(line)
+            if m:
+                kept = len(request_stub(m))
+                req += n - kept
+            elif b'"type":"base64"' in line:
                 kept = len(B64_PAYLOAD.sub(rb'"\1":"<stripped>"', line))
                 b64 += n - kept
             if kept > widest:
                 widest = kept
-    return raw, b64, widest
+    return raw, b64, req, widest
 
 
 def machine():
@@ -174,18 +191,58 @@ def self_test():
         fh.write(b64_line)
         fh.write(txt_line)
         p = fh.name
-    raw, b64, widest = transcript_bytes(p)
+    raw, b64, req, widest = transcript_bytes(p)
     os.unlink(p)
     want = (len(b64_line) - len(blanked), len(b64_line) + len(txt_line), max(len(blanked), len(txt_line)))
-    if (b64, raw, widest) != want:
-        fails.append(f"byte accounting wrong: b64={b64} raw={raw} widest={widest} (expected {want[0]}/{want[1]}/{want[2]})")
+    if (b64, raw, widest) != want or req != 0:
+        fails.append(f"byte accounting wrong: b64={b64} raw={raw} widest={widest} req={req} (expected {want[0]}/{want[1]}/{want[2]}/0)")
+
+    # request copies: a copy is stubbed (its removed bytes counted as request bytes); a record that only
+    # NESTS such an object is kept whole (the prefix test). A `-blob` copy pins the type suffix, and a copy
+    # carrying an image payload pins that its bytes count once, as request bytes (23 such lines in the store).
+    req_line = b'{"type":"api-request","sessionId":"s","params":{"m":"' + b"x" * 3000 + b'"}}\n'
+    stub = b'{"type":"api-request","stripped":"request copy"}\n'
+    nested = b'{"type":"attachment","attachment":{"type":"api-request-blob","note":"kept"}}\n'
+    blob_line = b'{"type":"api-request-blob","hash":"h","message":"' + b"y" * 2000 + b'"}\n'
+    blob_stub = b'{"type":"api-request-blob","stripped":"request copy"}\n'
+    img_req = b'{"type":"api-request","params":{"source":{"type":"base64","data":"' + pay + b'"}}}\n'
+    with tempfile.NamedTemporaryFile("wb", suffix=".jsonl", delete=False) as fh:
+        fh.write(req_line + nested + blob_line + img_req)
+        p = fh.name
+    raw, b64, req, widest = transcript_bytes(p)
+    want_req = len(req_line) + len(blob_line) + len(img_req) - 2 * len(stub) - len(blob_stub)
+    if (req, b64, widest) != (want_req, 0, len(nested)):
+        fails.append(f"request-copy accounting wrong: req={req} b64={b64} widest={widest} "
+                     f"(expected {want_req}/0/{len(nested)})")
+    # main()'s stripped figure (the one the verdict and `--json stripped` read) over the same fixture: it must
+    # be exactly the stubbed bytes. The spec one-liners are pinned to this function by a parity test that
+    # runs all four forms of the strip on one fixture.
+    # main() also samples the live machine; both samplers are stubbed for this call, so the arm reads only
+    # the byte figure and spawns nothing (the pre-push sandbox in scripts/selftest-discovery.mjs refuses `ps`).
+    import contextlib, io
+    want = 2 * len(stub) + len(nested) + len(blob_stub)
+    saved = (PROJECT_DIR, sys.argv, machine, claude_processes)
+    globals()["PROJECT_DIR"] = os.path.dirname(p)
+    globals()["machine"] = lambda: (16 * GB, 8 * GB, 4 * GB, 8 * GB)
+    globals()["claude_processes"] = lambda: (0, 0, 0)
+    sys.argv = ["wrap-preflight.py", "--sid", os.path.basename(p)[:-len(".jsonl")], "--json"]
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            main()
+    finally:
+        globals()["PROJECT_DIR"], sys.argv, globals()["machine"], globals()["claude_processes"] = saved
+        os.unlink(p)
+    got = json.loads(out.getvalue())["stripped"]
+    if got != want:
+        fails.append(f"main() stripped={got} (expected {want})")
 
     if fails:
         print("SELF-TEST FAILED:")
         for f in fails:
             print("  x", f)
         return 1
-    print("self-test: 5/5 PASS (1 GO control, 3 RED controls, 1 byte-accounting fixture)")
+    print("self-test: 7/7 PASS (1 GO control, 3 RED controls, 2 byte-accounting fixtures, 1 main() figure)")
     return 0
 
 
@@ -208,8 +265,8 @@ def main():
         print(f"transcript not found: {tx}", file=sys.stderr)
         return 2
 
-    raw, b64, widest = transcript_bytes(tx)
-    stripped = raw - b64
+    raw, b64, req, widest = transcript_bytes(tx)
+    stripped = raw - b64 - req
     slices = -(-stripped // SLICE_TARGET)
     agents = a.agents if a.agents else min(slices, AGENT_CLAMP)
     total, avail, sfree, stotal = machine()
@@ -221,7 +278,7 @@ def main():
 
     if a.json:
         print(json.dumps({
-            "verdict": verdict, "raw": raw, "base64": b64, "stripped": stripped,
+            "verdict": verdict, "raw": raw, "base64": b64, "request_copies": req, "stripped": stripped,
             "widest_line": widest, "slices": slices, "agents": agents,
             "avail": avail, "swap_free": sfree, "claude_procs": n_claude,
             "claude_rss": rss_claude, "mean_ctx": mean_ctx,
@@ -232,6 +289,7 @@ def main():
     print("=== TRANSCRIPT ===")
     print(f"  raw            {raw/1048576:8.1f} MB")
     print(f"  base64         {b64/1048576:8.1f} MB  ({b64/raw*100:.1f}% of bytes)")
+    print(f"  request copies {req/1048576:8.1f} MB  ({req/raw*100:.1f}% of bytes)")
     print(f"  stripped       {stripped/1048576:8.1f} MB  <- the deep-pass input")
     print(f"  widest line    {widest/1048576:8.2f} MB  (post-strip residual)")
     print("\n=== SLICING ===")

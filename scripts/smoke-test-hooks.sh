@@ -2899,9 +2899,9 @@ _pgw() { local f="$1"; printf '%s' "{\"tool_name\":\"Write\",\"tool_input\":{\"f
   | bash .claude/hooks/scan-secrets-writes.sh 2>&1; }
 _pgsh=$(mktemp -t pgpw-XXXXXX).sh
 _pgyml=$(mktemp -t pgpw-XXXXXX).yml
-printf 'PGPASSWORD=Xk9mQ2vR7z psql -h h\n' > "$_pgsh"
+printf 'PGPASSWORD=FixturePass1 psql -h h\n' > "$_pgsh"
 assert_contains "FIRE PGPASSWORD literal, SHELL carrier (=)" "$(_pgw "$_pgsh")" "PGPASSWORD with an inline value"
-printf '          PGPASSWORD: Xk9mQ2vR7z\n' > "$_pgyml"
+printf '          PGPASSWORD: FixturePass1\n' > "$_pgyml"
 assert_contains "FIRE PGPASSWORD literal, YAML carrier (:) — an =-anchored arm is BLIND here" \
   "$(_pgw "$_pgyml")" "PGPASSWORD with an inline value"
 printf 'PGPASSWORD=${DB_PASS} psql -h h\n' > "$_pgsh"
@@ -3867,7 +3867,7 @@ assert_tail_window_fits_band "FIRE read-guard: plan advised window FITS the band
 # this is the control that proves the arm is anchored on the DIRECTORY and not on the substring.
 # ⛔ THE FIXTURE MUST EXIST AND BE OVER-BAND, AND THAT IS THE WHOLE ARM. The first version passed a
 # BARE `src/plans.md`, which does not exist in this repo — and the hook's `[ -f "$FILE_PATH" ] || exit 0`
-# (:328) short-circuits BEFORE the case statement, so the arm was silent for a reason that has nothing
+# short-circuits BEFORE the case statement, so the arm was silent for a reason that has nothing
 # to do with the glob. Measured 2026-09-13 by mutation: broadening the glob to `plans*.md|*/plans*.md`
 # left the whole suite at 1400 PASS / 0 FAIL — the control could not fail, which is the ELEVENTH
 # vacuous-control way (the mutation sat outside the predicate's field of view). Four direct arms with
@@ -4710,9 +4710,9 @@ assert_contains "escape arm (commit path): backslash path round-trips the ledger
 # PGPASSWORD on the COMMIT path — same four states x two carriers. The two scanners are supposed to
 # cover the SAME secret inventory, so a fixture here is what keeps the union honest rather than a
 # comment asserting it.
-( cd "$VNS_T" && git rm -q --cached gh.ts && rm -f gh.ts && printf 'PGPASSWORD=Xk9mQ2vR7z psql -h h\n' > pg.sh && git add pg.sh ) >/dev/null 2>&1
+( cd "$VNS_T" && git rm -q --cached gh.ts && rm -f gh.ts && printf 'PGPASSWORD=FixturePass1 psql -h h\n' > pg.sh && git add pg.sh ) >/dev/null 2>&1
 assert_contains "FIRE: staged PGPASSWORD literal, SHELL carrier → warns" "$(vns)" "WARNING: Possible secret in staged file"
-( cd "$VNS_T" && git rm -q --cached pg.sh && rm -f pg.sh && printf '          PGPASSWORD: Xk9mQ2vR7z\n' > pg.yml && git add pg.yml ) >/dev/null 2>&1
+( cd "$VNS_T" && git rm -q --cached pg.sh && rm -f pg.sh && printf '          PGPASSWORD: FixturePass1\n' > pg.yml && git add pg.yml ) >/dev/null 2>&1
 assert_contains "FIRE: staged PGPASSWORD literal, YAML carrier → warns" "$(vns)" "WARNING: Possible secret in staged file"
 ( cd "$VNS_T" && git rm -q --cached pg.yml && rm -f pg.yml && printf 'PGPASSWORD=${DB_PASS} psql -h h\n' > pgv.sh && git add pgv.sh ) >/dev/null 2>&1
 assert_empty "SILENT: staged PGPASSWORD=\$VAR → no warning" "$(vns)"
@@ -5350,7 +5350,7 @@ ACN_CLAMP=$(grep -oE '^EMIT_CLAMP_ABOVE *= *[0-9]+' .claude/hooks/band-o-inject.
 ACN_TO=$(grep -oE '^EMIT_CLAMP_TO *= *[0-9]+' .claude/hooks/band-o-inject.sh | head -1 | grep -oE '[0-9]+$')
 # Both scrapes anchored at column 0 AND counted (2026-09-07):
 # the TO scrape was unanchored with `head -1`, so a COMMENT quoting `EMIT_CLAMP_TO = 1` above
-# the assignment (the shape band-o-inject.sh:375 already carries for ABOVE) would have passed a cap breach;
+# the assignment (the shape band-o-inject.sh already carries for ABOVE) would have passed a cap breach;
 # and `head -1` over a doubled assignment reads whichever comes first. A count of exactly 1 per constant
 # is what makes the value read below the real one.
 # MIRROR BLINDNESS: the payload is PYTHON and column 0 is module
@@ -6605,7 +6605,12 @@ sm_st_n=${sm_st_n:-0}
 if [[ "$sm_st_n" -ge 55 ]]; then
   pass "session-manifest self-test ran $sm_st_n cases (floor 55 — a silently-shrinking suite REDs)"
 else
-  fail "session-manifest self-test ran only '$sm_st_n' cases (floor 55) — cases vanished or the banner stopped self-counting"
+  fail "session-manifest self-test ran only '$sm_st_n' cases (floor 55) — the banner prints only on a pass, so 0 beside a red exit is that red; 0 on exit 0 means the banner changed; 1-54 means cases vanished"
+fi
+# On a red, print the self-test's own tail: the one failure seen (2026-10-21 promote gate, 0 cases,
+# never reproduced) left only the three lines above, so its cause could not be read afterwards.
+if [[ "$sm_st_rc" -ne 0 || "$sm_st_n" -lt 55 ]]; then
+  printf '%s\n' "$sm_st_out" | tail -20 | sed 's/^/    | /'
 fi
 
 echo ""
@@ -6942,6 +6947,19 @@ out=$(_hb_self)
 assert_contains "hub-discover: a USAGE-paused hub is told the reset's watch lifts it" "$out" "PAUSED at the usage limit"
 assert_not_contains "hub-discover: a USAGE-paused hub is NOT told to wait for the owner's word" "$out" "until the owner’s word"
 rm -f "$hub_state/review-hub-paused-face0001"
+# SELF 6 — a RESTARTED hub. SessionStart's lifecycle gate writes session-exit-resumed-<sid>
+# just before hub-discover, so a fresh one is THIS start's restart and the Monitors died with the process. The SELF arms
+# above carry no such file and never print it; an hour-old record is a past restart; a parked seat is not re-armed.
+echo "$(date +%s) logout" > "$hub_state/session-exit-resumed-face0001"
+out=$(_hb_self)
+assert_contains "hub-discover: a hub resumed after an exit is told it RESTARTED and to re-arm its Monitors" "$out" "↻ RESTARTED"
+echo "$(date +%s) x" > "$hub_state/session-standby-face0001"
+out=$(_hb_self)
+assert_not_contains "hub-discover: a PARKED restarted hub is not told to re-arm its Monitors" "$out" "RESTARTED"
+rm -f "$hub_state/session-standby-face0001"; _hbd "$hub_state/session-exit-resumed-face0001" 1
+out=$(_hb_self)
+assert_not_contains "hub-discover CONTROL: a resumed record an hour old is a past restart, not this start's" "$out" "RESTARTED"
+rm -f "$hub_state/session-exit-resumed-face0001"
 # PEER side — a hub parked past the 72h floor keeps its manifest (prune skips STANDBY), so it must tier
 # STANDBY, never STALE-BROADCAST, whose "elect ONLY on no-ack" elects over a seat that cannot ack.
 echo "$(date +%s) x" > "$hub_state/session-standby-face0003"; printf '# Session manifest: face0003\n' > "$hub_manifests/face0003.md"
@@ -7158,6 +7176,41 @@ out=$(echo '{"session_id":"smkfresh08","source":"startup"}' | bash .claude/hooks
 reopen=$(printf '%s' "$out" | grep -c "REOPENING" || true)
 assert_eq "SAFE: SessionStart fresh session → no REOPENING advisory" "0" "$reopen"
 assert_contains "FIRE: SessionStart auto-emits the blindspot prime block (2026-06-09)" "$out" "Recurring-blindspot prime"
+
+# RESUMED AFTER AN EXIT (2026-10-20): a review hub
+# was restarted; SessionEnd wrote its session-finished marker and the resume brought the
+# SAME sid back. The gate now supersedes that sid's own marker (moved to session-exit-resumed-<sid>
+# with the resume appended), leaves a PEER's marker alone, and runs AFTER the resume advisory, so a
+# wrapped-then-exited session still gets no REOPENING line on that start (the inputs it had before).
+echo '{"session_id":"7e57ab1e00","reason":"logout"}' | bash .claude/hooks/session-end.sh >/dev/null 2>&1
+echo '{"session_id":"9a8b7c6d00","reason":"prompt_input_exit"}' | bash .claude/hooks/session-end.sh >/dev/null 2>&1
+CLAUDE_CODE_SESSION_ID=9a8b7c6d00 python3 scripts/session-lifecycle.py wrapped >/dev/null 2>&1
+assert_eq "PRECONDITION: SessionEnd wrote the exit marker the resume must supersede" "1" "$([ -f "$sl_state/session-finished-9a8b7c6d" ] && echo 1 || echo 0)"
+# Back-date the exit so this wrap strictly post-dates it: step 4 moves a wrap stamped AT OR BEFORE the exit along
+# with the marker, and both stamps land in the same second here, so without this the wrap went too and the ORDER
+# arm below passed with step 4 moved above step 3 (245/0). A wrap the move keeps is the only input on
+# which the order still changes the advisory; the wrap-then-exit arms after this one pin the real-order input.
+printf '%s prompt_input_exit\n' "$(( $(date +%s) - 60 ))" > "$sl_state/session-finished-9a8b7c6d"
+out=$(echo '{"session_id":"9a8b7c6d00","source":"resume"}' | bash .claude/hooks/session-start.sh 2>&1)
+assert_eq "FIRE: a resumed session's OWN session-finished marker is gone after its SessionStart" "0" "$([ -f "$sl_state/session-finished-9a8b7c6d" ] && echo 1 || echo 0)"
+rs_body=$(cat "$sl_state/session-exit-resumed-9a8b7c6d" 2>/dev/null)
+assert_contains "FIRE: the superseded exit is kept, with its reason" "$rs_body" "prompt_input_exit"
+assert_contains "FIRE: the superseded exit records the resume" "$rs_body" "resumed source=resume"
+reopen=$(printf '%s' "$out" | grep -c "REOPENING" || true)
+assert_eq "ORDER: the resume advisory still reads the pre-supersede state (wrapped + exited → no REOPENING)" "0" "$reopen"
+out=$(python3 scripts/session-lifecycle.py status --session 9a8b7c6d00 2>&1)
+assert_not_contains "FIRE: the resumed session no longer reads EXITED" "$out" "EXITED"
+assert_eq "SAFE: a PEER's exit marker is untouched by another session's start" "1" "$([ -f "$sl_state/session-finished-7e57ab1e" ] && echo 1 || echo 0)"
+# The REAL order is wrap THEN exit (no turn runs after SessionEnd). lifecycle_status silences a wrap
+# that predates the exit only while the exit marker exists, so moving the marker alone made the
+# resumed seat read WRAPPED to every peer (hub-discover: not LIVE; mail-await --peer-done: GO).
+printf 'deadbeef %s wrap\n' "$(( $(date +%s) - 120 ))" > "$sl_state/session-wrapped-5a5a5a5a"
+echo '{"session_id":"5a5a5a5a00","reason":"logout"}' | bash .claude/hooks/session-end.sh >/dev/null 2>&1
+out=$(echo '{"session_id":"5a5a5a5a00","source":"resume"}' | bash .claude/hooks/session-start.sh 2>&1)
+assert_eq "ORDER: wrap-then-exit, resumed → still no REOPENING on that start" "0" "$(printf '%s' "$out" | grep -c "REOPENING" || true)"
+out=$(python3 scripts/session-lifecycle.py status --session 5a5a5a5a00 2>&1)
+assert_contains "FIRE: a wrap stamped BEFORE the exit does not speak after the resume (ACTIVE, not WRAPPED)" "$out" "ACTIVE"
+assert_contains "FIRE: the superseded wrap is kept on record" "$(cat "$sl_state/session-exit-resumed-5a5a5a5a" 2>/dev/null)" "superseded-wrap deadbeef"
 
 # Drift sentinels in session-start.sh (2026-07-16; patterns anchored to each
 # script's FINDING VOCABULARY after a review — a blind-state net-hole + 4 FP
@@ -9449,8 +9502,8 @@ out=$(gbw "npm test")
 assert_empty "SAFE: non-grep command -> silent" "$out"
 # ⚠️ THIS ARM EMITS THE SUITE'S ONE `BrokenPipeError`, AND IT IS BENIGN — the cause is recorded here
 # because it survived only in a commit body, and the FIRST stated cause (a head-capped arm) was WRONG.
-# Mechanism: the skip escape makes the hook exit at grep-blowup-warn.sh:136, which sits ABOVE its
-# `input=$(cat …)` at :138 — so stdin is never drained, python's stdout flush at interpreter shutdown
+# Mechanism: the skip escape makes the hook exit at grep-blowup-warn.sh's skip line, which sits ABOVE its
+# `input=$(cat …)` — so stdin is never drained, python's stdout flush at interpreter shutdown
 # gets EPIPE, and CPython prints `Exception ignored in: <stdout> / BrokenPipeError: [Errno 32]`.
 # The `2>&1` binds to `bash`, not to python, so the trace escapes $out and lands in the suite log.
 # Discriminating control, measured 2026-08-26: skip-path arm -> 1 BrokenPipe; the SAME payload through
@@ -9892,7 +9945,7 @@ rm -rf "$LSI_T"
 echo ""
 echo "=== log-subagent-dispatch.sh (SubagentStart dispatch-plane logger — new 2026-09-04) ==="
 # WHY IT EXISTS: the dispatch plane carries the majority of this fleet's API calls and was
-# UNINSTRUMENTED — agent-dispatch-memory.jsonl records the dispatch DESCRIPTION (free text), and
+# UNINSTRUMENTED — the log of the dispatch memory guard records the dispatch DESCRIPTION (free text), and
 # InstructionsLoaded does not fire on dispatch at all. This hook records agent_type per
 # SubagentStart so the choice of when to dispatch an Explore agent rests on a measurable number
 # instead of a belief. Isolated in a temp CLAUDE_PROJECT_DIR — never the real log. Death-detection:
@@ -10261,7 +10314,7 @@ echo "=== smoke-assert-lint (Layer 0 — no self-grading assertions in THIS suit
 # The agent-diff-reporter shape: an assertion whose expectation is picked by the SUT's
 # own output RUNS, PASSES, and can never fail. The lint is static and RECOMPUTED from the current
 # file every run — it cannot go stale (unlike a stored mutation artifact). Baseline 0 findings at
-# wiring (2026-07-13) → hard gate per the 2026-06-03 deterministic-suite precedent (pre-push:166).
+# wiring → hard gate, as for the other deterministic suites.
 # Self-test FIRST: a lint that cannot fail is the same disease one level up (2026-07-13,
 # replica-self-test class — the self-test consumes the real findSelfGrading, not a copy).
 if node "$REPO_ROOT/scripts/smoke-assert-lint.mjs" --self-test >/dev/null 2>&1; then
@@ -10744,6 +10797,18 @@ printf 'not json' > "$_sl_state/statusline-slsmoke1.json"; _sl_call "$_sl_in"
 _sl_silent "SAFE: session-limit guard on an unparseable state file → silent"
 _sl_o=$(printf 'garbage' | FF_STATE_DIR="$_sl_state" python3 .claude/hooks/agent-dispatch-session-limit-guard.py 2>/dev/null); _sl_rc=$?
 assert_eq "SAFE: session-limit guard on malformed hook input exits 0 (never 2)" "0" "$_sl_rc"
+# The weekly line: at 97% or more of the weekly limit the guard asks the owner, without blocking,
+# instead of refusing. No other arm here sets seven_day_pct, so without these `--for` on this guard reads the same with or
+# without the weekly code.
+_sl_wk() { printf '{"ts": %s, "five_hour_pct": null, "five_hour_resets_at": null, "seven_day_pct": %s}' "$_sl_now" "$1" > "$_sl_state/statusline-slsmoke1.json"; }
+_sl_wk 98; _sl_call "$_sl_in"
+assert_one_json_doc "PARSE: the guard at 98% of the weekly limit → ONE parseable deny doc, its question survives" "$_sl_o" "Weekly limit (all models) at 98%"
+assert_contains "FIRE: the weekly reason is a confirmation request, not a refusal" "$_sl_o" "This is a confirmation request, not a refusal"
+assert_contains "FIRE: the weekly reason forbids a question that waits for an answer" "$_sl_o" "never with AskUserQuestion"
+assert_contains "FIRE: the weekly question is logged as ask-weekly" "$(tail -1 "$_sl_state/.claude/logs/session-limit-dispatch-fires.smoke.jsonl" 2>/dev/null)" '"decision": "ask-weekly"'
+assert_eq "FIRE: the weekly question exits 0" "0" "$_sl_rc"
+_sl_wk 96.9; _sl_call "$_sl_in"
+_sl_silent "SAFE: the guard at 96.9% of the weekly limit → silent (the weekly line is AT 97)"
 # Producer contract: every arm above hand-builds the state record, so a rename or unit change in
 # statusline.py write_state would leave them green while the live guard went permanently silent. Let the
 # real producer write the file and read it through the guard's own path, CLAUDE_PROJECT_DIR/.claude/state,
@@ -10889,7 +10954,11 @@ echo ""
 echo "=== scripts/claude-main.sh launcher + session-start.sh resident-doctrine staleness line (2026-10-07) ==="
 _cm_t=$(cd "$(mktemp -d)" && pwd -P)
 printf '#!/usr/bin/env bash\necho "ARGS: $*"; echo "SKIP=${SKIP_ORCHESTRATOR_INJECT:-unset} COMMIT=${CLAUDE_RESIDENT_DOCTRINE_COMMIT:-unset}"\n' > "$_cm_t/fakeclaude"; chmod +x "$_cm_t/fakeclaude"
+# HEAD is read right around the launch, never at the assert below: on the shared tree other sessions commit while
+# this suite runs, and a HEAD read later than the launch failed this arm in a full run (2026-10-23, 2412/1).
+_cm_h0=$(git rev-parse HEAD)
 _cm_o=$(CLAUDE_MAIN_BIN="$_cm_t/fakeclaude" bash scripts/claude-main.sh 2>&1)
+_cm_h1=$(git rev-parse HEAD)
 assert_contains "FIRE: claude-main.sh (interactive) → --append-system-prompt-file a resident-doctrine file" "$_cm_o" "append-system-prompt-file"
 assert_contains "FIRE: claude-main.sh (interactive) → SKIP_ORCHESTRATOR_INJECT=1 so the hook copy is silenced" "$_cm_o" "SKIP=1"
 _cm_p=$(CLAUDE_MAIN_BIN="$_cm_t/fakeclaude" bash scripts/claude-main.sh -p hello 2>&1)
@@ -10910,7 +10979,11 @@ assert_not_contains "SAFE: session-start.sh compact without the launcher → no 
 _cm_hl=$(grep -E '^files = \[' .claude/hooks/orchestrator-inject.sh | grep -oE '[a-z-]+\.md' | sort | tr '\n' ' ')
 _cm_ll=$(grep -E '^for f in .*\.md; do' scripts/claude-main.sh | grep -oE '[a-z-]+\.md' | sort | tr '\n' ' ')
 assert_eq "claude-main.sh appends exactly orchestrator-inject.sh's source list (hook: ${_cm_hl:-none})" "1" "$([ -n "$_cm_hl" ] && [ "$_cm_hl" = "$_cm_ll" ] && echo 1 || echo 0)"
-assert_contains "claude-main.sh: labels the launch with HEAD (a wrong label silences the staleness line)" "$_cm_o" "COMMIT=$(git rev-parse HEAD)"
+# The whole label, compared exactly: a substring match passed "<HEAD>x", and an empty HEAD read matched any label.
+_cm_lv=$(printf '%s\n' "$_cm_o" | sed -n 's/^SKIP=[^ ]* COMMIT=//p')
+_cm_lab=0
+[ -n "$_cm_h0" ] && [ -n "$_cm_h1" ] && { [ "$_cm_lv" = "$_cm_h0" ] || [ "$_cm_lv" = "$_cm_h1" ]; } && _cm_lab=1
+assert_eq "claude-main.sh: labels the launch with HEAD (a wrong label silences the staleness line)" "1" "$_cm_lab"
 _cm_cp=$(CLAUDE_MAIN_BIN="$_cm_t/fakeclaude" bash scripts/claude-main.sh -cp hello 2>&1)
 assert_contains "SAFE: claude-main.sh -cp (a short-flag cluster carrying p) → passes straight through" "$_cm_cp" "SKIP=unset"
 _cm_dd=$(CLAUDE_MAIN_BIN="$_cm_t/fakeclaude" bash scripts/claude-main.sh -- -p 2>&1)
@@ -11103,7 +11176,7 @@ if git clone --shared --quiet "$REPO_ROOT" "$_ppx_tmp/clone" 2>/dev/null; then
   _ppx_new="$(git -C "$_ppx_tmp/clone" rev-parse HEAD 2>/dev/null || echo '')"
   _ppx_old="$(git -C "$_ppx_tmp/clone" rev-parse HEAD~1 2>/dev/null || echo '')"
   if [ -n "$_ppx_new" ] && [ -n "$_ppx_old" ]; then
-    # SKIP_LIGHT_GATE=1 on both runs (branching policy, 2026-09-28 landing): since the dev cutover a
+    # SKIP_LIGHT_GATE=1 on both runs (branching policy): since the dev cutover a
     # NON-main push runs the LIGHT gate (tsc + lint errors + the whole unit suite) whenever anything
     # changed, and this ref-update changes one file. A --shared clone has no node_modules of its own, so
     # the unit suite reds there for reasons unrelated to the hook (measured: 8 failing tests
@@ -11322,8 +11395,11 @@ PPSSTUB
     mkdir -p "$_pps_c/node_modules" && : > "$_pps_c/node_modules/pps-marker"
     _pps_new="$(git -C "$_pps_c" rev-parse HEAD)"; _pps_old="$(git -C "$_pps_c" rev-parse HEAD~1)"
     _pps_line="refs/heads/zz $_pps_new refs/heads/zz $_pps_old"
+    # SKIP_PREPUSH_LOCKFILE_MATCH=1 on both copy-path pushes: this clone's node_modules holds one marker file,
+    # so the lockfile check would drop the links and npm ci the whole tree in the copy, and the hard-link
+    # arm below would read an install, not the link (measured: 378 pass / 1 fail without it).
     ( printf '%s\n' "$_pps_line" | ( cd "$_pps_c" && env -i PATH="$PATH" HOME="$HOME" HOOK_SMOKE_EXEC=1 \
-        SKIP_PPS_LEDGER_PROBE=1 PPS_READY="$_pps_tmp/ready" PPS_GO="$_pps_tmp/go" \
+        SKIP_PREPUSH_LOCKFILE_MATCH=1 SKIP_PPS_LEDGER_PROBE=1 PPS_READY="$_pps_tmp/ready" PPS_GO="$_pps_tmp/go" \
         bash .githooks/pre-push origin zz > "$_pps_tmp/a.out" 2>&1; echo "$?" > "$_pps_tmp/a.rc" ) ) &
     _pps_a=$!
     _pps_i=0
@@ -11359,7 +11435,7 @@ PPSSTUB
     # still running in it; the push exits 143 once that gate returns.
     rm -f "$_pps_tmp/ready" "$_pps_tmp/go"
     ( printf '%s\n' "$_pps_line" | ( cd "$_pps_c" && env -i PATH="$PATH" HOME="$HOME" HOOK_SMOKE_EXEC=1 \
-        PPS_READY="$_pps_tmp/ready" PPS_GO="$_pps_tmp/go" \
+        SKIP_PREPUSH_LOCKFILE_MATCH=1 PPS_READY="$_pps_tmp/ready" PPS_GO="$_pps_tmp/go" \
         bash .githooks/pre-push origin zz > "$_pps_tmp/t.out" 2>&1; echo "$?" > "$_pps_tmp/t.rc" ) ) &
     _pps_t=$!
     _pps_i=0
@@ -11935,7 +12011,10 @@ if git clone --shared --quiet "$REPO_ROOT" "$_pgate_cl" 2>/dev/null; then
   git -C "$_pgate_cl" checkout -q -B zz-smoke-src
   git -C "$_pgate_cl" branch -f main "$_pgate_cl_old"
   git -C "$_pgate_cl" remote set-url origin "$_pgate_cl"
-  _pgate_pc_run() { ( cd "$_pgate_cl" && env -i PATH="$PATH" HOME="$HOME" "$@" bash scripts/promote-precheck.sh 2>&1 ); }
+  # npm is a stub here: the precheck's dependency audit (rc 5) would otherwise reach the registry, and these
+  # arms would red on a registry outage or on a new advisory in the lockfile, neither of which they test.
+  mkdir -p "$_pgate_tmp/npmstub"; printf '#!/usr/bin/env bash\nexit 0\n' > "$_pgate_tmp/npmstub/npm"; chmod +x "$_pgate_tmp/npmstub/npm"
+  _pgate_pc_run() { ( cd "$_pgate_cl" && env -i PATH="$_pgate_tmp/npmstub:$PATH" HOME="$HOME" "$@" bash scripts/promote-precheck.sh 2>&1 ); }
   _pgate_pc_out="$(_pgate_pc_run SKIP_E2E_HOOK=1)"; _pgate_pc_rc=$?
   assert_eq "promote precheck: SKIP_E2E_HOOK=1 set → refused before the gate (rc 2)" "2" "$_pgate_pc_rc"
   assert_contains "promote precheck: the refusal names the escape" "$_pgate_pc_out" "escapes are set and the gate reads them: SKIP_E2E_HOOK"
@@ -12030,7 +12109,7 @@ assert_contains "wiring pinned: a Bash matcher routes to always-loaded-claim-war
 # so it goes silent under the old free-text scan AND the new target extraction. The
 # discriminating fixture is the pair below — ONE variable moves (the redirect target),
 # the body is byte-identical and names a rules file in both. Under the old code the
-# `todo.txt` row FIRED and told the author "perishable STATE belongs in todo.txt",
+# tracker row FIRED and told the author "perishable STATE belongs in the tracker",
 # which is exactly where they were writing it.
 _alc_crossbody="Filed against \`.claude/rules/bash-environment.md\`. $_alc_phantom"
 assert_contains "alc: target PAIR/fire — body names a rules file AND the redirect targets one" \

@@ -104,8 +104,8 @@ GOES FIRST.** Manufacturing an owner decision — telling the owner a settled co
 is the owner's taste call, putting a fork in front of the owner that the codebase already
 answers — costs the owner a decision the owner did not owe, and it is the specific thing that
 happened the day this command was written. Check every open item I have marked as
-needing the owner: name what makes it the owner's (a taste call, an external fact only the owner holds,
-an irreversible action). **Cannot name one ⇒ it was never the owner's. Take it back in
+needing the owner: name which of the six owner-only reasons makes it the owner's
+(the owner-column row in `.claude/orchestrator/conventions.md` lists them). **Cannot name one ⇒ it was never the owner's. Take it back in
 this message.**
 
 ### 4. Name what a retraction cannot reach

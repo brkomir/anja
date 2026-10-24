@@ -9,7 +9,7 @@
  * replaced a fragile prose-marker regex that depended on a human writing one of 4 exact
  * "re-catalog pending" phrasings, so a new wording silently passed GREEN-but-stale):
  *   last-fetched       — bumped on ANY verification touch (incl. a stats-only scout refresh).
- *   last-deep-catalog  — bumped ONLY on a DEEP body re-catalog (upstream re-read + body rewrite).
+ *   last-deep-catalog  — bumped ONLY on a DEEP body re-catalog (upstream re-read + body rewrite), or on a check of the upstream (a clone or `git ls-remote`) confirming main's head is still the commit the body was read at (the body cannot then be behind it).
  * A stats-only touch bumps `last-fetched` GREEN while the BODY stays stale; `last-deep-catalog`
  * doesn't move, so its age downgrades the system — the stale body is caught by a date compare,
  * not a brittle marker. Each field is tiered; the system tier = the WORSE of the two:
@@ -180,7 +180,7 @@ if (draft.length) console.log(`DRAFT systems carry \`catalog-basis: DRAFT\` — 
 // Warn-only: it prints, it never touches the exit code (the --strict exit below reads RED alone).
 const panelText = (() => { try { return readFileSync(join(ROOT, ".claude/commands/external-audit.md"), "utf8"); } catch { return null; } })();
 const panelLine = panelDrift(panelText, live.map((r) => r.name));
-if (panelLine) console.log(panelLine);
+if (panelLine && dirs.length) console.log(panelLine);
 if (frozen.length) {
   console.log(`FROZEN systems have an UNREACHABLE upstream — a deep re-catalog is impossible, so they are excluded from the staleness counts and never trip --strict, and a stale last-deep-catalog date on one is EXPECTED, not a finding. Each needs a one-time DISPOSITION ruling via /external-audit, NOT a refresh; read the upstream-status frontmatter to see whether that ruling has already been made before treating it as open: ${frozen.map((r) => r.name.replace("external-", "")).join(", ")}.`);
 }
@@ -260,7 +260,7 @@ if (process.argv.slice(2).includes("--self-test")) {
      isRetired(fm("upstream-status: >-\n  live — Not retired then (RETIRED 2026-10-09, see `status:`)\n  status: RETIRED in a continuation\n")), false);
   ck("RETIRED: a status line in the BODY is NOT retired",
      isRetired(`${fm("")}\nstatus: RETIRED in a body paragraph\n`), false);
-  if (!dirs.length) console.log("  SKIP real-corpus RETIRED-set arms — no external-* system in this tree");
+  if (!retired.length) console.log("  SKIP real-corpus RETIRED-set arms — no RETIRED external-* system in this tree");
   else {
     ck("REAL corpus: exactly one RETIRED row (a new retirement updates this arm)", retired.length, 1);
     ck("REAL corpus: the headline set holds no RETIRED row", live.some((r) => r.tier === "RETIRED"), false);

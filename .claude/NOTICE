@@ -325,3 +325,28 @@ coreyhaines31/marketingskills applies to that portion, with the copyright line
 gave them could not be re-read; the licence was recorded as MIT in this repository's records
 of the upstream on 2026-04-18 (its v1.3.0) and on 2026-05-18 (its v1.5.2).
 .claude/third-party-origins.md records the entry.
+
+---
+
+Short quoted fragments in .claude/skills/external-fagemx-edda/SKILL.md, each credited in
+place with its upstream path and line, are from the public repository fagemx/edda
+("Local, tamper-evident ledger for coding agents"), dual-licensed "MIT OR Apache-2.0"
+(its Cargo.toml, line 38); the MIT License is elected here, Copyright (c) 2025-2026 fagemx
+(its LICENSE-MIT read at commit 46bf30ec215546912a1833b3c3b808e53f9e0025, the head of its
+main branch on 2026-10-09, and read again on 2026-10-24, when that commit was still its
+head). That file describes the repository at that commit; the fragments, by line of that
+file as shipped: line 27, "local, append-only state in `.edda/`" (README.md line 59) and
+the repository's description line, "Local, tamper-evident ledger for coding agents —
+decisions that survive sessions, coordination that survives agents."; line 48, "hooks
+that block or warn (100% compliance)" (crates/edda-postmortem/src/hooks.rs lines 3-4) and
+"enforced via hooks" (crates/edda-postmortem/src/rules.rs line 3), the first repeated in
+part at line 74; lines 54 and 77, "Auto-approves `edda` commands"
+(docs/guides/claude-code.md line 22); line 55, "is not a distributed lock"
+(crates/edda-cli/src/claim_guard.rs line 585); line 56, "designed, not implemented"
+(REVIEW.md line 64); line 57, "promotion into doctrine is always a human edit"
+(crates/edda-bridge-claude/src/dispatch/session.rs line 633); lines 34 and 95, "advisory
+by default" (README.md line 131). The rest of that file is this repository's own
+description of the project. The licence text is the MIT License text reproduced above
+under coreyhaines31/marketingskills, identical apart from the copyright line; that text,
+with the copyright line given here, applies to these fragments.
+.claude/third-party-origins.md records the entry.

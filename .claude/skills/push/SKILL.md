@@ -11,7 +11,7 @@ description: Push dev to GitHub so the private staging plane rebuilds, then hand
 |---|---|---|
 | **`/push`** | `dev` → GitHub → the staging build, `<your deploy host's staging URL>` | only as `/wrap`'s OPTIONAL last step, the owner asking, or inside the owner's `/promote`; never mid-promote (§ D0) |
 | **`/push --emergency`** | a hotfix branch cut from `main` → production, skipping the PR | the owner's yes to step 0's named question, for that sha only |
-| **`/promote`** | `dev` (or a hotfix branch) → production by pull request, then the post-deploy watch and rollback rules that `/deploy` used to hold | the owner's "merge it", for the exact head |
+| **`/promote`** | `dev` (or a hotfix branch) → production by pull request, then the post-deploy watch and rollback rules that `/deploy` used to hold | the owner's "merge it", for the exact head, or his advance go bound to it (`/promote` iron rule 1b) |
 
 `/deploy` is retired into `/promote` (its watch window, all-clear board, rollback authority and launch mode live there now); typing `/deploy` routes to `/promote`. **Everything below `§ Direct-push route` is the `--emergency` route** — its own paragraphs still say "push" where they mean the production push.
 

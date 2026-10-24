@@ -67,7 +67,7 @@ A finding is checked at its `file:line`, but the fix that comes with it is usual
 
 ## 4. What to keep for yourself, and what to hand over
 
-You hand over implementation, the order of the work, which experts sit on a panel, the content of a fix, and the triage of findings. You keep a decision when it fits one of four reasons, the same four the shipped conventions give the agent: a taste call, an external fact only you hold, an irreversible act, or a spend you have not approved.
+You hand over implementation, the order of the work, which experts sit on a panel, the content of a fix, and the triage of findings. You keep a decision when it fits one of six reasons, the same six the shipped conventions give the agent: a taste call, an external fact only you hold, an irreversible act, a spend you have not approved, a commercial term on a page your payment provider has verified (refund, payment, VAT or pricing wording), or changing a rule or gate you set. Applying such a rule, or correcting text to match it, stays with the agent.
 
 In practice that means:
 
@@ -76,7 +76,7 @@ In practice that means:
 - **Taste and ground truth.** Wording, a rendered image, whether a result looks right to you.
 - **Which session does what.** Section 8.
 
-Expect the agent to ask more than it needs to. If a question fits none of the four reasons, tell it to decide, or to hand the work to a session that can. The opposite error is rarer and costs more when it happens: acting beyond your word, such as a push you did not order.
+Expect the agent to ask more than it needs to. If a question fits none of the six reasons, tell it to decide, or to hand the work to a session that can. The opposite error is rarer and costs more when it happens: acting beyond your word, such as a push you did not order.
 
 ## 5. What the guards do without being asked
 

@@ -141,6 +141,33 @@ MAIL_READ_TTL_HOURS = 24       # delete *.read (surfaced) older than this — EX
                                # close-out net can still enumerate them (_is_verdict_mail)
 MAIL_UNREAD_TTL_HOURS = 72     # delete unread *.md older than this (recipient never returned)
 HUB_MARKER_STALE_HOURS = 72    # review-hub-active-<sid> broadcast-staleness floor: <this = surfaced by hub-discover; >=this = not surfaced, and GC'd ONLY IF the session is ALSO gone (manifest absent). A live hub re-stamps <=48h, so a >=72h marker whose session is still alive (push stalled) is kept, not nuked.
+HUB_RESTART_WINDOW_S = 600     # an EXITED hub whose own session-finished marker is younger than this may be RESTARTING, not gone (2026-10-20: a hub restarted to take a Claude Code update; it read EXITED for the 22 s it was down, and a peer acted on that snapshot ~40 min later).
+
+
+def _exit_marker_age_s(sid):
+    """Seconds since `sid`'s session-finished marker was written, or None when there is none.
+    The epoch is the marker's FIRST field (`<epoch> <reason>`, written by session-lifecycle.py
+    `finished`); an unparseable body, or one more than a minute AHEAD of now, falls back to the
+    file's mtime, and None when that is ahead too. A future epoch clamped to 0 read "exited 0s ago"
+    until the wall clock caught up, and the restart hold (hub-discover, and
+    _fleet_claim_holder_stood_down) would keep the role un-electable for that long."""
+    pth = os.path.join(STATE_DIR, f'session-finished-{sid}')
+    now = int(time.time())
+    try:
+        with open(pth, encoding='utf-8') as f:
+            ep = int(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        ep = None
+    if ep is None or ep > now + 60:
+        try:
+            ep = int(os.path.getmtime(pth))
+        except OSError:
+            return None
+    return max(0, now - ep) if ep <= now + 60 else None
+
+
+def _fmt_age_s(sec):
+    return f'{sec // 60}m {sec % 60:02d}s' if sec >= 60 else f'{sec}s'
 # ROLE claims — a fleet-claim token naming a ROLE a session HOLDS, not a DEFECT it is fixing.
 # A role claim is supersedable by SUCCESSION once its holder stamps teardown INTENT; a defect
 # claim is NOT (retiring as review-hub says nothing about a lint fix you still owe, so the
@@ -2239,7 +2266,7 @@ def _mail_wakes(raw):
     FULL via SessionStart mail-check, `mail-check --peek` and `/wrap` Step 0; the listener stays
     non-consuming. All that is withheld is the stdout FLUSH the Monitor turns into a turn.
 
-    ⛔ NARROWED 2026-09-04, HOURS AFTER SHIPPING, ON THE AFFECTED SEAT'S MEASUREMENT. The first
+    ⛔ NARROWED 2026-09-04, HOURS AFTER SHIPPING, ONCE ITS COST WAS MEASURED. The first
     version also held mail carrying NO `signal:` at all, and that was wrong: absence of a signal is
     a sender who did not set one, NOT a sender declaring the mail advisory. Inferring advisory from
     absence is the dangerous reading of a two-way absence. The cost was measured on a review hub's
@@ -2279,16 +2306,16 @@ HELD_SENDER_CAP = 6
 # at most one wake per window of advisory traffic, not one per drop. PICKED, not derived.
 # AGE IS MEASURED FROM THE DROP'S OWN FILENAME ns, clamped so a
 # forward-dated drop ages from now, never from the future. ⚠️ THAT ONLY REACHES A DROP THE FLOOR
-# ADMITS: a run passing --since-ns below the drop's ns releases it on the first poll, and a run
-# without one (including a bare --once) sets floor_ns to NOW, so the drop is skipped at the floor
-# check before it can be held at all. Aging from the filename buys the --since-ns case, not the
-# bare case (review fold-verify — the report said "a --once scan OR a re-arm with
-# --since-ns", which reads as the bare case and is false).
-# ⛔ WHAT THIS BOUND DOES NOT REACH (same verdict, verified at three sites): a production re-arm passes
-# no --since-ns, so the new listener's floor is its own arm time and a drop that was held but not yet
-# released when the previous Monitor window expired is BELOW that floor -- skipped before it is read,
-# never counted in any later window. Only SessionStart mail-check, `mail-check --peek` and /wrap Step 0
-# find it.
+# ADMITS: a run passing --since-ns below the drop's ns releases it on the first poll, and a bare
+# --once sets floor_ns to NOW, so the drop is skipped at the floor check before it can be held at
+# all (an earlier report said "a --once scan OR a re-arm with --since-ns",
+# which reads as the bare case and is false).
+# A PRODUCTION RE-ARM (no --since-ns) now starts from the previous run's resume point, which the
+# previous run pulled back to its oldest still-held drop (_listen_write_resume), so a drop held but
+# not yet released when a Monitor window expired is re-held and keeps aging from its filename ns
+# (2026-10-23). Until then this said the re-arm skipped it forever. Still not reached: a held drop
+# older than LISTEN_RESUME_MAX_AGE_S at the re-arm, which only SessionStart mail-check,
+# `mail-check --peek` and /wrap Step 0 find.
 MAIL_HOLD_RELEASE_SECONDS = 300
 
 
@@ -2463,8 +2490,8 @@ def _hub_open_queue_lines(my):
     So this does not ask the hub to remember anything. `review-request-closure-scan.mjs`
     already DERIVES the queue from the store, keyed on SHA and recipient-aware; the only
     thing missing was that nothing ran it at the moment mail is read. Positive control at
-    build time: run as the hub it read 140 requests / 55 with unanswered SHAs, and it
-    correctly flagged the request that had just been dropped.
+    build time: run as the hub it read 140 requests / 55 with unanswered SHAs, and the
+    request that had just been dropped was among those flagged.
 
     THREE DELIBERATE NARROWINGS, each with a reason:
       · HUB-ONLY (gated on the `review-hub-active-<sid>` marker) — every other seat pays
@@ -2807,6 +2834,9 @@ def cmd_hub_discover(args):
     # file (it is a marker, not an empty flag), so the successor is knowable here.
     # An EMPTY `.retiring` still means a declared VACANCY and the election below is correct.
     succession = []
+    # (sid, seconds since its exit marker) for every EXITED hub whose exit is younger than
+    # HUB_RESTART_WINDOW_S: a restart reads EXITED for the seconds the session is down.
+    recent_exits = []
     for pth in markers:
         sid = os.path.basename(pth)[len('review-hub-active-'):]
         try:
@@ -2855,6 +2885,9 @@ def cmd_hub_discover(args):
                 continue
             _lc = lifecycle_status(sid)
             if _lc == 'EXITED':
+                _ex = _exit_marker_age_s(sid)
+                if _ex is not None and _ex < HUB_RESTART_WINDOW_S:
+                    recent_exits.append((sid, _ex))
                 continue  # terminal: the manifest just has not been pruned yet → genuine vacancy
             # A PARKED hub is told not to re-stamp and cannot ack a claim-or-disclaim, so its
             # marker crosses the floor BY DESIGN and `prune` keeps its manifest: tier it STANDBY
@@ -2871,6 +2904,10 @@ def cmd_hub_discover(args):
                 lc = lifecycle_status(sid)
                 tier = ('exited' if lc == 'EXITED' else 'standby' if lc == 'STANDBY'
                         else 'wrapped' if lc == 'WRAPPED' else 'live')
+                if tier == 'exited':
+                    _ex = _exit_marker_age_s(sid)
+                    if _ex is not None and _ex < HUB_RESTART_WINDOW_S:
+                        recent_exits.append((sid, _ex))
             found.append((sid, age_h, tier))
     # Computed BEFORE the `if found:` branch: the vacancy block below needs it on both arms,
     # and `found` being empty is exactly the state that used to print an election.
@@ -2904,7 +2941,16 @@ def cmd_hub_discover(args):
                       f'{chr(32) + chr(8594) + " SUCCESSION IN FLIGHT: `" + _s + "` is taking the role — delegate THERE, do not elect." if _s else ""}'
                       f' [announced ~{age_h:.0f}h ago]')
             else:
-                print(f'   • ✗ `{sid}` EXITED without teardown — do NOT delegate (marker awaits GC). [announced ~{age_h:.0f}h ago]')
+                _rx = dict(recent_exits).get(sid)
+                if _rx is not None:
+                    print(f'   • ✗ `{sid}` EXITED {_fmt_age_s(_rx)} ago — MAY BE A RESTART: this line is a snapshot, and a '
+                          f'restarted session reads EXITED for the seconds it is down. Re-run `python3 scripts/session-manifest.py '
+                          f'hub-discover` in a minute before delegating elsewhere, self-running or `fleet-claim review-hub`. '
+                          f'[announced ~{age_h:.0f}h ago]')
+                else:
+                    print(f'   • ✗ `{sid}` EXITED without teardown — do NOT delegate (marker awaits GC). This is a snapshot: '
+                          f'a restarted session reads EXITED while it is down, so re-run `hub-discover` before acting on it '
+                          f'later. [announced ~{age_h:.0f}h ago]')
         if live_count > 1:
             print(f'   ⚠️ CONFLICT: {live_count} hubs read LIVE at once — a handoff may be in flight and the retiring hub has not '
                   f'stamped .retiring. Do NOT pick by announcement recency (it was never the discriminator): '
@@ -2921,6 +2967,13 @@ def cmd_hub_discover(args):
     # never discovery, it was MUTUAL EXCLUSION. So a vacancy now routes to a one-writer ELECTION.
     # Silent when the session is itself the hub, or when there are no peers (a solo session needs none).
     if live_count == 0:
+        # Rides IN the VACANCY headline line (the ordering law below): a fact that may dissolve the
+        # alarm never sits under it, where a `| head -N` cuts it off.
+        _restart_note = ''
+        if recent_exits:
+            _rs, _ra = min(recent_exits, key=lambda x: x[1])
+            _restart_note = (f' — SNAPSHOT: hub `{_rs}` exited only {_fmt_age_s(_ra)} ago and may be RESTARTING; '
+                             f're-run `hub-discover` in a minute before electing, self-running or delegating elsewhere')
         try:
             i_am_hub = bool(my) and os.path.exists(os.path.join(STATE_DIR, f'review-hub-active-{my}'))
             peers = [p for p in glob.glob(os.path.join(MANIFEST_DIR, '*.md'))
@@ -2998,6 +3051,17 @@ def cmd_hub_discover(args):
                 print(f'   Re-stamp = refresh the marker file itself (mtime IS the predicate; '
                       f'fleet-claim / mail-send do NOT clear this):')
                 print(f'       date -u +%FT%TZ > .claude/state/review-hub-active-{my}')
+            # RESTARTED (2026-10-20): the lifecycle gate runs before this command at
+            # SessionStart and writes session-exit-resumed-<sid> when this sid had exited, so a fresh one is
+            # THIS start's restart. Every Monitor died with the process and no resume-path line names the hub's.
+            try:
+                _rst = now - os.path.getmtime(os.path.join(STATE_DIR, f'session-exit-resumed-{my}')) < HUB_RESTART_WINDOW_S
+            except OSError:
+                _rst = False
+            if _rst and not parked:
+                print('   ↻ RESTARTED: your Monitors died with the process. Re-arm `mail-listen` WITH `--rebroadcast-hours 48`, '
+                      'the staleness poller, and any usage watch (review-hub/SKILL.md Phase 1, § ⏸ step 9). Peers already '
+                      'read you LIVE; do NOT re-stamp this marker without a broadcast (its mtime is LAST-BROADCAST).')
             print('   No OTHER hub is live. This command skips your own marker by design, so empty '
                   'output here is EXPECTED — not a vacancy and not a broken detector.')
         elif stale_alive:
@@ -3072,7 +3136,7 @@ def cmd_hub_discover(args):
                 # a shared predicate, not two copies kept in step by hand.
                 _cdown, _cwhy = _fleet_claim_holder_stood_down('review-hub', _cbody)
                 if _cdown:
-                    print(f'🚨 VACANCY (0 live hubs) — review-hub is CLAIMED by `{claim_sid}` '
+                    print(f'🚨 VACANCY (0 live hubs){_restart_note} — review-hub is CLAIMED by `{claim_sid}` '
                           f'({claim_date or "date unknown"}) but that session has STOOD DOWN ({_cwhy}): '
                           f'do NOT delegate to it. SUCCEED IT: `fleet-claim review-hub` (no --force — '
                           f'standing down IS consent).')
@@ -3080,7 +3144,7 @@ def cmd_hub_discover(args):
                         print('   EXITED means mail lands NOWHERE, so no ack will ever come — do not read '
                               'that silence as a disclaim, and do not wait on it before succeeding.')
                 else:
-                    print(f'🚨 VACANCY (0 live hubs) — but review-hub is CLAIMED by `{claim_sid}` '
+                    print(f'🚨 VACANCY (0 live hubs){_restart_note} — but review-hub is CLAIMED by `{claim_sid}` '
                           f'({claim_date or "date unknown"}). DELEGATE THERE (`mail-send --to {claim_sid}`); do not self-run.')
                     # Conditional, because the unconditional form asserted "wrapped" of every
                     # claimant and was simply false for an ACTIVE or a stood-down one.
@@ -3090,6 +3154,13 @@ def cmd_hub_discover(args):
                     elif _clc == 'STANDBY':
                         print('   Standby-but-claimed = owner-parked and DEAF: the delegation QUEUES until the owner resumes it; nothing wakes it on its own.')
                 print('   Claim details:  python3 scripts/session-manifest.py fleet-claim review-hub --check')
+            elif recent_exits:
+                # NO ELECTION inside the restart window: a printed election command is the action a
+                # reader takes, whatever the headline says. Waiting costs at most the window; electing
+                # over a restarting hub gives the fleet two hubs (the stale_alive branch's reasoning).
+                print(f'⏳ NO ELECTION YET — 0 live hubs, {len(peers)} peer session(s) present{_restart_note}.')
+                print(f'   If it still reads EXITED once that exit is {HUB_RESTART_WINDOW_S // 60} min old, this '
+                      f'command prints the election.')
             else:
                 print(f'🚨 VACANCY — 0 live hubs, {len(peers)} peer session(s) present.')
                 print('   Do NOT read this silence as "self-review is authorised" and do NOT fan out a panel:')
@@ -3108,10 +3179,100 @@ def cmd_hub_discover(args):
     return 0
 
 
+# RE-ARM GAP (12 dated occurrences). A Monitor watch ends at 30
+# minutes and the re-armed listener used to floor at its own arm time, so a drop written between
+# the old run's last poll and the re-arm never surfaced live (measured: a "hold ALL dev commits"
+# broadcast landed 5 s before an expiry and the seat committed inside the hold). Each production
+# poll now records a RESUME POINT; a re-arm with no --since-ns starts from it, bounded to the last
+# LISTEN_RESUME_MAX_AGE_S, and skips the drops this session's listener already surfaced (its
+# `surfaced-live` rows), so a carried-back floor never wakes the same mail twice. The resume point
+# is a FLOOR like any other, never a consuming watermark (see the back-dating note at the floor
+# check). `--once` neither reads nor writes it, so test and cron scans keep the arm-time floor.
+# Carry the floor back as far as the store still keeps unread mail: the resume file IS the "last
+# checked" marker, so a re-arm after hours (a /pre-compact --disarm, an idle seat, /standby) picks up
+# everything since, in place of a 1 h clamp.
+LISTEN_RESUME_MAX_AGE_S = MAIL_UNREAD_TTL_HOURS * 3600
+LISTEN_RESUME_MARGIN_S = 5       # a drop named just before a poll began can reach disk after its glob
+# mail-events.jsonl tail read at arm. It must hold every `surfaced-live` row of the look-back window
+# (LISTEN_RESUME_MAX_AGE_S, 72 h): the busiest 72 h in the log wrote 2.8 MB (ending 2026-08-02), the
+# last 72 h 0.23 MB (measured 2026-10-23 over the whole log, 19.2 MB since 2026-07-02). A row past the
+# tail costs one repeated wake, never a missed one.
+LISTEN_SURFACED_TAIL_BYTES = 4_000_000
+
+
+def _listen_resume_path(my):
+    return os.path.join(STATE_DIR, f'mail-listen-{my}.resume')
+
+
+def _listen_uses_resume(args):
+    """Whether this run reads AND writes the resume point: every production listener (no --once),
+    and a --once scan only when the self-test sets the internal `carry_resume` attribute. ONE
+    predicate for both ends, so the self-test reaches the write call site too: with the read
+    opened and the write left on `not once`, deleting the production write passed 174/174."""
+    return not getattr(args, 'once', False) or bool(getattr(args, 'carry_resume', False))
+
+
+def _listen_write_resume(my, poll_start_ns, held_oldest_ns):
+    """Record where the next run should start: the last poll's start less a margin, or the oldest
+    still-held drop when that is older (so its count is carried, not lost). Best-effort."""
+    r = poll_start_ns - LISTEN_RESUME_MARGIN_S * 1_000_000_000
+    if held_oldest_ns is not None:
+        r = min(r, held_oldest_ns)
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        path = _listen_resume_path(my)
+        tmp = f'{path}.{os.getpid()}.tmp'  # per process: duplicate listeners never share one tmp
+        with open(tmp, 'w') as f:
+            f.write(str(r))
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def _listen_resume_floor(my, now_ns):
+    """The floor a re-armed listener starts from, or None (no usable resume point: the first arm
+    of this session, an unreadable file, or a point not in the past) — the caller then keeps now."""
+    try:
+        with open(_listen_resume_path(my)) as f:
+            r = int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+    if r >= now_ns:
+        return None
+    return max(r, now_ns - LISTEN_RESUME_MAX_AGE_S * 1_000_000_000)
+
+
+def _surfaced_live_bases(my):
+    """Basenames this session's listener has already surfaced (`surfaced-live` rows in
+    mail-events.jsonl, read from the log's tail). Best-effort: an unreadable log returns empty,
+    which costs at most one repeated wake, never a missed one."""
+    out = set()
+    for line in _tail_text(os.path.join(LOGS_DIR, 'mail-events.jsonl'), LISTEN_SURFACED_TAIL_BYTES).splitlines():
+        if '"surfaced-live"' not in line:
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        # This runs at the arm, OUTSIDE the poll loop's catch: a non-object line would raise here.
+        if not isinstance(rec, dict) or not isinstance(rec.get('mail'), str):
+            continue
+        if rec.get('event') == 'surfaced-live' and rec.get('recipient') == my[:8] and rec.get('mail'):
+            out.add(rec['mail'])
+    return out
+
+
+def _listen_dedupe_bases(my, args):
+    """What the listener skips as already surfaced. An explicit --since-ns is a deliberate replay
+    from a chosen point, so it skips nothing; every other arm skips this session's surfaced-live
+    rows (the replay behaviour had no arm and was written down nowhere)."""
+    return set() if getattr(args, 'since_ns', None) else _surfaced_live_bases(my)
+
+
 def cmd_mail_listen(args):
     """SURFACE-ONLY real-time inbound-mail listener for a coordination-hub session. Run via
     the Bash `Monitor` tool (timeout_ms=1800000, re-armed on each expiry): polls the mailbox and prints each NEW inbound
-    message (arriving AFTER arm time) as MAIL_PREAMBLE-wrapped ADVISORY DATA — like mail-check,
+    message (arriving after the floor: the previous run's resume point, else arm time) as MAIL_PREAMBLE-wrapped ADVISORY DATA — like mail-check,
     but pushed live. Two safety properties (2026-06-21 review): (1) NON-consuming —
     an in-memory watermark dedups within the run; it NEVER archives, so the message still
     surfaces normally at SessionStart / a manual mail-check; (2) SURFACE-ONLY — it ONLY prints,
@@ -3119,7 +3280,8 @@ def cmd_mail_listen(args):
     surfaced drop ALSO appends a metadata-only `surfaced-live` line to the durable events log
     (mail-stats' listener-receipt instrument — the `.md` is untouched, so both properties hold). Runs
     until killed (TaskStop / session end). Flags: --once (single scan-then-exit, for test/cron);
-    --since-ns (ns floor; default = arm time, i.e. only NEW arrivals — SessionStart owns older);
+    --since-ns (ns floor; default = this session's resume point from its previous listener run, at
+    most LISTEN_RESUME_MAX_AGE_S back, else arm time — see _listen_resume_floor; SessionStart owns older);
     --all-wakes (restore the pre-2026-09-04 wake-on-everything behaviour for one run);
     --hold-release-seconds (bound on the held count; default MAIL_HOLD_RELEASE_SECONDS).
 
@@ -3161,7 +3323,14 @@ def cmd_mail_listen(args):
             return 2
     else:
         floor_ns = time.time_ns()
+        # RE-ARM GAP: start from the previous run's resume point (see _listen_resume_floor).
+        if _listen_uses_resume(args):
+            _carried = _listen_resume_floor(my, floor_ns)
+            if _carried is not None:
+                floor_ns = _carried
     seen = set()
+    # A carried-back floor re-admits drops the previous run already surfaced; skip those.
+    already_surfaced = _listen_dedupe_bases(my, args)
     # review-hub PUSH (2026-07-08): re-broadcast-due reminder. The marker's mtime is the
     # last-broadcast time (the hub re-stamps it on each availability broadcast). reminded_mtime
     # dedups the surface to once per marker-mtime window (re-arms when the agent re-stamps).
@@ -3171,20 +3340,23 @@ def cmd_mail_listen(args):
     # WAKE PREDICATE state (2026-09-04). `held` accumulates advisory drops ACROSS polls and is
     # drained onto the next flush; `held_from` keeps the distinct senders so the count line can
     # say whether 12 held drops are one chatty peer or four. Both are in-memory only — nothing
-    # about holding touches disk. ⛔ A restart does NOT re-derive them: a new listener's floor is its
-    # arm time unless --since-ns carries it back, so a drop held-but-unreleased when the previous run
-    # ended is skipped at the floor check and never counted live again (review verdict;
-    # this read "a listener restart simply re-derives from the store" until then). The drop itself
-    # is safe on disk and surfaces at SessionStart, --peek and /wrap Step 0.
+    # about holding touches disk except the resume point. A restart re-derives them only through
+    # that point: the previous run wrote it at or below its oldest still-held drop, so the re-armed
+    # run re-reads and re-holds that drop (2026-10-23). Older than LISTEN_RESUME_MAX_AGE_S, or a
+    # bare --once, and the drop is skipped at the floor check (a review verdict said this of every
+    # restart until then). The drop itself is safe on disk and surfaces at
+    # SessionStart, --peek and /wrap Step 0.
     all_wakes = bool(getattr(args, 'all_wakes', False))
     held, held_from = 0, []
     held_oldest_ns = None  # filename ns of the OLDEST currently-held drop (see _hold_due)
     hold_release_s = _hold_release_seconds(args)
     while True:
+        poll_start_ns = time.time_ns()
         # Per-poll buffers: the Monitor surfaces per FLUSH, so one flush per poll is one turn
         # per poll however many messages landed in it (was: one flush per message). `receipts`
         # is drained after the flush so a receipt never claims bytes that did not go out.
         emit, receipts = [], []
+        poll_ok = False  # the resume point advances only past a poll that finished its scan
         try:
             if os.path.isdir(MAIL_DIR):
                 cands = sorted(glob.glob(os.path.join(MAIL_DIR, f'{my}__*.md')) +
@@ -3213,6 +3385,8 @@ def cmd_mail_listen(args):
                 for p in cands:
                     if p.endswith('.tmp') or p in seen:
                         continue
+                    if os.path.basename(p) in already_surfaced:
+                        seen.add(p); continue
                     try:
                         ns = int(os.path.basename(p).split('__')[1])
                     except (IndexError, ValueError):
@@ -3304,6 +3478,7 @@ def cmd_mail_listen(args):
                     # instead of once per message — same value, one jsonl tail read per poll.
                     receipts.append((base, chslug))
                     seen.add(p)
+            poll_ok = True
         except Exception as e:
             print(f'mail-listen: {e}', file=sys.stderr)  # human-only breadcrumb; never crash the listener
         # ── ONE FLUSH PER POLL (2026-09-04). The Monitor surfaces per FLUSH, so this is the
@@ -3369,6 +3544,8 @@ def cmd_mail_listen(args):
                     reminded_mtime = mmt
             except OSError:
                 pass  # no marker (not a hub, or torn down) — nothing to remind
+        if poll_ok and _listen_uses_resume(args):
+            _listen_write_resume(my, poll_start_ns, held_oldest_ns)
         if getattr(args, 'once', False):
             return 0
         time.sleep(poll)
@@ -4533,6 +4710,12 @@ def _fleet_claim_holder_stood_down(tok, existing):
     if os.path.exists(os.path.join(STATE_DIR, marker.format(sid=holder))):
         return holder, 'retiring'
     if lifecycle_status(holder) == 'EXITED':
+        # An exit younger than HUB_RESTART_WINDOW_S may be a restart: the holder has not stood
+        # down yet, so succession waits and mail
+        # queues for its resume. This is the gate; hub-discover's wording only reports it.
+        _ex = _exit_marker_age_s(holder)
+        if _ex is not None and _ex < HUB_RESTART_WINDOW_S:
+            return '', ''
         return holder, 'exited'
     return '', ''
 
@@ -5696,8 +5879,9 @@ def cmd_self_test(args):
         _htmp = tempfile.mkdtemp(prefix='ff-selftest-hub-')
         _h_saved = (STATE_DIR, MANIFEST_DIR, SESSIONS_DIR)
         try:
-            def _hub_out(sid8, exited):
-                """hub-discover over one STALE marker whose session is alive (or EXITED)."""
+            def _hub_out(sid8, exited, exit_age_s=3600, stale=True):
+                """hub-discover over one marker (STALE by default) whose session is alive (or EXITED
+                `exit_age_s` seconds ago)."""
                 global STATE_DIR, MANIFEST_DIR, SESSIONS_DIR
                 _st = os.path.join(_htmp, sid8, 'state')
                 _mf = os.path.join(_htmp, sid8, 'manifests')
@@ -5707,8 +5891,8 @@ def cmd_self_test(args):
                 _mk = os.path.join(_st, f'review-hub-active-{sid8}')
                 with open(_mk, 'w') as _f:
                     _f.write('armed\n')
-                # STALE by mtime — well past HUB_MARKER_STALE_HOURS.
-                _old = time.time() - (HUB_MARKER_STALE_HOURS + 28) * 3600
+                # STALE by mtime — well past HUB_MARKER_STALE_HOURS (or 1h old when not `stale`).
+                _old = time.time() - ((HUB_MARKER_STALE_HOURS + 28) * 3600 if stale else 3600)
                 os.utime(_mk, (_old, _old))
                 # Manifest PRESENT = the liveness proxy the GC branch already trusts (`prune`
                 # deletes it once the jsonl is >24h stale). It is also the `peers` list, so the
@@ -5718,7 +5902,7 @@ def cmd_self_test(args):
                 if exited:
                     # Exit marker + NO transcript → EXITED (the shape pinned above at aaaa0005).
                     with open(os.path.join(_st, f'session-finished-{sid8}'), 'w') as _f:
-                        _f.write(f'{int(time.time()) - 3600} logout\n')
+                        _f.write(f'{int(time.time()) - exit_age_s} logout\n')
                 STATE_DIR, MANIFEST_DIR, SESSIONS_DIR = _st, _mf, _ss
                 os.environ[env_key] = 'ffff0000'   # a booting peer, not the hub
                 _buf = io.StringIO()
@@ -5756,6 +5940,47 @@ def cmd_self_test(args):
             check('hub-discover CONTROL: STALE marker + EXITED session → vacancy election STILL '
                   'fires (the suppression is conditional, not a blanket)',
                   (' VACANCY' in _o, 'STALE-BROADCAST' in _o), (True, False))
+            # RESTART WINDOW (2026-10-20): a restarted hub
+            # reads EXITED for the seconds it is down. Its EXITED row and the VACANCY
+            # headline must say so IN THE SAME LINE as the token (ordering law), with the exit's age.
+            # Two arms: a fresh marker exited 30 s ago, and a stale marker exited 30 s ago (the
+            # other branch that records an exit); the 1h CONTROL must print neither.
+            _o, _, _ = _hub_out('cccc8003', exited=True, exit_age_s=30, stale=False)
+            _vac = [l for l in _o.splitlines() if 'NO ELECTION YET' in l]
+            _row = [l for l in _o.splitlines() if '`cccc8003` EXITED' in l]
+            check('hub-discover RESTART: EXITED 30 s ago (fresh marker) → the row says MAY BE A RESTART with the '
+                  'age, the headline is NO ELECTION YET with the SNAPSHOT note, and no election command prints',
+                  (bool(_row) and 'MAY BE A RESTART' in _row[0] and '30s ago' in _row[0],
+                   bool(_vac) and 'SNAPSHOT' in _vac[0] and 'cccc8003' in _vac[0],
+                   'fleet-claim review-hub --note' in _o, ' VACANCY' in _o), (True, True, False, False))
+            _o, _, _ = _hub_out('dddd8004', exited=True, exit_age_s=30, stale=True)
+            _vac = [l for l in _o.splitlines() if 'NO ELECTION YET' in l]
+            check('hub-discover RESTART: EXITED 30 s ago (stale marker) → NO ELECTION YET with the '
+                  'SNAPSHOT note too', (bool(_vac) and 'SNAPSHOT' in _vac[0], 'fleet-claim review-hub --note' in _o),
+                  (True, False))
+            # The GATE, not the wording: a claim held by a hub that exited 30 s ago is NOT stood down, so
+            # `fleet-claim review-hub` refuses succession (the predicate cmd_fleet_claim shares), and a
+            # marker dated a day AHEAD is no evidence of a recent exit (it read "0s ago" before).
+            _cb = 'token: review-hub\nsession: dddd8004\nclaimed: 2026-10-20T00:00:00Z\n'
+            _down_recent = _fleet_claim_holder_stood_down('review-hub', _cb)
+            with open(os.path.join(STATE_DIR, 'session-finished-dddd8004'), 'w') as _f:
+                _f.write(f'{int(time.time()) - 3600} logout\n')
+            _down_old = _fleet_claim_holder_stood_down('review-hub', _cb)
+            _fp = os.path.join(STATE_DIR, 'session-finished-dddd8004')
+            with open(_fp, 'w') as _f:
+                _f.write(f'{int(time.time()) + 86400} logout\n')
+            os.utime(_fp, (time.time() - 3600, time.time() - 3600))
+            _fut = _exit_marker_age_s('dddd8004')
+            check('fleet-claim RESTART GATE: holder exited 30 s ago → NOT stood down; 1h ago → stood down '
+                  '(exited); a content epoch a day AHEAD ages from the file mtime (1h), never "0s ago"',
+                  (_down_recent, _down_old, _fut is not None and _fut >= 3500),
+                  (('', ''), ('dddd8004', 'exited'), True))
+            _o, _, _ = _hub_out('eeee8005', exited=True, exit_age_s=3600, stale=False)
+            _vac = [l for l in _o.splitlines() if ' VACANCY' in l]
+            check('hub-discover RESTART CONTROL: EXITED 1h ago → no MAY BE A RESTART, no SNAPSHOT in the '
+                  'VACANCY line, and the row still says do NOT delegate',
+                  ('MAY BE A RESTART' in _o, bool(_vac) and 'SNAPSHOT' in _vac[0],
+                   'EXITED without teardown — do NOT delegate' in _o), (False, False, True))
             # ORDERING-LAW arm (2026-08-06, the mis-routed --code review): when a CLAIM exists,
             # the claimant + the DELEGATE directive must ride in the SAME LINE as the VACANCY
             # token — the fact that dissolves an alarm may never sit below it (a `| head -N`
@@ -6585,8 +6810,9 @@ def cmd_self_test(args):
                 left behind re-surfaces in the next arm. Three arms here first failed exactly
                 that way — a leftover `deploy-hold` flushed during the `--all-wakes` default arm
                 and read as the hold being broken. (That cross-run re-surface is CORRECT here only
-                because every arm passes --since-ns '1': a production listener's floor is its arm
-                time, so it does NOT re-derive older drops — review verdict.)"""
+                because every arm passes --since-ns '1'. A production listener's floor is the
+                previous run's resume point, at most LISTEN_RESUME_MAX_AGE_S back, else its arm
+                time; the RE-ARM GAP arms below drive that path.)"""
                 for _f in glob.glob(os.path.join(MAIL_DIR, '*')):
                     os.remove(_f)
 
@@ -6738,6 +6964,164 @@ def cmd_self_test(args):
                    _hold_due(1, _NOW + 60 * _S, _NOW, _rel), _hold_due(1, _NOW + 60 * _S, _NOW, 0),
                    _hold_due(1, None, _NOW, 0)),
                   (False, False, False, True, False))
+
+            # RE-ARM GAP (2026-10-23): a re-armed
+            # listener starts from the previous run's resume point instead of its own arm time.
+            _saved_state_rs = STATE_DIR
+            STATE_DIR = os.path.join(_wt, 'state')
+            os.makedirs(STATE_DIR, exist_ok=True)
+            try:
+                _me, _NOWR, _SR = _own_sid(), time.time_ns(), 1_000_000_000
+                check('resume floor: no resume file -> None, so a first arm keeps its arm-time floor',
+                      _listen_resume_floor(_me, _NOWR), None)
+                _listen_write_resume(_me, _NOWR, None)
+                check('resume write: the last poll start less the margin',
+                      int(open(_listen_resume_path(_me)).read()), _NOWR - LISTEN_RESUME_MARGIN_S * _SR)
+                _listen_write_resume(_me, _NOWR, _NOWR - 600 * _SR)
+                check('resume write: an older still-held drop wins, so its count is carried, not lost',
+                      int(open(_listen_resume_path(_me)).read()), _NOWR - 600 * _SR)
+                check('resume floor: a recent point is used as is; an old one is clamped to the max age; '
+                      'a point not in the past is ignored',
+                      (_listen_resume_floor(_me, _NOWR + 1),
+                       _listen_resume_floor(_me, _NOWR + (LISTEN_RESUME_MAX_AGE_S + 3600) * _SR),
+                       _listen_resume_floor(_me, _NOWR - 3600 * _SR)),
+                      (_NOWR - 600 * _SR, _NOWR + 3600 * _SR, None))
+                check('resume floor: the look-back reaches as far as the store keeps unread mail '
+                      '(in place of a 1 h clamp)',
+                      LISTEN_RESUME_MAX_AGE_S, MAIL_UNREAD_TTL_HOURS * 3600)
+                # END TO END, in the order that keeps each reading single-cause: the CONTROL runs
+                # before any `surfaced-live` row exists, so its silence can only be the floor.
+                _clear()
+                with open(_listen_resume_path(_me), 'w') as _f:
+                    _f.write(str(_T0 - 10 * _SR))
+                _drop(1000000000, 'deploy-hold', age_s=5)  # landed in the gap: after the resume point
+                _LA.since_ns, _LA.carry_resume = None, False
+                try:
+                    _out_ctl, _ = _run()
+                    _LA.carry_resume = True
+                    _out_gap, _ = _run()
+                    # The gap run wrote its own resume point (past the drop); put the old one back so
+                    # the third run's silence can only be the surfaced-live dedupe, never the floor.
+                    with open(_listen_resume_path(_me), 'w') as _f:
+                        _f.write(str(_T0 - 10 * _SR))
+                    _out_dup, _ = _run()
+                finally:
+                    _LA.since_ns, _LA.carry_resume = '1', False
+                check('re-arm E2E: a drop written between the resume point and the arm is NOT surfaced on '
+                      'the arm-time floor (control), IS surfaced once the floor is carried back, and is '
+                      'NOT surfaced a second time (the previous run\'s surfaced-live row is honoured)',
+                      ('WAKEPROBE-BODY-deploy-hold' in _out_ctl, 'WAKEPROBE-BODY-deploy-hold' in _out_gap,
+                       'WAKEPROBE-BODY-deploy-hold' in _out_dup),
+                      (False, True, False))
+                # THE WRITE CALL SITE: the arms above call _listen_write_resume directly, so before
+                # this arm deleting the loop's write, or passing None for the held ns, stayed green.
+                _clear()
+                with open(_listen_resume_path(_me), 'w') as _f:
+                    _f.write(str(_T0 - 60 * _SR))
+                _held_p = _drop(1000000000, 'info', to='all', age_s=30)  # held: 30 s < the 300 s bound
+                _held_ns = int(os.path.basename(_held_p).split('__')[1])
+                _LA.since_ns, _LA.carry_resume = None, True
+                try:
+                    _t_before = time.time_ns()
+                    _out_held, _ = _run()
+                    _r_held = int(open(_listen_resume_path(_me)).read())
+                    _clear()
+                    _run()
+                    _t_after = time.time_ns()
+                    _r_none = int(open(_listen_resume_path(_me)).read())
+                finally:
+                    _LA.since_ns, _LA.carry_resume = '1', False
+                _mg = LISTEN_RESUME_MARGIN_S * _SR
+                check('resume write call site: a run holding a drop writes that drop\'s ns (so the next '
+                      'run re-holds it); a run holding nothing writes its poll start less the margin',
+                      (_r_held, _t_before - _mg <= _r_none <= _t_after - _mg, 'WAKEPROBE-BODY-info' in _out_held),
+                      (_held_ns, True, False))
+                # Rows that parse but are not a dict, or carry a non-string `mail`, are skipped: this
+                # read runs at the arm, outside the poll loop's catch.
+                with open(os.path.join(LOGS_DIR, 'mail-events.jsonl'), 'a') as _f:
+                    _f.write('"surfaced-live"\n["surfaced-live"]\n' + json.dumps(
+                        {'event': 'surfaced-live', 'recipient': _me[:8], 'mail': ['x']}) + '\n')
+                try:
+                    _bad_ok = len(_surfaced_live_bases(_me)) >= 1
+                except Exception:
+                    _bad_ok = False
+                check('surfaced-live read: a non-dict row or a non-string mail is skipped and good rows still read',
+                      _bad_ok, True)
+                # An explicit --since-ns replays from the chosen point and skips nothing; the default
+                # arm skips what this session already surfaced.
+                check('dedupe: an explicit --since-ns skips nothing, the default arm skips surfaced rows',
+                      (len(_listen_dedupe_bases(_me, argparse.Namespace(since_ns=1))),
+                       len(_listen_dedupe_bases(_me, argparse.Namespace(since_ns=None))) >= 1),
+                      (0, True))
+                # A PEER's `surfaced-live` row for the same broadcast must not suppress this session's
+                # wake: the recipient filter is what keeps one receipt from hiding mail from all.
+                _clear()
+                with open(_listen_resume_path(_me), 'w') as _f:
+                    _f.write(str(_T0 - 10 * _SR))
+                _pb = os.path.basename(_drop(1000000003, 'deploy-hold', to='all', age_s=5))
+                with open(os.path.join(LOGS_DIR, 'mail-events.jsonl'), 'a') as _f:
+                    _f.write(json.dumps({'event': 'surfaced-live', 'recipient': 'cccc2222', 'mail': _pb}) + '\n')
+                _LA.since_ns, _LA.carry_resume = None, True
+                try:
+                    _out_peer, _ = _run()
+                finally:
+                    _LA.since_ns, _LA.carry_resume = '1', False
+                check('re-arm dedupe: a broadcast a PEER already surfaced still wakes this session',
+                      'WAKEPROBE-BODY-deploy-hold' in _out_peer, True)
+
+                # PRODUCTION LOOP, one poll (time.sleep raises): the real read gate and per-poll write.
+                class _OnePoll(Exception):
+                    pass
+
+                def _stop_sleep(_s):
+                    raise _OnePoll()
+
+                def _run_one_poll(glob_raises=False):
+                    import io as _io
+                    _buf, _so, _sl, _gg = _io.StringIO(), sys.stdout, time.sleep, glob.glob
+                    _LA.once, _LA.since_ns = False, None
+                    try:
+                        sys.stdout, time.sleep = _buf, _stop_sleep
+                        if glob_raises:
+                            def _boom(*_a, **_k):
+                                raise OSError('selftest: a poll that fails mid-scan')
+                            glob.glob = _boom
+                        try:
+                            cmd_mail_listen(_LA())
+                        except _OnePoll:
+                            pass
+                    finally:
+                        sys.stdout, time.sleep, glob.glob = _so, _sl, _gg
+                        _LA.once, _LA.since_ns = True, '1'
+                    return _buf.getvalue()
+
+                _clear()
+                with open(_listen_resume_path(_me), 'w') as _f:
+                    _f.write(str(_T0 - 10 * _SR))
+                _drop(1000000004, 'deploy-hold', age_s=5)
+                _lo = time.time_ns()
+                _out_prod = _run_one_poll()
+                _hi = time.time_ns()
+                _rp = int(open(_listen_resume_path(_me)).read())
+                check('re-arm production loop: the default arm reads the resume point (a gap drop surfaces) '
+                      'and the poll writes poll-start less the margin',
+                      ('WAKEPROBE-BODY-deploy-hold' in _out_prod,
+                       _lo - LISTEN_RESUME_MARGIN_S * _SR <= _rp <= _hi - LISTEN_RESUME_MARGIN_S * _SR),
+                      (True, True))
+                _clear()
+                with open(_listen_resume_path(_me), 'w') as _f:
+                    _f.write(str(_T0 - 120 * _SR))
+                _held_ns2 = int(os.path.basename(_drop(1000000005, 'info', to='all', age_s=60)).split('__')[1])
+                _run_one_poll()
+                check('re-arm production loop: a drop still held at the end of a poll is the resume point',
+                      int(open(_listen_resume_path(_me)).read()), _held_ns2)
+                with open(_listen_resume_path(_me), 'w') as _f:
+                    _f.write(str(_T0 - 30 * _SR))
+                _run_one_poll(glob_raises=True)
+                check('re-arm production loop: a poll that fails mid-scan leaves the resume point where it was',
+                      int(open(_listen_resume_path(_me)).read()), _T0 - 30 * _SR)
+            finally:
+                STATE_DIR = _saved_state_rs
         finally:
             MAIL_DIR, LOGS_DIR = _saved_md, _saved_ld
             if _saved_sid2 is None:
@@ -6872,7 +7256,7 @@ def build_parser():
     mls = sub.add_parser('mail-listen',
         help='SURFACE-ONLY real-time inbound listener for a coordination-hub session — run via the Bash Monitor tool (timeout_ms=1800000, re-armed on each 30-minute expiry); prints each NEW inbound mail as ADVISORY DATA, never replies/acts')
     mls.add_argument('--poll', type=int, default=30, help='Seconds between mailbox scans (default 30)')
-    mls.add_argument('--since-ns', dest='since_ns', help='Only surface mail with creation-ns >= this (default: arm time — only NEW arrivals)')
+    mls.add_argument('--since-ns', dest='since_ns', help='Only surface mail with creation-ns >= this (default: where this session\'s previous listener run stopped, back as far as the store keeps unread mail, else arm time; a --once scan always uses arm time)')
     mls.add_argument('--once', action='store_true', help='Single scan-then-exit (testing; for cron, advance --since-ns externally each run) instead of the persistent loop. Its floor is arm time unless --since-ns is passed, so a bare --once sees no pre-existing drop at all; WITH a --since-ns below the drop, a held broadcast older than the hold bound (aged from its filename) is released as a count line in that same scan')
     mls.add_argument('--all-wakes', dest='all_wakes', action='store_true',
                      help='ESCAPE: wake on EVERY new message, restoring the pre-2026-09-04 behaviour for '
