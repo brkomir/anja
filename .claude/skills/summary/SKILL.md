@@ -261,7 +261,7 @@ count can filter on. Full post-mortem: `references/cases.md` § 1.
 ### 2. The owner-decision queue — the section the owner came for
 
 One line per item blocked on the owner, named by what it changes (§ Output shape, the register paragraph). Each line: **what** · **why it needs them**
-(taste call / external fact / irreversible action) · **what happens if they say nothing**.
+(which of the six owner-only reasons; the owner-column row in `.claude/orchestrator/conventions.md` lists them) · **what happens if they say nothing**.
 
 ⛔ **THIS-SEAT ITEMS ONLY — a fleet-wide list in one session's readout is confusing, because the
 owner cannot act on it in that moment, so fleet items get their own field, each tagged with its
@@ -505,9 +505,9 @@ Two short lists: **yours** (decisions, approvals, external facts only you hold) 
 signal the session is genuinely idle rather than quietly stuck.
 
 ⛔ **ONE TOKEN FOR "WAITING ON THE OWNER":** a row blocked on the owner writes
-`owner-pending: <why — taste call | external fact | irreversible action | spend>` on the row. The older
+`owner-pending: <why — taste call | external fact | irreversible action | spend | merchant-verified page | rule change>` on the row. The older
 spellings (`needs-owner`, `owner: owner` / `owner: the owner` / `founder` / the owner's first name, `blocked-on: owner`,
-`awaiting owner`) stay readable through the fleet board's alias list
+`OWNER-DECISION`, `awaiting owner`) stay readable through the fleet board's alias list
 (`OWNER_PENDING_ALIASES` in `scripts/fleet-board.py`) and are never back-migrated; a spelling outside that list is invisible to the
 board, so new rows use the token. `⏸ owner-deferred` is NOT superseded: it is §2's live marker for *the owner
 answered later*, still written at the deferral, and the board counts it under its own alias. `owner:`
@@ -908,7 +908,7 @@ for line in open(p, encoding='utf-8', errors='replace'):
     # `feature-*` is excluded on purpose: sessions commit on `dev` (dev-branch policy since 2026-09-08; `main` for older transcripts; a hotfix worktree commits as
     # `[hotfix/<topic> <sha>]`, /push --emergency's branch) and review worktrees run DETACHED.
     # `dev` was MISSING until 2026-10-11, so every session's commits read as none and the
-    # unreviewed slot came back clean (/meta maintain 2026-10-11).
+    # unreviewed slot came back clean.
     # ⚠️ The prose over-matches are NOISE, not corruption: the reachability filter below drops
     # them. This comment claimed for ~10 minutes that two of them SURVIVED the filter on an
     # 8-hex collision — that was RETRACTED 2026-08-30 and was never measured. It was inferred

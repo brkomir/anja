@@ -42,7 +42,7 @@ ALIVE COMES FROM `claude agents --json`, THE ONLY COMPLETE LIVENESS LIST — nev
 or paused seat reads `idle` there, so lifecycle comes from the markers (session_status.py, the SSOT).
 
 OWNER-PENDING, THE ONE TOKEN. New rows write
-`owner-pending: <why — taste call | external fact | irreversible action | spend>`; the older spellings
+`owner-pending: <why — taste call | external fact | irreversible action | spend | merchant-verified page | rule change>`; the older spellings
 stay readable through OWNER_PENDING_ALIASES and are never back-migrated (`⏸ owner-deferred` is not one
 of them: it is /summary §2's live deferral marker, still written, counted here under its own alias).
 

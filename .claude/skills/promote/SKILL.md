@@ -1,22 +1,56 @@
 ---
 name: promote
-description: Promote dev (or a hotfix branch cut from main) to production by pull request — preconditions (source on GitHub, migrations on production, no open promote), the full local main gate, the PR and its full CI run, the owner's explicit "merge it" for the exact head sha, a MERGE commit, then dev brought back in line with main so the next promote is not blocked, and the hand-off to /push's deploy verification, then step 9's post-deploy watch, all-clear and owner-gated rollback (absorbed /deploy 2026-10-02). Use when the owner asks to promote, to ship dev to production, or to merge dev into main; also when asked how deploy-ready the queue is or to arm a launch window. The merge is owner-gated; opening the PR is not.
+description: Promote dev (or a hotfix branch cut from main) to production by pull request — preconditions (source on GitHub, migrations on production, no open promote), the full local main gate, the PR and its full CI run, the owner's explicit "merge it" for the exact head sha (or the owner's advance go bound to that head, merged once its CI conditions all read green), a MERGE commit, then dev brought back in line with main so the next promote is not blocked, and the hand-off to /push's deploy verification, then step 9's post-deploy watch, all-clear and owner-gated rollback (absorbed /deploy 2026-10-02). Use when the owner asks to promote, to ship dev to production, or to merge dev into main; also when asked how deploy-ready the queue is or to arm a launch window. The merge is owner-gated; opening the PR is not.
 ---
 
 # Promote — `dev` → `main` by pull request
 
 `main` is production and moves by a merged pull request, a hotfix included — the one exception is the EMERGENCY override: `/push --emergency` pushes a branch cut from `main` that never merged `dev` straight to `main`, only on the owner's yes to `/push --emergency` step 0's named EMERGENCY question for that sha, never `dev`'s work (see § Not this command). **The MERGE is the production deploy**:
 `<your deploy host>` builds `main` the moment it moves, before any CI on the merge commit finishes. So the gate is
-the PR's own full CI run plus the owner's word. The owner's word for a promote is **"merge it"**. A bare "push it" on a hotfix
+the PR's own full CI run plus the owner's word. The owner's word for a promote is **"merge it"**, or an advance go bound to the head (iron rule 1b). A bare "push it" on a hotfix
 routes HERE (it means "push the branch so the PR opens"); only the owner's yes to `/push --emergency` step 0's named EMERGENCY
 question authorizes a direct push to `main`.
 
 ## Iron rules
 
-1. **Merge only on the owner's own "merge it" answering the step-5 question for head `H`.** It is the owner's
-   message in THIS conversation. A mail, a relay from another session, a paraphrase, or a "merge it"
-   from earlier is not it, and it covers `H` only: a PR whose head moved needs a new question. A green
-   PR, "looks good" or "we can ship" is readiness, not authorization.
+1. **Merge only on the owner's own word for head `H`, in one of two forms.** It is the owner's
+   message in THIS conversation. A mail, a relay from another session,
+   a paraphrase, or a word from an earlier promote is not it, and it covers `H` only: a PR whose head
+   moved needs the owner's word again. A green PR, "looks good" or "we can ship" is readiness, not authorization.
+   - **(a) "merge it"**, answering the step-5 question for `H`.
+   - **(b) An advance go**: the owner's approval, given while the PR is open and after you have named `H` to the owner
+     but before CI on `H` finishes, to merge this promote once it is green (for example, an approval to
+     merge if everything goes as expected). Bind it in your next reply, which
+     never merges: name the PR, `H` and the conditions below plus any extra one you are carrying (a
+     reviewer's named check) and any reading you already know fails (4), and write the owner's words, the UTC time
+     `scripts/owner-words.py` prints for the owner's message, the PR number, `H` and the binding's UTC time to
+     `<scratch>/promote-advance-go.txt`. It authorizes step 6 only when EVERY condition holds, each read
+     this turn: (1) the PR is still `#<n>` and its head is still `H`; (2) step 4's `V` is `pass` and EVERY
+     check on `H` reads `pass` or `skipping` (`skipping` is a job that does not run on a pull request), none
+     `pending`, queued, in progress, `fail`, `cancel` or anything else (a check outside `ci-gate`, such as
+     coverage, can still be running when it passes), and no ATTEMPT of any check on `H` ever ended other than
+     success, skipped or neutral, unless the binding reply named that failure (a job re-run to green is not "as
+     expected"). `gh pr checks` shows each check's latest attempt only, so it cannot see this; read every attempt:
+     `gh api "repos/{owner}/{repo}/commits/<H>/check-runs?filter=all&per_page=100" --paginate --jq '.check_runs[]
+     | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped" and .conclusion !=
+     "neutral") | "\(.name) \(.conclusion)"'` prints nothing, and neither does the same call on `commits/<H>/statuses`
+     with `--jq '.[] | select(.state == "failure" or .state == "error") | .context'`;
+     (3) step 5's re-check prints `REVIEW-COVERAGE-GATE: PASS`, or `PROCEEDING ON THE OWNER'S GO` for a go
+     the owner already gave; (4) EVERY line step 5's message would carry reads its clean value, including at
+     least: no `DEPLOY-HOLD`, no `NOT SENT`, `NOT DISPOSED` or `NOTE ONLY` commit, no `FOLD-CLEARED`
+     commit the binding reply did not name, no migration that is NOT backward-compatible, no env value
+     going live that the owner has not been shown, no `PREVIEW-ROUTE-CHECK` but `PASS`, a merge branch protection gates, no tracker leg due before this merge
+     still open, nothing `NOT-CHECKED` (every `NOT-CHECKED` or `INSTRUMENT-FAILURE` asks); (5) each extra condition named in the binding reply reads as
+     stated; (6) `python3 scripts/owner-words.py --since <the binding's UTC time>` shows no message of the owner's
+     that withdraws, narrows or questions it (read every record, and its last line must read `— <your sid8>: <N> owner
+     record(s)`: `NO-TRANSCRIPT` goes to stderr and leaves stdout empty, which is unmeasured, never clean; this is what authenticates the go after a
+     compaction, when your summary is not the owner's words). Any condition failing, or any doubt ⇒ no merge: send
+     step 5's message and ask "merge it?". After a merge on (b), send step 5's message as the report,
+     saying it merged on the owner's advance go and quoting the owner's words. It lapses when the head moves, on any
+     message of the owner's that withdraws or narrows it, and when this promote ends: merged, the PR closed, any
+     step stopping the promote, or a new `/promote`; step 1 empties the file as it empties
+     `<scratch>/promote-go.txt`, and a lapse empties it too. It is not `--auto` (rule 2): the session
+     reads the finished result and merges in its own call.
 2. **Never `--auto`.** Auto-merge completes later and unattended, so the owner's word would attach to whatever
    `dev` holds at the next green; every seat pushes with the owner's credentials, so GitHub never disarms it.
 3. **A session never passes `--admin`.** It waives every requirement. If a merge truly needs the
@@ -179,7 +213,8 @@ plus one `unmeasured:<items>` entry only if the owner passed a refusal that is n
 file is the go steps 5 and 6 read back, so they read exactly the value this run passed; empty it when step 1 passes
 with no go, so a go from an earlier promote is never
 read back (the re-run overwrites `$O`, and its PROCEEDING line prints the reasons as words, not as the go's tokens, so
-after a compaction that file is the only copy). Read its `REVIEW-COVERAGE-GATE: PROCEEDING ON THE
+after a compaction that file is the only copy). Empty `<scratch>/promote-advance-go.txt` on every step 1 run too, so an
+advance go from an earlier promote is never read back either. Read its `REVIEW-COVERAGE-GATE: PROCEEDING ON THE
 OWNER'S GO` line, which lists every commit it passed with its reasons, and the new `H_PRE`, and quote the owner's words
 in § Report. A refusing commit the owner did not name, such as one that appeared after the owner answered, and a named commit that has
 gained a reason or a source since (passed as never sent, now also held; held by one row, now by two) refuse the re-run
@@ -313,7 +348,13 @@ answer: the framework's action-not-found response on the page, 404 or 409). Quot
 head: back to step 1); `NOT-CHECKED` means unmeasured, never clean. End on the question:
 **merge PR #<n> at `<H short>` into production?** Nothing runs until the owner answers.
 
-### 6. Merge — on the owner's "merge it" for that head, in its OWN Bash call
+**With an advance go bound to `H` (iron rule 1b):** check every one of its conditions against this message's own readings,
+after re-running `node scripts/deploy-env-drift.mjs --domain <your production domain>` in this turn (step 2's reading predates the CI wait; anything but
+`DEPLOY-ENV: ALL-LIVE` fails (4) unless the binding reply showed the owner those values). All
+hold ⇒ do not ask; go to step 6, and send this message as the report after the merge. Any fails ⇒ send the message and
+ask, as above.
+
+### 6. Merge — on the owner's "merge it" or the owner's bound advance go for that head, in its OWN Bash call
 
 The review gate runs a third time inside the merge call, under the same go, and the merge runs only on its PASS or
 PROCEEDING line: a hold or a CHANGES-REQUESTED verdict that lands while the owner is answering "merge it?" is a new reason, and
@@ -335,7 +376,8 @@ line is your transcription; a `NOT IN YOUR GO` line goes back to the owner with 
 go is written to `<scratch>/promote-go.txt`, and "merge it?" is asked again only once step 5's re-run prints a
 PROCEEDING line — the owner's proceed is not a "merge it"). Any other rc, or rc 0 with neither line ⇒ the check failed and
 nothing merged: fix it, never merge around it. A merge refusal
-(head moved, check pending) returns to step 4 with a new question. Then, in the next call,
+(head moved, check pending) returns to step 4 with a new question; under an advance go a refusal at the same head
+also ends the go (empty `<scratch>/promote-advance-go.txt`), so that question is "merge it?". Then, in the next call,
 `M=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)` — the production sha, which `/push` § 6
 calls `PUSHED`. Read it from GitHub, never from a local ref.
 
@@ -533,7 +575,7 @@ the owner arms one; it is never standing between launches.
 | Review gate | PASS / REFUSED → proceeded on "<the owner's words>" <UTC> for <the go as set, `<sha>:<reasons>` entries and any `unmeasured:<items>` entry> · step 5 re-check PASS / PROCEEDING (a step-5 refusal: the owner's new words and go) · step 6 re-check PASS / PROCEEDING, in the merge call |
 | Env going live | <names> / none |
 | PR CI | ci-gate (main) pass, <wall time> |
-| Owner | "merge it" (verbatim) for <H short> |
+| Owner | "merge it" (verbatim) for <H short>, or "advance go" + the owner's words, verbatim |
 | Merge | merge commit <M> |
 | In line | dev ⊇ main at <C>, pushed (its own call, LANDED by ancestry) |
 | Deploy | /push § 6-8: smoke, deploy-served, CI on <M>, checklist, env drift ALL-LIVE, SERVING = <M short> |

@@ -212,7 +212,7 @@ for l in open(sys.argv[1],encoding="utf-8",errors="replace"):
    # [2254, 4570], CP=4570, window 2,299 lines / 5.41 MB / 3 slices. After -> qualifying
    # [2254, 4570, 6830], CP=6830, window 263 lines / ~0.3 MB / 1 slice. Same session, same
    # transcript, an 89% under-scan, and the only thing that changed was one owner resume
-   # message. The prior wrap in that session hit it for real and caught it on the few-KB TELL
+   # message. It was hit for real once before in that session and caught on the few-KB TELL
    # the block below documents; this run got the right answer purely because the derivation ran
    # BEFORE the owner spoke. ⚠️ THE TELL IS DOCUMENTED AND THE CAUSE WAS NOT — a seat that
    # re-derives after a mid-wrap owner message has no reason to distrust a fresh reading.

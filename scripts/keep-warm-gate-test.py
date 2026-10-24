@@ -581,9 +581,15 @@ check('/pause --cold removes a leftover keep-warm-pause window (pause/SKILL.md 6
       len(_6b) == 1 and 'rm -f .claude/state/keep-warm-pause-<sid8>' in _6b[0], _6b[:1])
 # 12e. a step that deletes the keep-warm timer must drop the armed marker too, or keep-warm-arm-reminder.sh stays
 #      silenced with no timer behind it: /standby 1b and /keep-warm off step 2
-_1b = [ln for ln in open(os.path.join(ROOT, '.claude', 'skills', 'standby', 'SKILL.md')) if ln.startswith('1b. ')]
+# the enter section only: the resume section has its own step 1b (the mail read)
+#   a renamed resume heading makes the split a no-op, so the arm names a missing heading instead of showing a good 1b line
+_sb = open(os.path.join(ROOT, '.claude', 'skills', 'standby', 'SKILL.md')).read()
+_resume_h = '## Process — `/standby resume`'
+_enter = _sb.partition(_resume_h)[0]
+_1b = [ln for ln in _enter.splitlines() if ln.startswith('1b. ')]
 check('/standby drops the keep-warm armed marker with the timer (standby/SKILL.md 1b)',
-      len(_1b) == 1 and 'rm -f .claude/state/keep-warm-armed-<sid8>' in _1b[0], _1b[:1])
+      _resume_h in _sb and len(_1b) == 1 and 'rm -f .claude/state/keep-warm-armed-<sid8>' in _1b[0],
+      f'resume heading present: {_resume_h in _sb}; {len(_1b)} enter-section 1b line(s): {_1b[:1]}')
 _off = open(os.path.join(ROOT, '.claude', 'skills', 'keep-warm', 'SKILL.md')).read().partition('### `/keep-warm off`')[2].split('\n### ')[0]
 _off2 = [ln for ln in _off.splitlines() if ln.startswith('2. ')]
 check('/keep-warm off drops the armed marker with the timer (keep-warm/SKILL.md off step 2)',

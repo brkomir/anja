@@ -534,6 +534,9 @@ def write_state(data, now):
         "five_hour_pct": (five or {}).get("used_percentage") if isinstance(five, dict) else None,
         "five_hour_resets_at": (five or {}).get("resets_at") if isinstance(five, dict) else None,
         "seven_day_pct": (seven or {}).get("used_percentage") if isinstance(seven, dict) else None,
+        # the weekly reset, which Claude Code's `rate_limits.seven_day` carries beside the share (CLI 2.1.307 builds
+        # `seven_day: {used_percentage, resets_at}` exactly as for five_hour); scripts/hub-usage-watch.py prints it
+        "seven_day_resets_at": (seven or {}).get("resets_at") if isinstance(seven, dict) else None,
         "fable_week_pct": fable[1] if fable and fable[0] == "ok" else None,
         "compact_threshold": compact_threshold(data),
         "context_tokens": cw.get("total_input_tokens"),

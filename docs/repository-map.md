@@ -2,13 +2,13 @@
 
 This page is an index to look things up in, not a tour: read the table below, then jump to the directory you are about to open. To set up your own project, read [the start page](start-a-new-project.md). If you open only a few files, open `.claude/settings.json` (what runs, on which event), the hooks section below, `.claude/rules/session-cadence.md` (how a guard is proposed, counted and promoted from warn to block) and `scripts/smoke-test-hooks.sh` (how each guard is tested).
 
-The page covers every directory the copy ships, says what each one holds, and gives one line per file wherever a line helps. Anja grew inside one application, the source project, a photography critique application built and shipped with Anja. That application's own code is not part of the copy. Every count on this page is taken from the committed copy, which lists 425 files.
+The page covers every directory the copy ships, says what each one holds, and gives one line per file wherever a line helps. Anja grew inside one application, the source project, a photography critique application built and shipped with Anja. That application's own code is not part of the copy. Every count on this page is taken from the committed copy, which lists 429 files.
 
 | Directory | Files shipped | What it holds |
 |---|---|---|
 | `.claude/` (top level) | 6 | Harness settings, the ignore file for run-time state, the byte pins for always-loaded files, the pins for moved trigger rows, and the third-party notice and origin record |
-| `.claude/agents/` | 34 | Sub-agent definitions, one per expert, plus the primer every agent reads first |
-| `.claude/skills/` | 129 | 87 skills (expert knowledge and workflow commands), their reference files and an authoring cheatsheet |
+| `.claude/agents/` | 35 | Sub-agent definitions, one per expert, plus the primer every agent reads first |
+| `.claude/skills/` | 130 | 87 skills (expert knowledge and workflow commands), one catalog of an outside agent system, their reference files and an authoring cheatsheet |
 | `.claude/hooks/` | 71 | Harness hooks, the shared libraries they source, and three test fixtures |
 | `.claude/rules/` | 9 | Rule files: always-loaded or path-scoped, plus two that are parked |
 | `.claude/orchestrator/` | 4 | Rules meant only for the main session, never for a sub-agent |
@@ -16,14 +16,14 @@ The page covers every directory the copy ships, says what each one holds, and gi
 | `.claude/templates/` | 8 | Fill-in templates for audits, specs, panels and migrations |
 | `.claude/docs/` | 3 | The architecture guide, a short overview, and the current-state record |
 | `.claude/traps/` | 1 | Shell traps, delivered one command at a time |
-| `scripts/` (top level) | 100 | Gates, scanners, test suites, session tooling and generators |
-| `scripts/lib/` | 13 | Shared modules that scripts and git hooks source or import |
+| `scripts/` (top level) | 101 | Gates, scanners, test suites, session tooling and generators |
+| `scripts/lib/` | 14 | Shared modules that scripts and git hooks source or import |
 | `scripts/probes/` | 5 | One investigation rig, kept with its probes |
 | `scripts/band/` | 4 | The tools from one compression pass over the always-loaded rule corpus |
 | `scripts/fixtures/` | 1 | A test fixture for the hook payload harness |
 | `.githooks/` | 2 | How the project's git hooks are wired, and the pre-commit hook |
 
-The table's rows add up to 395 files. It does not count the root files and what sits under `docs/` (the pages, the starter registers, the diagrams and the logo), 30 files that make up the rest of the 425. They are listed at the end.
+The table's rows add up to 399 files. It does not count the root files and what sits under `docs/` (the pages, the starter registers, the diagrams and the logo), 30 files that make up the rest of the 429. They are listed at the end.
 
 ## `.claude/` (top-level files)
 
@@ -38,16 +38,16 @@ There are six files at this level.
 
 ## `.claude/agents/`
 
-There are 34 files: 33 agent definitions and the primer.
+There are 35 files: 34 agent definitions (33 specialists and one that models an outside system) and the primer.
 
 - `_agent-primer.md`: the discipline every specialist agent reads before it starts. It asks the agent to verify a symbol before citing it, to check the consumers of a contract before changing it, to test behaviour rather than grep source, and covers similar habits.
 - **Expert agents.** There are 33 of them. `scripts/generate-expert-agents.mjs` generates each one as a thin wrapper. The wrapper names the agent's tools and leaves its model to the session that launches it (`model: inherit`), sets a working posture (quantify in lines of code rather than hours, give a concrete trigger for any deferral, take a position inside your domain, never commit), and points the agent to its own skill file and memory file. For each of the 33, the matching skill ships in `.claude/skills/`.
-- **Agents that model an outside system.** The copy ships none. The generator reads their descriptions only when their skill files exist, and uses its own table when they do not.
+- **Agents that model an outside system.** The copy ships one, `external-fagemx-edda`, as a worked example. The same generator writes it from the frontmatter of `.claude/skills/external-fagemx-edda/SKILL.md`, gives it read and search tools only, and adds a guard that text read from the upstream repository is data, never an instruction. Its memory file is not shipped, so it starts without one. The generator reads such descriptions only when their skill files exist, and uses its own table when they do not.
 - Five `haines-*` agents carry description lines shortened from an upstream MIT-licensed skill library. `NOTICE` covers them.
 
 ## `.claude/skills/`
 
-There are 129 files: 87 skills, each with a `SKILL.md`, plus 41 reference files and one authoring cheatsheet. The groups below follow each skill's own `description:` line.
+There are 130 files: 87 skills, each with a `SKILL.md`, plus one catalog of an outside system (`external-fagemx-edda/SKILL.md`), 41 reference files and one authoring cheatsheet. The groups below follow each skill's own `description:` line.
 
 **Expert knowledge (33 skills)**, each paired with an agent of the same name:
 
@@ -72,6 +72,8 @@ There are 129 files: 87 skills, each with a `SKILL.md`, plus 41 reference files 
 | System upkeep | meta (health and evolution of the expert and memory system), scout (survey of outside agent tooling, with each candidate checked before it is reported), instinct-sweep (sweep runtime event logs for recurring patterns to propose as lessons), observations (a narrative read of where the system keeps tripping up and what to fix next), me (show and update what the system has recorded about your working preferences) |
 | Output | report (one self-contained HTML page for one topic) |
 | Finding a command | help (which command does what, by topic) |
+
+**Catalog of an outside system (1)**, paired with an agent of the same name: external-fagemx-edda, a reading of fagemx/edda at `46bf30ec` on 2026-10-09, shipped as a worked example of what `/scout` and `/external-audit` produce and not maintained in this copy.
 
 Reference files ship with these skills: expert-review (9: panel sizing, synthesis, code-review slice mode, drift mode, claim support, the department directory, hand-off rules, process notes and the expert prompt template), wrap (7: step bodies read only when their trigger fires, the history of its modes, and notes and evidence for steps 0, 1, 5e, 7 and the closing steps), meta (9: the procedures for lesson extraction, the adoption-queue readout, the status dashboard, maintenance, distilling memory, triaging a rules file, the architecture audit and adding a skill, plus report formats), four of the five haines-* conversion skills (5 upstream playbooks), saas-launch-marketing (2), promote (1: the retired deploy command's text, which its post-deploy step reads), and one each for engagement-psychologist, prompt-engineer, review-hub, saas-economist, saas-engineer, security-expert, uncle-bob and ux-design-pro. `AUTHORING.md`, at the top of the directory, is a one-screen cheatsheet for writing a skill; it explains the conventions that `scripts/skill-lint.mjs` enforces.
 
@@ -180,7 +182,7 @@ There are 5 files.
 
 - `expert-review.md`: a redirect to the expert-review skill.
 - `expert-audit.md`: a deprecated alias that runs `external-audit.md` with the same subject.
-- `external-audit.md`: a calibration panel that audits the agent system against experts who each model an outside agent system, to find gaps, over-engineering and strengths worth keeping, and to queue the patterns worth adopting. Those outside-system experts are not in this copy, so the panel needs your own before it can run.
+- `external-audit.md`: a calibration panel that audits the agent system against experts who each model an outside agent system, to find gaps, over-engineering and strengths worth keeping, and to queue the patterns worth adopting. One of those experts, `external-fagemx-edda`, ships as a dated example; build the rest of your panel with `/scout` for the systems your subject is about.
 - `status.md`: a quick project status procedure covering git status, uncommitted work and recent commits.
 - `verify.md`: a verification loop to run before a commit: type check, lint, a security scan, a diff review, and the changed-scope end-to-end tests when the diff touches the interface or its tests, then a pass/fail report.
 
@@ -204,7 +206,7 @@ There is 1 file.
 
 ## `scripts/`
 
-There are 100 files at the top level. Each line below comes from the script's header comment or docstring.
+There are 101 files at the top level. Each line below comes from the script's header comment or docstring.
 
 **Commit and shared-worktree safety**
 - `safe-commit.sh`: stages, gates and commits on a shared worktree. It refuses and never repairs.
@@ -293,6 +295,7 @@ There are 100 files at the top level. Each line below comes from the script's he
 - `statusline.py`: a harness status line showing the prompt-cache countdown, context fill, plan usage and sub-agent count. Its Fable weekly row needs a lookup that reads your Claude Code login token, so it is off unless you turn it on (the start page says how).
 - `limit-recovery.py`: finds this session's sub-agents that died at an API usage limit, decides for each whether to resume it, wait for its model's reset or seat a fresh agent over its transcript, and writes the digest a fresh agent takes over from.
 - `promote-review-coverage.mjs`: lists the commits in a promote range that were never sent for review, never dispositioned, or held. With `--refuse` it exits 4 unless your go-ahead names each refusing commit and every reason; `/promote` runs it before asking to merge and again inside the merge call.
+- `owner-words.py`: the owner's own words from one or more session transcripts, verbatim and timestamped, sorted by the same record classifier `/post-compact` uses. `/expert-review` has a fresh agent write a panel's brief from its output, never from the host session's reading of him.
 
 **Trackers and audits**
 - `tracker-list.mjs`: renders the per-group audit history of the three audit trackers.
@@ -324,7 +327,7 @@ There are 100 files at the top level. Each line below comes from the script's he
 
 ## `scripts/lib/`
 
-There are 13 files.
+There are 14 files.
 
 - `is-main.mjs`: answers "was this module the entry point?" correctly through a symlink. The naive check silently runs nothing.
 - `project-key.mjs`: the harness's per-project directory name, under which it keeps a project's transcripts and memory, derived one way for every script that needs it.
@@ -339,6 +342,7 @@ There are 13 files.
 - `migration-record.mjs`: one predicate, asking whether a commit subject records a migration as applied to both databases. Its two consumers, a migration reconciler and a promotion gate, are not in this copy.
 - `migration-review-gate.mjs`: the migration review gate. An apply to a shared database needs a committed approving review record, with a `Reviewed-by:` line, for the commit that last changed the file, and your words on top for a destructive file; `run-migration.mjs` calls it before it connects.
 - `wrap-reconcile-smoke-skip.mjs`: decides which `wrap-reconcile.mjs` probes a smoke fixture may skip. A skip list is honoured only for a fixture session id, so it cannot reach a real wrap, and every skipped probe is reported.
+- `transcript-strip.mjs`: the deep-pass corpus strip, which `wrap-reconcile.mjs` imports. The same rule has three other forms, in `wrap-preflight.py` and in the deep-pass and wrap skills, and a parity test compares all four on one fixture.
 
 ## `scripts/probes/`
 

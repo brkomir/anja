@@ -629,6 +629,7 @@ def cited_paths(line_text):
 
 
 _TRACKED = None
+_MIRROR_PREFIX = "scripts/public-release/edited/"   # the release copy's mirror of live files
 
 
 def _tracked_paths():
@@ -645,7 +646,7 @@ def _tracked_paths():
     return _TRACKED
 
 
-def dead_cited_paths(block_lines):
+def dead_cited_paths(block_lines, tracked=None):
     """Cited paths in a row body that resolve to NO file on disk.
 
     ⚠️ THE SUFFIX CHECK IS WHAT MAKES THIS SHIPPABLE, and it was added after measuring.
@@ -654,9 +655,11 @@ def dead_cited_paths(block_lines):
     `terms/page.tsx`. Those are perfectly good citations; only the prefix is elided. So
     a candidate is DEAD only when no tracked path ENDS with it. An always-noisy gate is
     a disabled gate (`nextjs.md`), and 38-mostly-FP is exactly that.
+
+    `tracked` is the self-test's seam for a planted corpus; the scan passes nothing.
     """
     dead = []
-    tracked = _tracked_paths()
+    tracked = _tracked_paths() if tracked is None else tracked
     for l in block_lines:
         low = l.lower()
         if any(mk in low for mk in _NEG_MARKERS):
@@ -671,6 +674,10 @@ def dead_cited_paths(block_lines):
             # exactly one hit keeps all 26 live rescues and flags the ambiguity.
             suffix = "/" + pth
             hits = [t for t in tracked if t == pth or t.endswith(suffix)]
+            # A release-copy mirror is a COPY of a live file, not a second target: count it only
+            # when nothing live matches, or every elided-prefix cite of a mirrored file reads as
+            # ambiguous (36 of the 81 flagged paths were exactly that).
+            hits = [t for t in hits if not t.startswith(_MIRROR_PREFIX)] or hits
             if len(hits) == 1:
                 continue
             dead.append(pth)
@@ -1001,7 +1008,7 @@ def render(r):
         for line, title, paths in r["deadpath"]:
             out.append(f"  todo.txt:{line}  {title}\n      not found: {', '.join(paths)}")
     if r["stale"]:
-        out.append("\nSTALE PREDICATES (fix the meta: block — a check points at a missing target):")
+        out.append("\nSTALE PREDICATES (a check points at a missing target — open each row first: one whose text names the [detail] below as its fire is FIRED; otherwise fix the meta: block):")
         for line, title, d in r["stale"]:
             out.append(f"  todo.txt:{line}  {title}  [{d}]")
     if r.get("instr"):
@@ -1211,17 +1218,6 @@ def self_test():
          ["- [ ] X — see " + _bt + "a/b/nonexistent-xyz-qqq.ts" + _bt + " for the shape"],
          ["a/b/nonexistent-xyz-qqq.ts"]),
         ("partial path resolves by UNIQUE suffix", ["- [ ] X — " + _bt + "security-expert/SKILL.md" + _bt], []),
-        # ⚠️ ACCEPTED RESIDUAL, measured — the review proposed a unique-rescue rule to close the
-        # ambiguous-tail class and it DOES NOT close this instance. `docs/architecture.md` is
-        # genuinely dead (no root `docs/`) yet has EXACTLY ONE tail-match
-        # (`.claude/docs/architecture.md`), so `len(hits) == 1` rescues it. Uniqueness cannot
-        # separate "the author elided a prefix" (the reason the rescue exists at all, 26 live
-        # cases) from "a dead file that happens to tail-match" — both look like one hit. The
-        # class is NOT mechanically decidable from the string, so this arm pins the residual
-        # rather than pretending it is fixed. The unique rule is KEPT because it does close the
-        # multi-hit case, which is strictly better than the any-match rule it replaced.
-        ("RESIDUAL single-hit ambiguous tail is still rescued (not decidable)",
-         ["- [ ] X — " + _bt + "docs/architecture.md" + _bt], []),
         ("TS alias is not a path", ["- [ ] X — " + _bt + "@/lib/storage/nonexistent-xyz.ts" + _bt], []),
         # Discriminating glob fixture: the old one (`.../**`) died on the since-removed
         # extension filter and never reached the glob check it claimed to pin.
@@ -1235,6 +1231,40 @@ def self_test():
     ]:
         checks += 1
         got = dead_cited_paths(rows)
+        ok = (got == exp)
+        print(f"  [{'PASS' if ok else 'FAIL'}] dead_cited_paths {name} -> {got} (exp {exp})")
+        fails += (0 if ok else 1)
+    # ⚠️ ACCEPTED RESIDUAL, measured — the review proposed a unique-rescue rule to close the
+    # ambiguous-tail class and it DOES NOT close the single-hit instance: a tail that is
+    # genuinely dead at the root yet has EXACTLY ONE tracked tail-match is rescued by
+    # `len(hits) == 1`. Uniqueness cannot separate "the author elided a prefix" (the reason
+    # the rescue exists at all, 26 live cases) from "a dead file that happens to tail-match"
+    # — both look like one hit. The class is NOT mechanically decidable from the string, so
+    # this arm pins the residual rather than pretending it is fixed; its RED sibling pins
+    # that the unique rule DOES close the multi-hit case. ⛔ Both run over a PLANTED tracked
+    # set, never the repo's: a fixed literal (`docs/architecture.md`, one tail-match until
+    # 2026-10-10) went RED the day a second copy was tracked, and a fixture chosen out of the
+    # tracked set needs a second copy of this rule to choose it ( that copy
+    # disagreed with the real pipeline on `.gitignore` tails and on paths carrying a
+    # negation-marker word). The tails start `scripts/`, a real root directory by construction
+    # (this file lives there), so each reads as a root-relative citation: the founding shape.
+    # The `xscripts/` near-miss pins that a tail-match ends at a "/" boundary. The mirror pair
+    # pins that a release-copy mirror never makes a live file's cite ambiguous, and the
+    # mirror-only member that a file living ONLY in the mirror still counts.
+    _planted = ("zz-a/scripts/zz-dup-qqq.md", "zz-b/scripts/zz-dup-qqq.md",
+                "zz-c/scripts/zz-uniq-qqq.md", "zz-c/xscripts/zz-uniq-qqq.md",
+                "zz-d/skills/zz-mirr-qqq/SKILL.md", _MIRROR_PREFIX + "zz-d/skills/zz-mirr-qqq/SKILL.md",
+                _MIRROR_PREFIX + "zz-e/zz-only-qqq/zz-only.md")
+    for name, tok, exp in [
+        ("RESIDUAL single-hit ambiguous tail is still rescued (not decidable)",
+         "scripts/zz-uniq-qqq.md", []),
+        ("RED — multi-hit dead tail is flagged (the unique rule's case)",
+         "scripts/zz-dup-qqq.md", ["scripts/zz-dup-qqq.md"]),
+        ("a release-copy mirror is not a second tail-match", "zz-mirr-qqq/SKILL.md", []),
+        ("a file living only in the mirror still resolves", "zz-only-qqq/zz-only.md", []),
+    ]:
+        checks += 1
+        got = dead_cited_paths(["- [ ] X — " + _bt + tok + _bt], tracked=_planted)
         ok = (got == exp)
         print(f"  [{'PASS' if ok else 'FAIL'}] dead_cited_paths {name} -> {got} (exp {exp})")
         fails += (0 if ok else 1)

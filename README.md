@@ -66,7 +66,7 @@ One example from this repository's own history. Several sessions commit to one b
 
 **Guards are safety checks, not security boundaries.** A hook checks what a command looks like. A push to `main` is refused unless the command carries an approval prefix, and the agent is instructed to add that prefix only after you say yes; the hook cannot verify your consent, and an agent could construct the prefix. The guards catch mistakes and make an unwanted act deliberate. They are not a cryptographic or procedural guarantee, and your word stays the real gate.
 
-**It costs context.** As shipped, the lead session receives about 118 KB of rules at every start, resume, clear and compaction. The two rule files every session and specialist loads add about 53 KB. A session's first commit command brings about 66 KB more, and so does the first one after a compaction or clear; that command is refused once, so the rules arrive before it runs. `SKIP_ORCHESTRATOR_INJECT=1` and `SKIP_COMMIT_DOCTRINE_INJECT=1` in the settings' `env` block turn off the 118 KB and the 66 KB. [Saving the cache](docs/saving-the-cache.md) is the practical guide to the prompt cache.
+**It costs context.** As shipped, the lead session receives about 120 KB of rules at every start, resume, clear and compaction. The two rule files every session and specialist loads add about 53 KB. A session's first commit command brings about 67 KB more, and so does the first one after a compaction or clear; that command is refused once, so the rules arrive before it runs. `SKIP_ORCHESTRATOR_INJECT=1` and `SKIP_COMMIT_DOCTRINE_INJECT=1` in the settings' `env` block turn off the 120 KB and the 67 KB. [Saving the cache](docs/saving-the-cache.md) is the practical guide to the prompt cache.
 
 **What you supply.** A `CLAUDE.md` (start from [the starter](docs/starters/CLAUDE.starter.md)), a project memory directory that [`setup-project-memory.sh`](scripts/setup-project-memory.sh) links into place, the product context file the specialists read, and the trackers (`todo.txt`, `DECISIONS.md`, `BACKLOG.md`, `plans/`) once you use the commands that read them. Some scripts, domain specialists, test entry points and paths still describe the source project. [The start page](docs/start-a-new-project.md#what-you-supply) lists what to replace.
 
@@ -97,11 +97,11 @@ One example from this repository's own history. Several sessions commit to one b
 - **Mail.** 15,472 of 16,754 direct mails (92.3%) were delivered to a running session between 16 August and 20 October 2026. That is delivery, not reading: whether each was read was not measured.
 - **The memory read guard.** When it refuses an oversized read and says where to page, agents paged 68.1% of the time, against 12.7% after a plain size error. An observational comparison, not a randomized one.
 
-The copy's own smoke suite, run in a fresh repository holding only this copy, passed 1,997 arms and failed 166. The red arms are expected on a tree that has none of your files yet; [the start page](docs/start-a-new-project.md#first-run) says what each group needs and which passes hold only because something is missing.
+The copy's own smoke suite, run in a fresh repository holding only this copy, passed 2,017 arms and failed 166. The red arms are expected on a tree that has none of your files yet; [the start page](docs/start-a-new-project.md#first-run) says what each group needs and which passes hold only because something is missing.
 
 ## What is in the copy
 
-425 files:
+429 files:
 
 - **[`.claude/agents/`](.claude/agents/)**: 33 specialist definitions and [the primer](.claude/agents/_agent-primer.md) each one reads first.
 - **[`.claude/skills/`](.claude/skills/)**: the 54 commands and each specialist's knowledge file.
@@ -113,7 +113,7 @@ The copy's own smoke suite, run in a fresh repository holding only this copy, pa
 - **[`.githooks/`](.githooks/)**: the pre-commit hook and the notes on wiring git hooks; the pre-push hook is yours to write.
 - **[`docs/starters/`](docs/starters/)**: a `CLAUDE.md` starter and four blank audit registers.
 
-Of the 425, 31 files written for the copy: this readme, the licence, notice, trademark, contributing and code-owner files, the `.claude/.gitignore` that keeps run-time state out of git, the 8 pages under `docs/`, the 5 starters and the 11 images. [The repository map](docs/repository-map.md) says what each file holds. The counts describe the tree; they are not the point.
+Of the 429, 31 files written for the copy: this readme, the licence, notice, trademark, contributing and code-owner files, the `.claude/.gitignore` that keeps run-time state out of git, the 8 pages under `docs/`, the 5 starters and the 11 images. [The repository map](docs/repository-map.md) says what each file holds. The counts describe the tree; they are not the point.
 
 ## Where the ideas came from
 
