@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Owner speech across EVERY session, for the hub's queue.
 
-Why this exists (2026-09-16): the queue's other four instruments
-(review-request-closure-scan.mjs, hub-unfinished-loops.py, hub-open-promises.py,
-review-queue.py) are ALL mail- or sha-keyed. Not one reads owner speech, in any
+Why this exists (2026-09-16): the queue's other instruments
+(review-request-closure-scan.mjs — the one OPEN predicate since 2026-10-26, which
+review-queue.py reads as --json and hub-stale-request-poll.sh as text — hub-unfinished-loops.py
+and hub-open-promises.py) are ALL mail- or sha-keyed. Not one reads owner speech, in any
 transcript. The owner types into ONE seat at a time, so a ruling that binds the hub
 routinely lands in a PEER's transcript and is invisible to every probe the hub runs
 over its own. Measured that day: an open product question was ruled in a peer

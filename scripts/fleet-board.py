@@ -267,11 +267,11 @@ def commits(seats, args):
 
 # ── review loops: the two mail-plane instruments, both floors ───────────────────────────────
 def review_loops(sid, mail, args):
-    """review-queue's build_rows and hub-unfinished-loops' scan, called in-process over ONE load
+    """review-queue's rows_from_scan over run_closure_scan (one node scan per seat) and hub-unfinished-loops' scan, called in-process over ONE load
     of the store (`mail`); a reader that raises costs its own cell, never the board."""
     res = {"open": None, "ack_only": None, "loops": None, "max_wait": None, "err": None}
     try:
-        rows = RQ.build_rows(mail, sid, args.repo)
+        rows = RQ.rows_from_scan(RQ.run_closure_scan(sid, args.repo, {"FF_MAIL_DIR": args.mail_dir}), mail, sid)
         res["open"] = sum(1 for x in rows if x.get("status") == "OPEN")
         res["ack_only"] = sum(1 for x in rows if x.get("status") == "ACK ONLY")
     except Exception as e:
@@ -384,7 +384,9 @@ def promote_inline_hold(args, now):
 
 # ── plans: newest per seat, headings + dated blocks + lag behind the transcript ──────────────
 def plan(sid, tx, args, now):
-    files = [p for p in glob.glob(os.path.join(args.plans_dir, f"session-{sid}-*.md")) if _mtime(p) >= 0]
+    # a `-partN.md` file holds blocks plan-roll moved out of the live plan; it is never the seat's plan
+    files = [p for p in glob.glob(os.path.join(args.plans_dir, f"session-{sid}-*.md"))
+             if _mtime(p) >= 0 and not re.search(r"-part\d+\.md$", p)]
     if not files:
         return {"file": None, "text": "— (no plan file)"}
     files.sort(key=lambda p: -_mtime(p))
@@ -490,7 +492,6 @@ def build(args):
     git_ok, last = last is not None, last or {}
     hubs = RQ.hub_status(None, args.state_dir)
     mail = RQ.load_mail(args.mail_dir)
-    RQ.prefill_sha_cache(mail, args.repo)       # one `git cat-file --batch-check` for every seat
     fleet_op, fleet_alias = owner_pending(open_rows)
     rows = []
     for s in seats:
@@ -771,6 +772,12 @@ def self_test(break_seed):
         vanished = plan(exited, None, args, now)["text"]
     except Exception as e:
         vanished = f"RAISED {type(e).__name__}"
+    # a part file plan-roll wrote, touched after the live plan (a checkout, a restore): still the live plan
+    ppart = os.path.join(plans, f"session-{wrapped}-2026-10-15-part2.md")
+    with open(ppart, "w") as fh:
+        fh.write("# Part 2 of the working plan\n")
+    os.utime(ppart, (now + 60, now + 60))
+    part_pick = plan(wrapped, None, args, now)
     checks = [
         ("the other-repo seat is filtered out; the seat launched in a SUBDIRECTORY of the repo is kept",
          set(by) == {wrapped, stale, exited}),
@@ -797,6 +804,8 @@ def self_test(break_seed):
          and any(l.count(" | ") == len(COLUMNS) - 1 and l.startswith("| Seat |") for l in etable)
          and ("|" + "---|" * len(COLUMNS)) in etable),
         ("a plan path that vanished between glob and stat costs its cell, never the board", not vanished.startswith("RAISED")),
+        ("a part file newer than the live plan is never picked as the seat's plan",
+         part_pick.get("file") == f"session-{wrapped}-2026-10-15.md" and part_pick.get("n_files") == 1),
         ("the wrapped seat renders `wrapped`", by.get(wrapped, {}).get("lifecycle") == "WRAPPED" and "wrapped" in by[wrapped]["lifecycle_text"]),
         ("the wrapped seat's fresh plan is not `behind`", by.get(wrapped, {}).get("plan", {}).get("behind_min") is None),
         ("the stale-plan seat renders `plan behind by N min`, N >= 20", (by.get(stale, {}).get("plan", {}).get("behind_min") or 0) >= 20

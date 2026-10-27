@@ -52,6 +52,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 
@@ -862,10 +863,7 @@ def _write_subagent_cache(cache):
                           reverse=True)[:_SUBAGENT_CACHE_MAX]
             cache = dict(keep)
         os.makedirs(STATE_DIR, exist_ok=True)
-        tmp = os.path.join(STATE_DIR, f'.{_SUBAGENT_CACHE_NAME}.{os.getpid()}.tmp')
-        with open(tmp, 'w') as f:
-            json.dump(cache, f)
-        os.replace(tmp, os.path.join(STATE_DIR, _SUBAGENT_CACHE_NAME))
+        _atomic_write_text(os.path.join(STATE_DIR, _SUBAGENT_CACHE_NAME), json.dumps(cache))
     except Exception:
         pass
 
@@ -1093,9 +1091,34 @@ def write_manifest(jsonl_path):
     if state['scope_invocations']:
         lines.append(f'- **Scope-decision invocations (last 10):** {", ".join(state["scope_invocations"])}')
     path = manifest_path(sid)
-    with open(path, 'w') as f:
-        f.write('\n'.join(lines) + '\n')
+    _atomic_write_text(path, '\n'.join(lines) + '\n')
     return path
+
+
+def _atomic_write_text(path, text):
+    """Replace `path` so a concurrent reader sees the old file or the new one, never an empty or
+    half-written one: write a temp file in the same directory, then `os.replace` (atomic within
+    one filesystem). `open(path, 'w')` truncated first, and one `whose-edit` run rewrote every
+    recently active session's manifest that way, so a reader in that instant read an empty
+    manifest as UNATTRIBUTED (2026-10-26). The file keeps its mode; a new one gets
+    0644, because `mkstemp` creates 0600."""
+    d = os.path.dirname(path) or '.'
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=f'.{os.path.basename(path)}.', suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(text)
+        try:
+            mode = os.stat(path).st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o644
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def read_manifest(path):
@@ -1463,6 +1486,14 @@ def cmd_prune(args):
             os.remove(p)
             pruned += 1
             print(f'Pruned stale manifest: {os.path.basename(p)}')
+    # A writer killed between mkstemp and os.replace (_atomic_write_text) strands a dot-named
+    # temp the *.md loop above can never see; reap it on the same staleness clock.
+    for t in glob.glob(os.path.join(MANIFEST_DIR, '.*.tmp')):
+        try:
+            if os.path.getmtime(t) < cutoff:
+                os.remove(t)
+        except OSError:
+            pass
     if pruned == 0 and args.verbose:
         print('No stale manifests to prune.')
     return 0
@@ -2555,9 +2586,7 @@ def _hub_open_queue_lines(my):
             # ATOMIC, same verdict: a torn write would persist a corrupt cache that
             # the read above then has to survive. Mirrors _write_subagent_cache.
             try:
-                tmp = cache + '.tmp'
-                io.open(tmp, 'w', encoding='utf-8').write(out)
-                os.replace(tmp, cache)
+                _atomic_write_text(cache, out)
             except OSError:
                 pass
         except (OSError, subprocess.SubprocessError):
@@ -3220,11 +3249,8 @@ def _listen_write_resume(my, poll_start_ns, held_oldest_ns):
         r = min(r, held_oldest_ns)
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
-        path = _listen_resume_path(my)
-        tmp = f'{path}.{os.getpid()}.tmp'  # per process: duplicate listeners never share one tmp
-        with open(tmp, 'w') as f:
-            f.write(str(r))
-        os.replace(tmp, path)
+        # mkstemp gives each process its own temp, so duplicate listeners never share one
+        _atomic_write_text(_listen_resume_path(my), str(r))
     except OSError:
         pass
 
@@ -3584,7 +3610,9 @@ def cmd_mail_prune(args):
         unread_cut = now - MAIL_UNREAD_TTL_HOURS * 3600
         pruned = 0
         failed = 0
-        for p in glob.glob(os.path.join(MAIL_DIR, '*')):
+        # glob('*') skips dotfiles, so a `.closing__<token>.tmp` stranded by cmd_mail_close
+        # would never reach the .tmp branch below without the second glob.
+        for p in glob.glob(os.path.join(MAIL_DIR, '*')) + glob.glob(os.path.join(MAIL_DIR, '.*.tmp')):
             try:
                 if os.path.isdir(p):
                     # Never os.remove() a directory: it raises, escapes to the OUTER handler,
@@ -3922,7 +3950,7 @@ def _charter_digest8(raw):
 def _channel_charter(chdir):
     """(raw, parsed-fields) for an existing channel, or (None, {})."""
     try:
-        with open(os.path.join(chdir, 'CHARTER'), errors='ignore') as fh:
+        with open(os.path.join(chdir, 'CHARTER'), encoding='utf-8', errors='ignore') as fh:
             raw = fh.read()
     except OSError:
         return None, {}
@@ -3941,7 +3969,7 @@ def _channel_members(chdir):
         if not re.fullmatch(r'[0-9a-f]{8}', sid):
             continue  # read-side validation: never trust arbitrary directory state
         try:
-            with open(p, errors='ignore') as fh:
+            with open(p, encoding='utf-8', errors='ignore') as fh:
                 out[sid] = _charter_fields(fh.read())
         except OSError:
             continue
@@ -4118,11 +4146,8 @@ def _channel_prune(now, verbose=False):
             if newest < now - idle_h * 3600:
                 health = _channel_health(chdir)
                 created = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-                tmp = os.path.join(chdir, '.CLOSED.tmp')
-                with open(tmp, 'w') as f:
-                    f.write(f'outcome: idle-timeout\nclosed-by: prune\ncreated: {created}\n'
-                            f'ns: {time.time_ns()}\nhealth: {json.dumps(health)}\n')
-                os.rename(tmp, closed)
+                _atomic_write_text(closed, f'outcome: idle-timeout\nclosed-by: prune\ncreated: {created}\n'
+                                           f'ns: {time.time_ns()}\nhealth: {json.dumps(health)}\n')
                 _channel_log_run(slug, 'closed', {'outcome': 'idle-timeout', 'closed_by': 'prune', **health})
                 if verbose:
                     print(f'channel `{slug}` idle-closed (no activity in {idle_h}h).')
@@ -4161,7 +4186,7 @@ def cmd_channel(args):
                   'plans/channels/<slug>.md).', file=sys.stderr)
             return 2
         try:
-            with open(args.charter, errors='ignore') as f:
+            with open(args.charter, encoding='utf-8', errors='ignore') as f:
                 raw = f.read()
         except OSError as e:
             print(f'channel open: cannot read charter: {e}', file=sys.stderr)
@@ -4175,10 +4200,7 @@ def cmd_channel(args):
                   f'durability net (.claude/state is gitignored; a multi-day charter must '
                   f'survive a state clean).', file=sys.stderr)
         os.makedirs(os.path.join(chdir, 'members'), exist_ok=True)
-        tmp = os.path.join(chdir, '.CHARTER.tmp')
-        with open(tmp, 'w') as f:
-            f.write(raw)
-        os.rename(tmp, os.path.join(chdir, 'CHARTER'))
+        _atomic_write_text(os.path.join(chdir, 'CHARTER'), raw)
         dg = _charter_digest8(raw)
         _channel_log_run(slug, 'open', {'lead': cf.get('lead'), 'mode': cf.get('mode'),
                                         'charter_version': cf.get('charter_version'), 'digest': dg})
@@ -4225,11 +4247,9 @@ def cmd_channel(args):
                   file=sys.stderr)
             return 1
         os.makedirs(os.path.join(chdir, 'members'), exist_ok=True)
-        tmp = os.path.join(chdir, 'members', f'.{my}.tmp')
-        with open(tmp, 'w') as f:
-            f.write(f'role: {_fm_value(args.role, 80)}\njoined-ns: {time.time_ns()}\n'
-                    f'digest: {dg}\nterminator-share: {_fm_value(args.terminator_share)}\n')
-        os.rename(tmp, os.path.join(chdir, 'members', my))
+        _atomic_write_text(os.path.join(chdir, 'members', my),
+                           f'role: {_fm_value(args.role, 80)}\njoined-ns: {time.time_ns()}\n'
+                           f'digest: {dg}\nterminator-share: {_fm_value(args.terminator_share)}\n')
         _channel_log_run(slug, 'join', {'sid': my, 'role': args.role.strip()[:80]})
         print(f'joined `{slug}` as {args.role.strip()} — catch-up sweep follows (no floor):')
         _channel_check_one(slug, my, peek=False)
@@ -4376,11 +4396,9 @@ def cmd_channel(args):
             return 2
         health = _channel_health(chdir)
         created = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-        tmp = os.path.join(chdir, '.CLOSED.tmp')
-        with open(tmp, 'w') as f:
-            f.write(f'outcome: {outcome}\nclosed-by: {my}\ncreated: {created}\n'
-                    f'ns: {time.time_ns()}\nhealth: {json.dumps(health)}\n')
-        os.rename(tmp, os.path.join(chdir, 'CLOSED'))
+        _atomic_write_text(os.path.join(chdir, 'CLOSED'),
+                           f'outcome: {outcome}\nclosed-by: {my}\ncreated: {created}\n'
+                           f'ns: {time.time_ns()}\nhealth: {json.dumps(health)}\n')
         _channel_log_run(slug, 'closed', {'outcome': outcome, 'closed_by': my, **health})
         print(f'channel `{slug}` CLOSED ({outcome}) — dir GC in {CHANNEL_GC_HOURS}h; '
               f'health logged to channel-runs.jsonl.')
@@ -5098,7 +5116,10 @@ def _uncommitted_added_lines(rel_path):
     line beginning `++` renders as `+++`, so a prefix-class filter silently eats real hunk
     lines (`.claude/rules/bash-environment.md`, both directions of that trap)."""
     try:
-        p = subprocess.run(['git', 'diff', 'HEAD', '--unified=0', '--', rel_path],
+        # diff.autoRefreshIndex=false: a stat-dirty file otherwise makes `git diff` rewrite
+        # .git/index, so --corroborate would write even under --no-refresh.
+        p = subprocess.run(['git', '-c', 'diff.autoRefreshIndex=false', 'diff', 'HEAD', '--unified=0',
+                            '--', rel_path],
                            cwd=REPO_DIR, capture_output=True, text=True, timeout=20)
         if p.returncode != 0:
             return []
@@ -5282,11 +5303,49 @@ def _print_corroboration(target, target_abs, hours):
           'lines were since edited will not match. Cross-check with `git log -S`.')
 
 
+def _whose_edit_holder_verdict(rows):
+    """PURE: rows = (tag, lifecycle status, is_own) for EVERY session that records the file,
+    exactly as the caller prints them -> None (no other session has a real write), 'all-exited',
+    'paused' (none ACTIVE, at least one wrapped/standby) or 'live' (one is ACTIVE or a CHECKPOINT,
+    which declared it is continuing). Both exclusions live HERE so the self-test pins them: the
+    caller's own row never counts, and only an [observed]/[agent] row can produce a verdict. An
+    [assigned] row still VETOES 'all-exited' — it is the one tag a live author wears when it wrote
+    through a channel the scan cannot see (the en.json case in the floor disclosure below), and a
+    false 'all-exited' is the direction that costs data."""
+    others = [(tag, s) for (tag, s, own) in rows if not own]
+    if not any(tag != 'assigned' for (tag, _) in others):
+        return None
+    statuses = [s for (_, s) in others]
+    if all(s == 'EXITED' for s in statuses):
+        return 'all-exited'
+    if any(s in ('ACTIVE', 'CHECKPOINT') for s in statuses):
+        return 'live'
+    return 'paused'
+
+
+def _whose_edit_restart_hedge(exit_ages):
+    """PURE: the ages in seconds of the session-finished markers of the other EXITED writers (None
+    = an exit time dated in the future) -> the youngest age when it is inside HUB_RESTART_WINDOW_S; else
+    'unreadable' when any exit time is None; else None. A restart reads EXITED for the seconds a
+    session is down (one session showed three exit/resume pairs 7-14 s apart), so a fresh exit must not print
+    the all-exited clearance. An unreadable exit time counts as possibly
+    fresh, not old: a future-dated marker also stops a resume from superseding the exit, so the seat
+    behind it may be back."""
+    young = [a for a in exit_ages if a is not None and a < HUB_RESTART_WINDOW_S]
+    if young:
+        return min(young)
+    return 'unreadable' if any(a is None for a in exit_ages) else None
+
+
 def cmd_whose_edit(args):
     """Attribute a file path -> which session(s)' manifest records WRITING it (Edit/Write
     tool_use OR Bash redirect) — a DELIBERATE lookup vs. inferring a peer from diff content.
     Refreshes active manifests from their live jsonls first so the answer is current +
-    Bash-aware (not a stale snapshot). Prints the session id(s) + last-activity +
+    Bash-aware (not a stale snapshot) — which makes it a WRITE: every session whose transcript
+    moved in the last 12 h gets its manifest rewritten in the main checkout's
+    .claude/state/active-sessions/, and .claude/state/subagent-writes-cache.json whenever one of
+    those sessions has new sub-agent transcripts, even when run from a worktree. `--no-refresh`
+    skips both and reads the manifests as they stand. Prints the session id(s) + last-activity +
     work-subject, or '(working-tree) — UNATTRIBUTED' when nothing maps it.
     Every hit carries its EVIDENCE SOURCE: [observed] = an actual write
     in that session's transcript; [assigned] = only a [scope-owns] dispatch marker (the
@@ -5298,13 +5357,19 @@ def cmd_whose_edit(args):
     AND 'not mine' is not the same as 'orphaned': the UNATTRIBUTED branch prints the two
     TOOL questions (authored? generated?) because a subprocess write has no session author
     at all, so those files can never become attributable no matter how long you wait."""
-    cutoff = datetime.now(timezone.utc).timestamp() - 12 * 3600
-    for j in sorted(glob.glob(os.path.join(SESSIONS_DIR, '*.jsonl'))):
-        try:
-            if os.path.getmtime(j) >= cutoff:
-                write_manifest(j)
-        except OSError:
-            continue
+    # IT WRITES, and is not a read: unless --no-refresh, this rewrites the manifest of EVERY session
+    # whose transcript moved in the last 12 h, in the MAIN checkout's .claude/state/active-sessions/,
+    # plus .claude/state/subagent-writes-cache.json (scan_subagent_writes, via write_manifest) —
+    # MANIFEST_DIR and STATE_DIR resolve there even from a linked worktree, _resolve_repo_dir. A review seat
+    # that must not touch shared state runs it with --no-refresh.
+    if not getattr(args, 'no_refresh', False):
+        cutoff = datetime.now(timezone.utc).timestamp() - 12 * 3600
+        for j in sorted(glob.glob(os.path.join(SESSIONS_DIR, '*.jsonl'))):
+            try:
+                if os.path.getmtime(j) >= cutoff:
+                    write_manifest(j)
+            except OSError:
+                continue
     target = args.file
     if target.startswith('/') and target.startswith(REPO_DIR):
         target = os.path.relpath(target, REPO_DIR)
@@ -5344,13 +5409,52 @@ def cmd_whose_edit(args):
           f'own transcript; [agent] = write in a SUB-AGENT it dispatched; '
           f'[assigned] = scope-owns dispatch marker only):')
     all_assigned = True
+    holder_rows = []
+    exit_ages = []
+    unreadable_exits = []
     for m in sorted(hits, key=lambda x: x['last_activity_iso'] or '', reverse=True):
         mark = '  <- YOU' if m['sid'][:8] == own_sid else ''
         tag = ('assigned' if target in m.get('assigned_only', set())
                else 'agent' if target in m.get('agent_only', set()) else 'observed')
         if tag != 'assigned':
             all_assigned = False
-        print(f'  - `{m["sid"]}` [{tag}] (last activity {m["last_activity_iso"]}) — {m["work_subject"][:70]}{mark}')
+        status = lifecycle_status(m['sid'])
+        holder_rows.append((tag, status, bool(mark)))
+        if status == 'EXITED' and not mark:
+            # The clock lifecycle_status read to say EXITED (content epoch, else mtime), not
+            # _exit_marker_age_s, whose mtime fallback reads a future body as a past exit.
+            _fts = session_status.read_finished(
+                session_status.finished_marker(STATE_DIR, m['sid'][:8].lower()))[0]
+            _now = time.time()
+            exit_ages.append(None if _fts > _now + 60 else int(max(0, _now - _fts)))
+            if exit_ages[-1] is None:
+                unreadable_exits.append(m['sid'][:8])
+        print(f'  - `{m["sid"]}` [{tag}] {status} (last activity {m["last_activity_iso"]}) — {m["work_subject"][:70]}{mark}')
+    verdict = _whose_edit_holder_verdict(holder_rows)
+    young_exit = _whose_edit_restart_hedge(exit_ages) if verdict == 'all-exited' else None
+    if young_exit == 'unreadable':
+        print('  ⏯ EVERY OTHER SESSION THIS LIST RECORDS WRITING IT READS EXITED — but the exit marker '
+              f'of {", ".join(f"`{s}`" for s in unreadable_exits)} is dated in the future, which also '
+              'stops a resume from clearing it, so that session may be back. Its EXITED label (and its '
+              '✓ in `session-manifest.py who`) reads that same marker: judge it by its last activity '
+              '(above, or "Last active" in `who`) before treating it as gone.')
+    elif young_exit is not None:
+        print(f'  ⏯ EVERY OTHER SESSION THIS LIST RECORDS WRITING IT READS EXITED — but one exited '
+              f'only {young_exit} s ago, which may be a restart (a restart reads EXITED for the '
+              f'seconds a session is down). Re-run in {HUB_RESTART_WINDOW_S // 60} minutes before '
+              f'treating them as gone.')
+    elif verdict == 'all-exited':
+        print('  ✓ EVERY OTHER SESSION THIS LIST RECORDS WRITING IT HAS EXITED — none of the listed '
+              'writers is working on it now, so do not hold your own work waiting for them. That is '
+              'not a licence to adopt the hunk: the list is a floor (see below), so corroborate it '
+              'first (`--corroborate` or `git log -S`), then hand an exited peer\'s work to the fleet '
+              '(`mail-send --to all`); take it yourself only if you are the last session alive or '
+              'the owner says so.')
+    elif verdict == 'paused':
+        print('  ⏸ NO OTHER SESSION THIS LIST RECORDS WRITING IT IS ACTIVE — the listed writers that '
+              'have not EXITED are wrapped or on standby; a wrapped seat may still be working (a wrap '
+              'is repeatable). Mail one of those (an EXITED one reads mail only if it is resumed) instead of '
+              'waiting in silence; a standby seat reads mail only after the owner resumes it.')
     if all_assigned:
         print('  ⚠ ASSIGNMENT-MARKER EVIDENCE ONLY: the session(s) SAID a wave would edit this; '
               'no manifest observed an actual write (assignment ≠ authorship). Non-load-bearing '
@@ -5560,7 +5664,7 @@ def cmd_self_test(args):
         # assignment → `SyntaxError: name 'STATE_DIR' is used prior to global declaration`.
         # Note `ast.parse()` does NOT catch that (it is a symbol-table error, not a parse
         # error) — only a real `compile()` / import does.
-        global MAIL_DIR, STATE_DIR, MANIFEST_DIR
+        global MAIL_DIR, STATE_DIR, MANIFEST_DIR, REPO_DIR
         _saved_mail_dir, _tmp = MAIL_DIR, tempfile.mkdtemp(prefix='ff-selftest-mail-')
         _body = os.path.join(_tmp, 'body.md')
         with open(_body, 'w') as _f:
@@ -7129,6 +7233,290 @@ def cmd_self_test(args):
             else:
                 os.environ[env_key] = _saved_sid2
             shutil.rmtree(_wt, ignore_errors=True)
+
+        # whose-edit holder verdict: the line that tells a seat whether the
+        # other writers of a dirty file are still working. A false 'all-exited' licenses taking
+        # over work someone still holds, so every mixed case must land on 'live' or 'paused'.
+        _hv = _whose_edit_holder_verdict
+        check('whose-edit verdict: no other writer → no line', _hv([]), None)
+        check('whose-edit verdict: every other writer EXITED → all-exited',
+              _hv([('observed', 'EXITED', False), ('agent', 'EXITED', False)]), 'all-exited')
+        check('whose-edit verdict: EXITED + WRAPPED → paused, never all-exited',
+              _hv([('observed', 'EXITED', False), ('observed', 'WRAPPED', False)]), 'paused')
+        check('whose-edit verdict: STANDBY alone → paused',
+              _hv([('observed', 'STANDBY', False)]), 'paused')
+        check('whose-edit verdict: one ACTIVE among EXITED → live',
+              _hv([('observed', 'EXITED', False), ('observed', 'ACTIVE', False)]), 'live')
+        check('whose-edit verdict: CHECKPOINT (declared continuing) → live',
+              _hv([('observed', 'WRAPPED', False), ('agent', 'CHECKPOINT', False)]), 'live')
+        check('whose-edit verdict: the caller\'s own ACTIVE row never counts',
+              _hv([('observed', 'EXITED', False), ('observed', 'ACTIVE', True)]), 'all-exited')
+        check('whose-edit verdict: only the caller\'s own row → no line',
+              _hv([('observed', 'EXITED', True)]), None)
+        check('whose-edit verdict: [assigned] rows alone never make a verdict',
+              _hv([('assigned', 'EXITED', False)]), None)
+        check('whose-edit verdict: an ACTIVE [assigned] row vetoes all-exited',
+              _hv([('observed', 'EXITED', False), ('assigned', 'ACTIVE', False)]), 'live')
+        check('whose-edit verdict: a WRAPPED [assigned] row keeps it off all-exited',
+              _hv([('observed', 'EXITED', False), ('assigned', 'WRAPPED', False)]), 'paused')
+        check('whose-edit restart hedge: an exit inside the restart window is reported',
+              _whose_edit_restart_hedge([3600, 30, None]), 30)
+        check('whose-edit restart hedge: only old exits → no hedge',
+              _whose_edit_restart_hedge([3600, 4000]), None)
+        check('whose-edit restart hedge: an unreadable exit time counts as possibly fresh',
+              _whose_edit_restart_hedge([3600, None]), 'unreadable')
+        check('whose-edit restart hedge: two fresh exits → the youngest is reported',
+              _whose_edit_restart_hedge([400, 30]), 30)
+
+        # whose-edit END TO END: the verdict line as cmd_whose_edit PRINTS it, over fixture
+        # manifests and lifecycle markers: the pure arms above cannot see a
+        # caller that stops passing a row, or a print branch wired to the wrong verdict.
+        import contextlib, io, tempfile
+        _wtmp = tempfile.mkdtemp(prefix='ff-whose-edit-')
+        _w_saved = (STATE_DIR, MANIFEST_DIR, SESSIONS_DIR, os.environ.get(env_key))
+        try:
+            STATE_DIR = _wtmp
+            MANIFEST_DIR = os.path.join(_wtmp, 'active-sessions')
+            SESSIONS_DIR = os.path.join(_wtmp, 'sessions')
+            os.makedirs(MANIFEST_DIR)
+            os.makedirs(SESSIONS_DIR)
+            os.environ[env_key] = 'aaaa1111'
+
+            def _we(writers):
+                """writers: (sid, tag, exited_seconds_ago or None) -> cmd_whose_edit's output."""
+                for f in glob.glob(os.path.join(_wtmp, 'session-finished-*')) + \
+                        glob.glob(os.path.join(MANIFEST_DIR, '*.md')):
+                    os.remove(f)
+                for sid, tag, ago in writers:
+                    suffix = '' if tag == 'observed' else f' [{tag}]'
+                    with open(os.path.join(MANIFEST_DIR, f'{sid}.md'), 'w') as f:
+                        f.write(f'# Session manifest: {sid}\n\n**Last activity:** 2026-10-26T10:00:00Z\n'
+                                f'**Work subject:** fixture\n\n## Files touched\n  - `fx/a.txt`{suffix}\n')
+                    if ago is not None:
+                        _mp = os.path.join(_wtmp, f'session-finished-{sid}')
+                        _ep = int(time.time()) - ago
+                        with open(_mp, 'w') as f:
+                            f.write(f'{_ep} logout\n')
+                        if ago < 0:  # future-dated: move the mtime too, or _exit_marker_age_s falls back to it
+                            os.utime(_mp, (_ep, _ep))
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    cmd_whose_edit(argparse.Namespace(file='fx/a.txt', corroborate=False, hours=24))
+                return buf.getvalue()
+
+            _o = _we([('aaaa1111', 'observed', None), ('bbbb2222', 'observed', 3600)])
+            check('whose-edit e2e: own ACTIVE row + other writer exited an hour ago → ✓ line',
+                  ('✓ EVERY OTHER SESSION' in _o, '⏯' in _o), (True, False))
+            _o = _we([('bbbb2222', 'observed', 30), ('cccc3333', 'observed', None)])
+            check('whose-edit e2e: another writer still ACTIVE beside a fresh exit → no ✓, ⏸ or ⏯ line',
+                  ('✓ EVERY OTHER SESSION' in _o, '⏸ NO OTHER SESSION' in _o, '⏯' in _o),
+                  (False, False, False))
+            _o = _we([('bbbb2222', 'observed', 3600), ('cccc3333', 'assigned', None)])
+            check('whose-edit e2e: an ACTIVE [assigned] holder blocks the ✓ line',
+                  '✓ EVERY OTHER SESSION' in _o, False)
+            _o = _we([('aaaa1111', 'observed', 30), ('bbbb2222', 'observed', 3600)])
+            check('whose-edit e2e: the caller\'s own fresh exit marker never triggers the ⏯ line',
+                  ('✓ EVERY OTHER SESSION' in _o, '⏯' in _o), (True, False))
+            _o = _we([('bbbb2222', 'observed', 30)])
+            check('whose-edit e2e: an exit 30 s old prints the ⏯ restart line, not ✓',
+                  ('⏯' in _o, '✓ EVERY OTHER SESSION' in _o), (True, False))
+            _o = _we([('bbbb2222', 'observed', 3600), ('cccc3333', 'observed', -3600)])
+            check('whose-edit e2e: a future-dated exit marker prints the unreadable ⏯ line, not ✓',
+                  ('marker of `cccc3333` is dated in the future' in _o, ' s ago' in _o,
+                   '✓ EVERY OTHER SESSION' in _o), (True, False, False))
+            _o = _we([('bbbb2222', 'observed', -3600)])
+            os.utime(os.path.join(_wtmp, 'session-finished-bbbb2222'), (time.time() - 3600,) * 2)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cmd_whose_edit(argparse.Namespace(file='fx/a.txt', corroborate=False, hours=24))
+            _o = buf.getvalue()
+            check('whose-edit e2e: a future-dated marker BODY under a past mtime still blocks ✓ '
+                  '(the hedge reads the clock the EXITED label reads)',
+                  ('dated in the future' in _o, '✓ EVERY OTHER SESSION' in _o), (True, False))
+
+            # The REFRESH half (2026-10-26): whose-edit rewrites the manifest of every
+            # recently active transcript, through the atomic writer; --no-refresh writes nothing.
+            _we([('bbbb2222', 'observed', 3600)])
+            _jl = os.path.join(SESSIONS_DIR, 'dddd4444' + str(uuid.UUID(int=0))[8:] + '.jsonl')   # a session uuid whose prefix is the fixture seat
+            with open(_jl, 'w') as f:
+                f.write(json.dumps({'type': 'user', 'timestamp': datetime.now(timezone.utc).strftime(
+                    '%Y-%m-%dT%H:%M:%SZ'), 'message': {'role': 'user', 'content': 'fixture'}}) + '\n')
+            _dd = os.path.join(MANIFEST_DIR, 'dddd4444.md')
+            # A sub-agent transcript too, so the refresh has the sub-agent cache to write as well.
+            _sa = os.path.join(SESSIONS_DIR, 'dddd4444' + str(uuid.UUID(int=0))[8:], 'subagents')
+            os.makedirs(_sa)
+            with open(os.path.join(_sa, 'agent-fx.jsonl'), 'w') as f:
+                f.write(json.dumps({'type': 'user', 'message': {'role': 'user', 'content': 'fx'}}) + '\n')
+            _cache = os.path.join(STATE_DIR, _SUBAGENT_CACHE_NAME)
+
+            def _tree():  # every file AND directory, so a mkdir-only write shows too
+                return sorted((os.path.join(r, n), os.stat(os.path.join(r, n)).st_mtime_ns)
+                              for r, ds, ns in os.walk(_wtmp) for n in ds + ns)
+            _t0 = _tree()
+            with contextlib.redirect_stdout(io.StringIO()):
+                cmd_whose_edit(argparse.Namespace(file='fx/a.txt', corroborate=False, hours=24,
+                                                  no_refresh=True))
+            check('whose-edit --no-refresh: writes nothing (no manifest, no sub-agent cache, no '
+                  'other file in the state tree)', (os.path.exists(_dd), _tree() == _t0), (False, True))
+            _t0 = _tree()  # re-snapshot: this arm's verdict must not inherit the arm above's writes
+            with contextlib.redirect_stdout(io.StringIO()):
+                cmd_whose_edit(build_parser().parse_args(['whose-edit', '--no-refresh', 'fx/a.txt']))
+            check('whose-edit --no-refresh, parsed from argv: still writes nothing',
+                  (os.path.exists(_dd), _tree() == _t0), (False, True))
+            _real_replace, _swaps = os.replace, []
+            def _spy_replace(src, dst):
+                _swaps.append(dst)
+                return _real_replace(src, dst)
+            os.replace = _spy_replace
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    cmd_whose_edit(argparse.Namespace(file='fx/a.txt', corroborate=False, hours=24))
+            finally:
+                os.replace = _real_replace
+            check('whose-edit default: the recently active transcript\'s manifest is written, by an '
+                  'atomic replace, and so is the sub-agent cache',
+                  (os.path.exists(_dd), _dd in _swaps, os.path.exists(_cache)), (True, True, True))
+            os.remove(_jl)
+            shutil.rmtree(os.path.dirname(_sa))
+
+            # --corroborate's `git diff HEAD` must not refresh .git/index on a stat-dirty file, or
+            # `--no-refresh --corroborate` writes the main checkout's index.
+            # A throwaway repo; a plain `git diff` afterwards is the control.
+            _gr, _rd_saved = os.path.join(_wtmp, 'gitfx'), REPO_DIR
+            _gsaved = {k: os.environ.pop(k) for k in list(os.environ) if k.startswith('GIT_')}
+            try:
+                os.makedirs(_gr)
+                with open(os.path.join(_gr, 'f.txt'), 'w') as f:
+                    f.write('fixture line one\n')
+                for _c in (['init', '-q'], ['add', 'f.txt'], ['-c', 'user.name=fx', '-c', 'user.email=fx@fx',
+                                                              '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fx']):
+                    subprocess.run(['git'] + _c, cwd=_gr, check=True, capture_output=True)
+                _gi = os.path.join(_gr, '.git', 'index')
+
+                def _ix():
+                    with open(_gi, 'rb') as f:
+                        return os.stat(_gi).st_mtime_ns, f.read()
+                _past = time.time() - 600
+                os.utime(os.path.join(_gr, 'f.txt'), (_past, _past))  # stat-dirty, content unchanged
+                _i0 = _ix()
+                REPO_DIR = _gr
+                _added = _uncommitted_added_lines('f.txt')
+                _i1 = _ix()
+                subprocess.run(['git', 'diff', 'HEAD', '--unified=0', '--', 'f.txt'], cwd=_gr,
+                               capture_output=True)
+                check('whose-edit --corroborate: its git diff leaves .git/index alone on a stat-dirty '
+                      'file (a plain git diff, the control, rewrites it)',
+                      (_added, _i1 == _i0, _ix() != _i0), ([], True, True))
+            finally:
+                REPO_DIR = _rd_saved
+                os.environ.update(_gsaved)
+
+            # The atomic writer itself: at the moment of the swap the target still holds the OLD
+            # content (a reader never sees it empty), the mode is kept, and no temp file is left.
+            _af = os.path.join(_wtmp, 'atomic.md')
+            with open(_af, 'w') as f:
+                f.write('OLD\n')
+            os.chmod(_af, 0o640)
+            _seen, _srcs = [], []
+            def _peek_replace(src, dst):
+                _srcs.append((os.path.dirname(src) == os.path.dirname(dst),
+                              src in glob.glob(os.path.join(os.path.dirname(dst), '*.md'))))
+                with open(dst) as f:
+                    _seen.append(f.read())
+                return _real_replace(src, dst)
+            os.replace = _peek_replace
+            try:
+                _atomic_write_text(_af, 'NEW\n')
+            finally:
+                os.replace = _real_replace
+            check('atomic write: the target still holds the old content at the swap, then the new',
+                  (_seen, open(_af).read()), (['OLD\n'], 'NEW\n'))
+            check('atomic write: the temp sits beside the target and the *.md manifest glob cannot see it',
+                  _srcs, [(True, False)])
+            check('atomic write: an existing file keeps its mode; a new one gets 0644',
+                  (os.stat(_af).st_mode & 0o777,
+                   (_atomic_write_text(os.path.join(_wtmp, 'fresh.md'), 'x\n'),
+                    os.stat(os.path.join(_wtmp, 'fresh.md')).st_mode & 0o777)[1]),
+                  (0o640, 0o644))
+            def _boom_replace(src, dst):
+                raise OSError('fixture: swap fails')
+            os.replace, _raised = _boom_replace, False
+            try:
+                _atomic_write_text(_af, 'LOST\n')
+            except OSError:
+                _raised = True
+            finally:
+                os.replace = _real_replace
+            check('atomic write: a failed swap re-raises and leaves the target whole',
+                  (_raised, open(_af).read()), (True, 'NEW\n'))
+            check('atomic write: no temp file is left behind',
+                  [n for n in os.listdir(_wtmp) if n.endswith('.tmp')], [])
+
+            # mail-prune reaps a dot-named temp a killed cmd_mail_close stranded; glob('*') alone
+            # skips dotfiles. A fresh one stays.
+            _md_saved = MAIL_DIR
+            try:
+                MAIL_DIR = os.path.join(_wtmp, 'mail')
+                os.makedirs(MAIL_DIR)
+                _old_t = os.path.join(MAIL_DIR, '.closing__fx.tmp')
+                _new_t = os.path.join(MAIL_DIR, '.closing__fresh.tmp')
+                for _t in (_old_t, _new_t):
+                    with open(_t, 'w') as f:
+                        f.write('x\n')
+                _past = time.time() - (MAIL_READ_TTL_HOURS + 1) * 3600
+                os.utime(_old_t, (_past, _past))
+                cmd_mail_prune(argparse.Namespace(verbose=False))
+                check('mail-prune: a stale dot-named .tmp is removed, a fresh one kept',
+                      (os.path.exists(_old_t), os.path.exists(_new_t)), (False, True))
+            finally:
+                MAIL_DIR = _md_saved
+
+            # cmd_prune reaps a temp a killed _atomic_write_text stranded in active-sessions, on the
+            # staleness clock; a fresh one (a live writer's) stays.
+            _old_t = os.path.join(MANIFEST_DIR, '.eeee5555.md.stale.tmp')
+            _new_t = os.path.join(MANIFEST_DIR, '.eeee5555.md.fresh.tmp')
+            for _t in (_old_t, _new_t):
+                with open(_t, 'w') as f:
+                    f.write('x\n')
+            _past = time.time() - (STALE_HOURS + 1) * 3600
+            os.utime(_old_t, (_past, _past))
+            with contextlib.redirect_stdout(io.StringIO()):
+                cmd_prune(argparse.Namespace(verbose=False))
+            check('prune: a stale dot-named .tmp in active-sessions is removed, a fresh one kept',
+                  (os.path.exists(_old_t), os.path.exists(_new_t)), (False, True))
+
+            # every temp-then-rename writer goes through _atomic_write_text except the
+            # ones the review exempted (mail and channel send, mail-close, the archive-on-read renames,
+            # the claim file). A hand-rolled writer coming back, or a site dropping to a truncating
+            # open('w'), changes this inventory.
+            import ast as _ast
+            _inv = {}
+            with open(os.path.abspath(__file__), encoding='utf-8') as f:
+                _mod = _ast.parse(f.read())
+            for _fn in _mod.body:
+                if isinstance(_fn, _ast.FunctionDef) and _fn.name != 'cmd_self_test':
+                    for _n in _ast.walk(_fn):
+                        _c = getattr(_n, 'func', None) if isinstance(_n, _ast.Call) else None
+                        _k = (_c.id if isinstance(_c, _ast.Name) else
+                              f'os.{_c.attr}' if isinstance(_c, _ast.Attribute)
+                              and isinstance(_c.value, _ast.Name) and _c.value.id == 'os' else None)
+                        if _k in ('_atomic_write_text', 'os.rename', 'os.replace'):
+                            _inv.setdefault(_fn.name, {}).setdefault(_k, 0)
+                            _inv[_fn.name][_k] += 1
+            _aw, _rn, _rp = {'_atomic_write_text': 1}, {'os.rename': 1}, {'os.replace': 1}
+            check('atomic write: the temp-then-rename writers are exactly the reviewed inventory', _inv,
+                  {'_write_subagent_cache': _aw, 'write_manifest': _aw, '_atomic_write_text': _rp,
+                   '_hub_open_queue_lines': _aw, '_listen_write_resume': _aw, '_channel_prune': _aw,
+                   'cmd_channel': {'_atomic_write_text': 3, 'os.rename': 1}, 'cmd_mail_send': _rn,
+                   'cmd_mail_check': _rn, 'cmd_mail_read': _rn, 'cmd_mail_close': _rn,
+                   '_channel_check_one': _rn, '_write_claim_file': _rp})
+        finally:
+            STATE_DIR, MANIFEST_DIR, SESSIONS_DIR = _w_saved[:3]
+            if _w_saved[3] is None:
+                os.environ.pop(env_key, None)
+            else:
+                os.environ[env_key] = _w_saved[3]
+            shutil.rmtree(_wtmp, ignore_errors=True)
     finally:
         os.environ.pop(env_key, None)
         if saved is not None:
@@ -7202,8 +7590,14 @@ def build_parser():
     o.add_argument('--allow-overlap', action='store_true',
                    help='Downgrade BLOCK-tier (code/migration) overlap to WARN — override after confirming non-conflicting regions')
 
-    we = sub.add_parser('whose-edit', help='Attribute a file -> session(s) whose manifest records writing it (refreshes manifests first; Bash-aware)')
+    we = sub.add_parser('whose-edit', help='Attribute a file -> session(s) whose manifest records writing it (Bash-aware). '
+                        'WRITES: first rewrites the manifest of every session active in the last 12 h, in the main '
+                        "checkout's .claude/state/active-sessions/, and its .claude/state/subagent-writes-cache.json, "
+                        'even from a worktree; --no-refresh reads them as they stand')
     we.add_argument('file', help='Repo-relative or absolute file path to attribute')
+    we.add_argument('--no-refresh', dest='no_refresh', action='store_true',
+                    help='Read the manifests as they stand and write nothing (for a read-only seat). '
+                         'The answer can then lag a session that wrote since its manifest was last refreshed')
     we.add_argument('--corroborate', action='store_true',
                     help='Add a CONTENT-keyed second opinion (composed-in-tool-INPUT vs '
                          'read-in-tool-RESULT) — the only layer that sees an in-process write '

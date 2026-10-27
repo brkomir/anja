@@ -26,6 +26,11 @@
 // Wired: .githooks/pre-push (gated on a CLAUDE.md / AGENTS.md / .claude/rules change). Block-mode: a push
 // that grows the band past the ceiling is REJECTED. Escape: SKIP_BAND_BUDGET_CHECK=1.
 // Self-test (instrument standard — RED-control per branch, mutation-valid): node scripts/check-band-budget.mjs --self-test
+//
+// UNITS: the band and traps planes count BYTES. The two CHARACTER arms — the per-file line and the carry window —
+// count UTF-16 code units (a JS string's `.length` / `.slice`), and every "units" this script prints means that. An
+// astral character (an emoji) is 2 units and 1 code point; the carry arm once counted code points while
+// the per-file arm counted units, so one run printed expert-review/SKILL.md as both 150,029 and 149,992.
 
 import { readdirSync, statSync, existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -790,7 +795,7 @@ function worseLevel(a, b) {
 // Single path, exercised by both main() and selfTest() (same discipline as classify()).
 // The gate LEVEL operand reads the HEAD plane: the worktree level passes
 // through only when HEAD is unresolvable — where delta is null too and gateDecision's null branch
-// already blocks when over. Extracted so the self-test pins the plane (panel: reverting this to
+// already blocks when over. Extracted so the self-test pins the plane (reverting this to
 // bare `level` left the whole suite green).
 function computeGateLevel(level, headTotal, limits, headAlways) {
   if (headTotal === null) return level;
@@ -866,6 +871,53 @@ function perFileOffendersAtRef(ref) {
     if (content.length > PER_FILE_WARN_CHARS) offenders.push([path, content.length, perFileEnforcement(path)]);
   }
   return offenders.sort((a, b) => b[1] - a[1]);
+}
+
+// CARRY-WINDOW arm. WARN ONLY, never in
+// the exit code. A SKILL.md is delivered whole on invocation, but after a COMPACTION the harness
+// carries only its first 20,000 UTF-16 units: 168 of 168 review-hub carries across 4 hub sessions were
+// cut at 19,998 code points, before `## Process`, so the hub's serve loop never survived a compaction and a rule
+// placed past the cut was followed less (ACK `pos n/N` 331/342 with the full spec in context against
+// 210/991 on the carry). The SIZE of a file is not the defect; WHICH HEADING the cut lands under is,
+// so this names it. Worktree plane, not HEAD: a skill is read from disk when it is invoked.
+// Measured: 44 of 121 SKILL.md files are over the line.
+// UTF-16 units, measured: over 4,953 truncated skill carries (the 120 newest transcripts, 2026-10-26) the
+// carried text is 20,000 UTF-16 units every time while its code points run 19,985-20,000 (0-15 astral characters in
+// the head). The 20,000 is the WHOLE attachment: the "Base directory for this skill: <dir>\n\n" header (85 units for
+// review-hub) + the frontmatter-stripped body + a 100-unit "\n\n[... skill content truncated ...]" marker.
+// This arm still cuts at unit 20,000 from file start, which errs safe for 42 of the 44 SKILL.md files over the line;
+// for orient (by 10 units) and wrap (by 34) the real cut falls earlier, so there it can name a heading the cut has
+// already passed.
+const CARRY_CUT_CHARS = 20_000;
+const CARRY_WARN_CHARS = 20_000;
+
+// The last markdown heading that starts before UTF-16 unit CARRY_CUT_CHARS, skipping YAML frontmatter and fenced blocks (a `## ` quoted in a fence is not a heading
+// the reader sees). null when the text is not over CARRY_WARN_CHARS.
+function carryCutHeading(text, cut = CARRY_CUT_CHARS, warnAt = CARRY_WARN_CHARS) {
+  const str = String(text);
+  if (str.length <= warnAt) return null;
+  let inFence = false, inFront = false, last = null;
+  str.slice(0, cut).split("\n").forEach((ln, i) => {
+    if (i === 0 && ln.trim() === "---") { inFront = true; return; }
+    if (inFront) { if (ln.trim() === "---") inFront = false; return; }
+    if (/^\s*(```|~~~)/.test(ln)) { inFence = !inFence; return; }
+    if (!inFence && /^#{1,6}\s/.test(ln)) last = ln.trim();
+  });
+  return { chars: str.length, heading: last ?? "(no heading before the cut)" };
+}
+
+function carryWindowOffenders(root = ROOT) {
+  const out = [];
+  let dirs = [];
+  try { dirs = readdirSync(join(root, ".claude", "skills")); } catch { return out; }
+  for (const d of dirs) {
+    const rel = `.claude/skills/${d}/SKILL.md`;
+    let text;
+    try { text = readFileSync(join(root, rel), "utf8"); } catch { continue; }
+    const c = carryCutHeading(text);
+    if (c) out.push({ path: rel, ...c });
+  }
+  return out.sort((a, b) => b.chars - a.chars);
 }
 
 function classifyPerFile(chars, warn = PER_FILE_WARN_CHARS, block = PER_FILE_BLOCK_CHARS) {
@@ -1027,7 +1079,7 @@ function render(total, rows, limits = { block: BLOCK_BYTES, warn: WARN_BYTES, ra
     `  CORPUS plane (the above PLUS every \`paths:\`-scoped rules file, bounded so scoping cannot buy free headroom): ${kb(gatedTotal)} (${gatedTotal} B) · ceiling ${kb(limits.block)} · warn ${kb(limits.warn)}${suffix} — ${corpusLevel.toUpperCase()}`];
   // TOKEN ESTIMATE (2026-08-25 — measure-only, never gates). Bytes are the
   // gate's unit; the MODEL pays tokens, and case matters to the tokenizer: ALLCAPS prose measured
-  // ~4.12% extra tokens at identical bytes (memory-structure panel). Divisor
+  // ~4.12% extra tokens at identical bytes. Divisor
   // = the measured 2.350–2.572 B/token band for this corpus (meta SKILL.md, 2026-07-31 fixtures) —
   // printed as the BAND it is. Verdict logic reads bytes only; --self-test pins that unchanged.
   lines.push(`    ~${Math.round(gatedTotal / 2.572).toLocaleString("en-US")}–${Math.round(gatedTotal / 2.35).toLocaleString("en-US")} tokens (estimate, 2.350–2.572 B/tok measured band; ALLCAPS pays ~4.12% over lowercase at equal bytes)`);
@@ -1232,7 +1284,7 @@ function selfTest() {
     console.log(`  [${ok ? "PASS" : "FAIL"}] ${label}: -> ${got} (expect ${expect})`);
   }
 
-  // GATE-LEVEL PLANE (panel, 2026-08-13): reverting computeGateLevel to bare `level` — the exact
+  // GATE-LEVEL PLANE (2026-08-13): reverting computeGateLevel to bare `level` — the exact
   // documented fail-open — used to leave this suite fully GREEN. Three arms pin the plane.
   const glCases = [
     // ⚠️ THIS ARM IS NOT A FAIL-SAFE AND MUST NOT BE READ AS ONE (2026-09-13). It records
@@ -1288,7 +1340,7 @@ function selfTest() {
     console.log(`  [${ok ? "PASS" : "FAIL"}] up-move ritual: ${label} -> ${got} problem(s)`);
   }
 
-  // PER-FILE classifier (panel: the only guard on the 150k harness limit had ZERO arms —
+  // PER-FILE classifier (the only guard on the 150k harness limit had ZERO arms —
   // effectively deletable while the suite stayed green).
   const pfCases = [
     ["over the harness limit -> block", PER_FILE_BLOCK_CHARS + 1, "block"],
@@ -1652,6 +1704,32 @@ function selfTest() {
     console.log(`  [${got ? "PASS" : "FAIL"}] traps-plane: ${label}`);
   }
 
+  // CARRY-WINDOW arm: one fixture over the line, one under, the boundary, and a fenced
+  // heading that must not be named.
+  const pad = (n) => "x".repeat(n);
+  const overText = `---\nname: t\n---\n## First\n${pad(9_000)}\n## Second\n${pad(2_000)}\n\`\`\`\n## quoted in a fence\n\`\`\`\n${pad(15_000)}\n## Past the cut\n`;
+  const carryCases = [
+    ["a SKILL.md over the line names the heading the cut falls under", carryCutHeading(overText)?.heading === "## Second"],
+    ["and reports its size in UTF-16 units", carryCutHeading(overText)?.chars === overText.length],
+    ["a SKILL.md under the line is not reported", carryCutHeading(`## Only\n${pad(19_000)}`) === null],
+    ["exactly CARRY_WARN_CHARS is not over the line", carryCutHeading(pad(CARRY_WARN_CHARS)) === null],
+    ["the line is counted in UTF-16 units, not code points (21,005 units, 10,505 code points: over)",
+      carryCutHeading(`## A\n${"\u{1F600}".repeat(10_500)}`)?.chars === 21_005],
+    // "## B" starts at unit 22,007 and code point 17,007: a unit cut names "## A", a code-point cut "## B".
+    ["and the CUT is placed in UTF-16 units (5,000 emoji before a heading move it 5,000 units past the cut)",
+      carryCutHeading(`## A\n${"\u{1F600}".repeat(5_000)}\n${pad(12_000)}\n## B\n${pad(10_000)}`)?.heading === "## A"],
+    // "## B" starts at unit 19,996, so its "## " sits inside a 20,000-unit cut and outside a 19,998 one.
+    ["and the cut is 20,000 units (a heading starting at unit 19,996 is named)",
+      carryCutHeading(`## A\n${pad(19_990)}\n## B\n${pad(1_000)}`)?.heading === "## B"],
+    // and no more: "## B" starts at unit 19,998, so its "## " is complete only in a cut of 20,001 or more.
+    ["and the cut is no more than 20,000 units (a heading starting at unit 19,998 is not named)",
+      carryCutHeading(`## A\n${pad(19_992)}\n## B\n${pad(1_000)}`)?.heading === "## A"],
+  ];
+  for (const [label, got] of carryCases) {
+    if (!got) fail++;
+    console.log(`  [${got ? "PASS" : "FAIL"}] carry-window: ${label}`);
+  }
+
   // ⛔ HAND-MAINTAINED SUM — add your array here or your arms RUN AND GO UNCOUNTED. Measured
   // 2026-09-13: ten new arms printed PASS while this total stayed at 78, so the headline number
   // was identical before and after, which is exactly the declared-count failure the rules corpus
@@ -1659,7 +1737,7 @@ function selfTest() {
   const n = cases.length + gateCases.length + ratchetCases.length + dirCases.length + 1
     + glCases.length + prCases.length + pfCases.length + setCases.length + scopeCases.length + floorCases.length
     + deliveredArms + planeCases.length + renderCases.length
-    + pfGateCases.length + enfCases.length + govCases.length + trapsCases.length + 2;
+    + pfGateCases.length + enfCases.length + govCases.length + trapsCases.length + carryCases.length + 2;
   console.log(fail ? `FAILED: ${fail} failure(s)` : `OK: ${n} pass / 0 fail`);
   return fail ? 1 : 0;
 }
@@ -1852,7 +1930,13 @@ for (const [path, chars, enf] of perFile || []) {
   // A SKILL.md is delivered WHOLE by the skill mechanism (perFileEnforcement's comment), so for it the
   // line is a growth signal; calling it the "harness limit" sold a split on a limit that does not bind it.
   const limitLabel = /^\.claude\/skills\/[^/]+\/SKILL\.md$/.test(path) ? "growth line, not a delivery limit" : "harness limit";
-  console.log(`  per-file ${lvl.toUpperCase()}: ${path} — ${chars} chars (warn ${PER_FILE_WARN_CHARS} · ${limitLabel} ${PER_FILE_BLOCK_CHARS})${tier}`);
+  console.log(`  per-file ${lvl.toUpperCase()}: ${path} — ${chars} UTF-16 units (warn ${PER_FILE_WARN_CHARS} · ${limitLabel} ${PER_FILE_BLOCK_CHARS})${tier}`);
+}
+// CARRY-WINDOW report: warn-mode, never in the exit code (see carryCutHeading).
+const carry = carryWindowOffenders();
+if (carry.length) {
+  console.log(`  carry-window WARN (worktree, not HEAD — a skill is read from disk): ${carry.length} SKILL.md file(s) over ${CARRY_WARN_CHARS} UTF-16 units — after a compaction only about the first ${CARRY_CUT_CHARS} are carried; the cut falls under:`);
+  for (const c of carry) console.log(`     ${c.path} (${c.chars} UTF-16 units): ${c.heading}`);
 }
 const perFileGate = perFileGateDecision(perFile, perFileBase);
 const perFileBlock = perFileGate.block;
@@ -1860,7 +1944,7 @@ if ((perFile || []).some(([, chars, enf]) => classifyPerFile(chars) === "block" 
   console.log(`  per-file gate: ${perFileBlock ? "BLOCK" : "ALLOW"} — ${perFileGate.why} (baseline: ${baseRef ?? "unresolved"})`);
 }
 if (perFileBlock) {
-  console.log(`     The harness silently degrades an always-loaded file past ${PER_FILE_BLOCK_CHARS} chars, and the band total cannot see it.`);
+  console.log(`     The harness silently degrades an always-loaded file past ${PER_FILE_BLOCK_CHARS} UTF-16 units, and the band total cannot see it.`);
   // The archive is named by its role, not by a path: its directory was renamed SIXTEEN MINUTES after
   // this line first shipped. A remediation string is the
   // one kind of stale pointer that gets FOLLOWED — an operator meets it mid-block and would create a

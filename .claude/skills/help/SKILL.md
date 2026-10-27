@@ -36,10 +36,10 @@ In a local terminal session this project skill replaces Claude Code's own `/help
 | **sessions** | Several sessions on one branch | `/peers`, `/board`, `/mail`, `/review-hub`, `/review-queue` |
 | **experts** | Consult or build with expert agents | `/expert-review` (also `/panel`), `/agent-work`, `/limit-recovery` |
 | **audit** | Checks before calling work done | `/audit-check`, `/sanity-check`, `/test-gap`, `/sniff-test`, `/fix`, `/verify` |
-| **release** | Ship the working branch | `/deploy-check`, `/push`, `/promote` |
+| **release** | Ship the working branch | `/push`, `/promote` |
 | **planning** | What to do next | `/backlog`, `/ideas`, `/triggers` |
 | **registers** | Status readouts over registers the project keeps | `/features`, `/surfaces`, `/ops`, `/launch`, `/flows` |
-| **system** | The agent system itself | `/meta`, `/me`, `/session-memory`, `/decisions`, `/observations`, `/help` |
+| **system** | The agent system itself | `/meta`, `/me`, `/session-memory`, `/decisions`, `/meta observations`, `/help` |
 
 > Tip: when in doubt at session start, type `/orient`; mid-session, `/summary`; at session end, `/wrap`.
 
@@ -83,7 +83,6 @@ In a local terminal session this project skill replaces Claude Code's own `/help
 
 ### `release`
 
-- **`/deploy-check`** — Types, tests, migrations, environment settings and known blockers before a production push.
 - **`/push`** — Push the working branch so the staging build rebuilds.
 - **`/promote`** — Ship the working branch to production by pull request, merged only on your explicit word (or on your advance go for that head, once CI and every other iron rule 1b condition read clean).
 
@@ -103,7 +102,7 @@ In a local terminal session this project skill replaces Claude Code's own `/help
 - **`/me`** — What the system has recorded about your working preferences.
 - **`/session-memory`** — Capture the session's decisions in memory before the wrap.
 - **`/decisions`** — Keep the human-readable decisions log: add, promote or audit an entry; the wrap sweeps it at step 3a.
-- **`/observations`** — A narrative read of where the system keeps tripping up and what to fix next.
+- **`/meta observations`** — A narrative read of where the system keeps tripping up and what to fix next (the former `/observations`, merged into `/meta`; the old name is a stub for one release).
 - **`.claude/docs/architecture.md`** — 11-lecture system architecture reference. Read this when onboarding or planning major changes to `.claude/`.
 - **`.claude/docs/state.md`** — companion to architecture.md: current health + the numbered known failure modes. Read this when diagnosing a recurring problem or reviewing system fragility.
 

@@ -1,11 +1,17 @@
 {
   "env": {
     "SKIP_BAND_O_INJECT": "1",
-    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1"
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
+    "THIS_TURN_CLAIM_MODE": "block",
+    "FF_AGENT_MEMGUARD_THRESHOLD_GB": "30"
   },
   "worktree": {
     "baseRef": "head",
-    "symlinkDirectories": ["node_modules", ".claude/state", ".claude/logs"]
+    "symlinkDirectories": [
+      "node_modules",
+      ".claude/state",
+      ".claude/logs"
+    ]
   },
   "permissions": {
     "allow": [
@@ -418,6 +424,15 @@
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/hooks/auto-precompact-trigger.py\" || exit 1"
           }
         ]
+      },
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/hooks/decisions-archive-zero-hit.py\" || exit 0"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -434,6 +449,14 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/hooks/lib/run-advisory.sh\" \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/hooks/mail-relay-staleness-warn.sh\" || { r=$?; [ $r -eq 2 ] && r=1; exit $r; }"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/hooks/this-turn-claim-warn.py\" || exit 1"
           }
         ]
       }
@@ -492,6 +515,10 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/hooks/lib/run-advisory.sh\" \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/hooks/band-o-inject.sh\" 3 || { r=$?; [ $r -eq 2 ] && r=1; exit $r; }"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/hooks/this-turn-claim-warn.py\" || exit 1"
           }
         ]
       }

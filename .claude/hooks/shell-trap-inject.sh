@@ -333,6 +333,19 @@ PY
   if [ ! -e "$_dd5/shell-traps-seen-oldsid.txt" ] && [ -e "$_dd5/shell-traps-seen-livesid.txt" ] && [ -e "$_dd5/unrelated-old.txt" ]; then
     echo "  [PASS] compact-save.sh: the pruner removes a 49h seen-file and keeps a 47h one and a 49h non-seen-file"
   else echo "  [FAIL] compact-save.sh: pruner scope wrong (old=$([ -e "$_dd5/shell-traps-seen-oldsid.txt" ] && echo y || echo n) young=$([ -e "$_dd5/shell-traps-seen-livesid.txt" ] && echo y || echo n) unrelated=$([ -e "$_dd5/unrelated-old.txt" ] && echo y || echo n))"; fail=$((fail+1)); fi
+  # ⛔ RANKING-ORDER ARM. The sort below is the only thing that decides which rules survive the caps, and
+  # no arm above pins it: reversing it or deleting it left all of them green. A two-entry
+  # fixture table whose SHORTER key is listed first, and one command that matches both: the longer key's
+  # body must come first. Each wrong order reads SHORT-FIRST; a missing body reads VOID, never a pass.
+  _fx="$(mktemp -d)"; mkdir -p "$_fx/.claude/traps"
+  printf '<!-- TRAP keys: zq -->\nSHORTKEY-BODY\n<!-- TRAP keys: zqzq-longer -->\nLONGKEY-BODY\n' > "$_fx/.claude/traps/shell-traps.md"
+  _ord="$(printf '%s' '{"tool_input":{"command":"zqzq-longer"}}' | CLAUDE_PROJECT_DIR="$_fx" bash "$SELF" 2>/dev/null | python3 -c 'import sys,json
+c = json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"]
+a, b = c.find("LONGKEY-BODY"), c.find("SHORTKEY-BODY")
+print("ORDER=" + ("VOID" if a < 0 or b < 0 else "LONG-FIRST" if a < b else "SHORT-FIRST"))' 2>/dev/null)"
+  rm -rf "$_fx"
+  if [ "$_ord" = "ORDER=LONG-FIRST" ]; then echo "  [PASS] ranking: the longer matched key is delivered first"
+  else echo "  [FAIL] ranking: longest-key-first order not held (${_ord:-no output})"; fail=$((fail+1)); fi
   rm -rf "$_dd" "$_dd2" "$_dd3" "$_dd4" "$_dd5" "$_sf"
   [ "$fail" = 0 ] && { echo "OK: self-test clean"; exit 0; } || { echo "FAILED: $fail"; exit 1; }
 fi
@@ -475,9 +488,6 @@ try:
     # document clamp exists: at CAP 10000 the p95 BODY total alone was 9,579 B, before header and
     # separators, against a 10,000-char ceiling. The old note "it stops paying after 10000" was
     # reasoning about delivery only, with no term for the spill.
-    # It stops paying after 10000 — 12000 buys 4.5 more points
-    # for another 163 B of average payload, and removing the cap buys 3 more. Average delivery
-    # goes 4,034 -> 4,944 B, p95 5,933 -> 9,416 B.
     # ⚠️ AND THE ARGUMENT I USED TWICE AGAINST RAISING IT WAS OVER-READ. I cited "the more a guard
     # has to say, the less the model hears" as if it were a dose-response measurement on volume.
     # It is not: it is a GLOSS on the two-documents-deliver-neither finding, which is about stdout
@@ -493,7 +503,9 @@ try:
     # 28 spilled shell-trap payloads across FIVE sessions, 10,140-11,154 B, zero before the raise.
     # 9000 leaves room for the framing; `MAX_DOC` below is the thing that actually binds.
     CAP, MAX_RULES, out, used = 9000, 25, [], 0
-    # ⛔ RANKING IS BY KEY LENGTH = SPECIFICITY, AND SEVERITY-FIRST WAS MEASURED AND REJECTED
+    # ⛔ RANKING IS BY THE LENGTH OF THE FIRST KEY IN THE ENTRY HEADER THAT MATCHED, NOT THE LONGEST: the
+    # match loop above breaks on the first hit, so header order decides between the keys of one entry; 56 of 117
+    # headers do not list them longest-first. AND SEVERITY-FIRST WAS MEASURED AND REJECTED
     # (2026-09-21). The obvious fix for "a load-bearing trap loses to a chatty one" is to sort the
     # ⛔-marked entries first. DO NOT: that marker is a FORMAT artifact here, not a severity signal.
     # Measured over all 93 entries — every one of the 45 ⛔ entries is a `-` BULLET, and all 30
@@ -508,7 +520,8 @@ try:
     # entry happens to be formatted — and its summary statistics look like a win: worst-starved
     # rule 72.5% -> 88.4% delivery, rules below 80% 1 -> 0, median 99.4% -> 100%, mean 97.8% -> 98.8%.
     # ⭐ IT LOSES ON THE ONLY READING THAT MATTERS, AND THE SUMMARY IS WHAT HID IT. Simulator
-    # validated 70/70 byte-identical against this hook, over 5,237 real peer commands:
+    # validated 70/70 byte-identical against this hook AS IT STOOD AT (CAP 10000, no
+    # per-context dedupe, no MAX_DOC; the simulator is not on disk), over 5,237 real peer commands:
     #   - TOTAL rule-deliveries 30,043 -> 29,914. It delivers 129 FEWER rules, not more.
     #   - The whole apparent gain is ONE entry: the `grep -E` alternation false-zero, +234.
     #   - The losses land on the three entries this corpus NAMES as load-bearing, the same three
@@ -519,6 +532,9 @@ try:
     # tenth of their deliveries. ⚠️ READ WHICH ENTRIES MOVE AND IN WHICH DIRECTION, never the spread.
     # It would also have cost a per-key frequency baked into the table — a generated number with no
     # regeneration trigger, i.e. the drift defect this file was corrected for earlier the same day.
+    # ⚠️ DATED: the rarity figures above were measured — CAP 10000, MAX_RULES 25, 94 entries,
+    # every match delivered on every command (before the once-per-context dedupe and the MAX_DOC clamp).
+    # All of those have moved; re-run the simulator against THIS hook before citing them as its property.
     dropped = []
     for k, body in hits:
         if len(out) >= MAX_RULES:

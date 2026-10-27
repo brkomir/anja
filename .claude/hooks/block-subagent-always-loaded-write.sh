@@ -44,8 +44,10 @@
 #   extracted below, so neither shape can slip past.
 #
 # Bypass (for legitimate ORCHESTRATOR rule edits — folding a lesson, a codification, a sweep):
-#   touch /tmp/claude-always-loaded-allow    # before the batch
-#   rm -f /tmp/claude-always-loaded-allow    # after
+#   touch /tmp/claude-always-loaded-allow.$CLAUDE_CODE_SESSION_ID    # before the batch (the full id)
+#   rm -f /tmp/claude-always-loaded-allow.$CLAUDE_CODE_SESSION_ID    # after
+#   If the auto-mode classifier DENIES the touch, do NOT create the marker another way (Write, Edit, any other command) -- that routes around a safety control. Ask the owner to run the touch with the literal id; the deny prints it.
+#   The marker is PER SESSION since 2026-10-25: it opens the guard for the session whose payload session_id it names, and only until its mtime is 15 min old (FF_ALWAYS_LOADED_ALLOW_TTL_SEC, default 900; 0 = no expiry). The bare /tmp/claude-always-loaded-allow opens nothing.
 #   The marker is a DELIBERATE ACT, which is the whole point: it converts an always-loaded
 #   write from something that can happen by reflex into something someone chose.
 #
@@ -219,16 +221,20 @@ sys.exit(0 if r is None else 1)' "$canon" "$ROOT" 2>/dev/null; then
 # sub-agent it dispatches, which is the party the guard exists for. That made the guard's real
 # coverage "100% minus however long somebody left it up", and nobody was measuring the second
 # term. One seat armed and removed it three times in a single session.
-# A TTL turns "forgot to rm" from an indefinite fleet-wide hole into a bounded one. It does NOT
-# fix ownership — any seat can still take the marker and it still covers every seat; per-session
-# scoping is the stronger fix and needs every caller to pass a session id, which this is not.
+# A TTL turns "forgot to rm" from an indefinite fleet-wide hole into a bounded one. It did NOT
+# fix ownership; the per-session marker below (2026-10-25) does: each seat now has its own door.
 # Default 15 min: an edit batch is minutes, and a too-short TTL denies an author mid-batch,
 # which is how a guard teaches people to work around it.
 # ⛔ FAIL-CLOSED ON AN UNREADABLE mtime: if stat cannot answer, the marker does NOT count as
 # live and the guard stays ON. `stat -f %m` is BSD/macOS, `stat -c %Y` is GNU/CI — measured here:
 # the BSD form works, the GNU form is UNSUPPORTED, so both are tried.
 marker_live() {
-  local m="${FF_ALWAYS_LOADED_ALLOW_MARKER:-/tmp/claude-always-loaded-allow}"
+  local m
+  if [ -n "${FF_ALWAYS_LOADED_ALLOW_MARKER:-}" ]; then
+    m="$FF_ALWAYS_LOADED_ALLOW_MARKER"       # exact path: the smoke suite's per-process seam
+  else
+    m=$(_al_session_marker) || return 1      # no usable session_id in the payload = no door
+  fi
   [ -f "$m" ] || return 1
   # A SUB-AGENT NEVER HOLDS THE ESCAPE (after cosmix/loom's hook exemptions). Only a
   # sub-agent's payload carries a top-level "agent_id" (commit-doctrine-inject.sh, keep-warm-tool-deny.sh,
@@ -316,6 +322,21 @@ marker_live() {
 _al_payload_field() {
   printf '%s' "${INPUT:-}" | grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | sed 's/.*"\([^"]*\)"$/\1/'
 }
+# ── THE MARKER IS PER SESSION (2026-10-25)
+# One file, /tmp/claude-always-loaded-allow, used to open this guard for EVERY main session on the machine
+# for its 15 minutes. The door is now /tmp/claude-always-loaded-allow.<session_id>, keyed on THIS call's
+# payload session_id (the full UUID the harness writes; the fires log records it), so one seat's opening
+# covers that seat alone, and the bare shared file opens nothing. The id is held to lowercase hex and '-' (the
+# harness's UUID shape) before it becomes part of a path, so a payload cannot aim the test at another file, and an
+# upper-case alias cannot reach a lowercase door on case-insensitive /tmp; content cannot forge the key
+# (JSON escapes every in-string quote). FF_ALWAYS_LOADED_ALLOW_PREFIX moves the base for tests;
+# FF_ALWAYS_LOADED_ALLOW_MARKER, when set, is still the exact path (the smoke suite seam since 2026-08-16).
+AL_MARKER_PREFIX="${FF_ALWAYS_LOADED_ALLOW_PREFIX:-/tmp/claude-always-loaded-allow}"
+_al_session_marker() {
+  local sid; sid=$(_al_payload_field session_id)
+  case "$sid" in ''|*[!abcdef0123456789-]*) return 1 ;; esac   # explicit set: no locale range, no case alias on APFS
+  printf '%s.%s' "$AL_MARKER_PREFIX" "$sid"
+}
 # REFUSE-ONLY sub-agent test: the KEY's presence, any value, anywhere — so "", null, a number, a
 # pretty-printed payload or a key order that puts tool_input first all refuse. Content cannot forge it
 # (JSON writes every in-string quote as \"), and a forged key could only refuse, never grant.
@@ -349,7 +370,13 @@ EOF
 
 # The instruction half of the deny reason — identical in both branches so a caller who hits the
 # fail-closed path is told exactly what a caller who hits the precise path is told.
-WHAT_TO_DO="If you are a SUB-AGENT: do not write it. Put the proposed wording in your structured response (the '### Recommendation' / '### Memory Update' section) naming the target file and the exact text — the orchestrator holds the session context needed to judge whether it contradicts a ruling you cannot see, and applies it. If you are the ORCHESTRATOR making a deliberate rule edit: create /tmp/claude-always-loaded-allow before the batch, then rm -f it after. USE THE Write TOOL to create it, not Bash 'touch' — the auto-mode classifier DENIES that touch (measured bare AND compound, 2026-08-19 and 2026-08-26); Write is the sanctioned agent-side route, same step, different verb. A seat that hits the touch denial and has not been told this invents a policy instead: it has happened 6 times, most recently as 'the owner is the intended operator'. Blocking everyone is not an oversight — CLAUDE_CODE_CHILD_SESSION is '1' for the orchestrator too, so no env var can tell the two apart; the marker is the orchestrator's door, and a call carrying agent_id (a sub-agent) is refused it."
+# The door printed is THIS session's own, read from the payload; with no usable session_id the deny names
+# the shape instead, since no file would open the guard for such a call.
+AL_DOOR=$(_al_session_marker) || AL_DOOR="/tmp/claude-always-loaded-allow.<your full session id> (this call carried no usable session_id, so no marker opens it)"
+# Spliced into the deny JSON below, so strip anything that could break the document: a quote in an env-set prefix
+# would otherwise give rc 0 with unparseable JSON, which the harness reads as an allow.
+AL_DOOR=$(printf '%s' "$AL_DOOR" | tr -cd 'A-Za-z0-9._/ <>(),-')
+WHAT_TO_DO="If you are a SUB-AGENT: do not write it. Put the proposed wording in your structured response (the '### Recommendation' / '### Memory Update' section) naming the target file and the exact text — the orchestrator holds the session context needed to judge whether it contradicts a ruling you cannot see, and applies it. If you are the ORCHESTRATOR making a deliberate rule edit: create $AL_DOOR before the batch, then rm -f it after. That file is this session's own door; it opens nothing for any other session, and the bare /tmp/claude-always-loaded-allow no longer opens anything. If the auto-mode classifier denies that touch, do not create the marker with Write, Edit or any other command: that is routing around a safety control. Ask the owner to run ! touch $AL_DOOR himself. Blocking everyone is not an oversight — CLAUDE_CODE_CHILD_SESSION is '1' for the orchestrator too, so no env var can tell the two apart; the marker is the orchestrator's door, and a call carrying agent_id (a sub-agent) is refused it."
 
 # A SUB-AGENT IS TOLD ONLY ITS OWN ROUTE. marker_live refuses it the escape, so printing the recipe to it
 # is the deny-prints-its-own-bypass anti-pattern and a
@@ -639,6 +666,14 @@ EOF
 if [ -z "$HIT" ] && _al_is_subagent && printf '%s' "${PATHS:-}" | grep -qE '(^|/)(\.claude/hooks/|\.claude/settings(\.local)?\.json$|\.githooks/)'; then
   ( fires_log() { :; }; . "$(dirname "${BASH_SOURCE[0]}")/lib/fires-log.sh"
     fires_log subagent-gate-file-write sid "$(_al_payload_field session_id)" agent_id "$(_al_payload_field agent_id)" arm observe tool "${TOOL:-}" paths "${PATHS:-}" ) >/dev/null 2>&1 || true
+fi
+# A WRITE TOOL NEVER CREATES A DOOR (2026-10-25): the door is a touch the classifier
+# allowed or the owner's ! touch, and a Write/Edit/MultiEdit of it is the route the rules forbid after a denial. Basename, any case.
+AL_MARKER_BASE=$(basename "$AL_MARKER_PREFIX")
+# grep -i folds ASCII only; APFS also folds U+017F (long s) to s, so a casefolded copy is tested as well.
+_al_names_door() { grep -qiE "(^|/)${AL_MARKER_BASE}([.][^/]*)?$"; }
+if [ -z "$HIT" ] && { printf '%s\n' "${PATHS:-}" | _al_names_door || printf '%s\n' "${PATHS:-}" | python3 -c 'import sys; sys.stdout.write(sys.stdin.buffer.read().decode("utf-8", "replace").casefold())' 2>/dev/null | _al_names_door; }; then
+  deny "ALWAYS-LOADED write guard: this call writes the bypass marker of this guard with a file tool. A door is opened only by a touch the classifier allows, or by the owner. $WHAT_TO_DO" marker-write-tool
 fi
 [ -z "$HIT" ] && exit 0
 

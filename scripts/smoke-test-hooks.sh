@@ -686,6 +686,9 @@ assert_contains "FIRE Edit on .claude/rules/*.md → deny" "$out" '"permissionDe
 assert_contains "FIRE deny names the guard" "$out" "ALWAYS-LOADED write guard"
 assert_contains "FIRE deny tells a SUB-AGENT what to do instead" "$out" "Recommendation"
 assert_contains "FIRE deny tells the ORCHESTRATOR the escape" "$out" "/tmp/claude-always-loaded-allow"
+assert_contains "FIRE deny forbids making the marker another way on a classifier denial" "$out" "do not create the marker with Write, Edit or any other command"
+assert_contains "FIRE deny hands a classifier-denied touch to the owner" "$out" "Ask the owner to run ! touch" # stops before the path: this suite refuses a "touch <live marker>" literal in its own source
+assert_not_contains "FIRE deny no longer prescribes the Write tool as the marker route" "$out" "USE THE Write TOOL"
 sout=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$REPO_ROOT"'/.claude/rules/security.md","old_string":"a","new_string":"b"}}' | bash "$ALW" 2>/dev/null)
 assert_one_json_doc "PARSE: block-subagent-always-loaded-write.sh Edit deny arm → ONE parseable hookSpecificOutput doc, the orchestrator escape path survives" "$sout" '/tmp/claude-always-loaded-allow'
 out=$(echo '{"tool_name":"Write","tool_input":{"file_path":"CLAUDE.md","content":"x"}}' | bash "$ALW")
@@ -959,6 +962,53 @@ rm -f "$FF_ALWAYS_LOADED_ALLOW_MARKER"
 # the rest of the run, turning every later SAFE arm into a corpse-certifier.
 out=$(echo '{"tool_name":"Edit","tool_input":{"file_path":".claude/rules/security.md","old_string":"a","new_string":"b"}}' | bash "$ALW")
 assert_contains "marker removed → guard live again (escape does not leak)" "$out" '"permissionDecision": "deny"'
+# ── PER-SESSION DOOR (2026-10-25). With FF_ALWAYS_LOADED_ALLOW_MARKER unset the
+# door is <prefix>.<payload session_id>; FF_ALWAYS_LOADED_ALLOW_PREFIX moves the prefix to a temp path, so no arm touches
+# the live one. Mutation matrix 2026-10-25, detached worktree, this section 373/0 unmutated: the door put back to the
+# bare prefix → 4 red when _al_session_marker prints it, 6 when marker_live checks it directly; the session-id charset check removed → 1 red (the planted-path arm); the file-tool door deny
+# removed → 3 red. (This comment once said 2 for the first mutant; 3 was measured there.) The B arm
+# is for the other wrong door, one that opens for a file of any session id.
+_alw_ps_pfx="$(mktemp -u)"; _alw_ps_a="aaaa1111-0000-4000-8000-$(printf '%012d' 1)"; _alw_ps_b="bbbb2222-0000-4000-8000-$(printf '%012d' 2)"
+_alw_ps() { printf '{"session_id":"%s"%s,"tool_name":"Edit","tool_input":{"file_path":".claude/rules/copy.md","old_string":"a","new_string":"b"}}' "$1" "${2:-}" | env -u FF_ALWAYS_LOADED_ALLOW_MARKER FF_ALWAYS_LOADED_ALLOW_PREFIX="$_alw_ps_pfx" bash "$ALW" 2>/dev/null; }
+touch "$_alw_ps_pfx.$_alw_ps_a"
+assert_empty "PER-SESSION: session A's door opens the guard for session A" "$(_alw_ps "$_alw_ps_a")"
+assert_contains "PER-SESSION: session A's door does NOT open it for session B" "$(_alw_ps "$_alw_ps_b")" '"permissionDecision": "deny"'
+assert_contains "PER-SESSION: a sub-agent of session A is still refused at A's door" "$(_alw_ps "$_alw_ps_a" ',"agent_id":"a1"')" '"permissionDecision": "deny"'
+# The odd-id arm has to be able to fail, so it plants a real file at the path an unsanitised id would build
+# (<prefix>.x/../<prefix base>.<A>): with the lowercase-hex check gone the guard opens instead of denying for want of a file.
+mkdir -p "$_alw_ps_pfx.x"
+assert_contains "PER-SESSION: a session_id outside lowercase hex and - opens nothing (no path is built from it)" "$(_alw_ps "x/../${_alw_ps_pfx##*/}.$_alw_ps_a")" '"permissionDecision": "deny"'
+rmdir "$_alw_ps_pfx.x"
+# The TTL and the future-mtime clamp run on the per-session door as well, not only on the exact-path seam.
+touch -t 202001010000 "$_alw_ps_pfx.$_alw_ps_a"
+assert_contains "PER-SESSION: an expired per-session door opens nothing" "$(_alw_ps "$_alw_ps_a")" '"permissionDecision": "deny"'
+touch -t 203001010000 "$_alw_ps_pfx.$_alw_ps_a"
+assert_contains "PER-SESSION: a future-dated per-session door opens nothing" "$(_alw_ps "$_alw_ps_a")" '"permissionDecision": "deny"'
+rm -f "$_alw_ps_pfx.$_alw_ps_a"; touch "$_alw_ps_pfx"
+assert_contains "PER-SESSION: the bare shared file (prefix, no session id) opens nothing" "$(_alw_ps "$_alw_ps_a")" '"permissionDecision": "deny"'
+# No transition window: with the bare file present, a call with no session_id, or an odd one, is still denied.
+assert_contains "PER-SESSION: the bare file opens nothing for a call with no session_id" "$(printf '{"tool_name":"Edit","tool_input":{"file_path":".claude/rules/copy.md","old_string":"a","new_string":"b"}}' | env -u FF_ALWAYS_LOADED_ALLOW_MARKER FF_ALWAYS_LOADED_ALLOW_PREFIX="$_alw_ps_pfx" bash "$ALW" 2>/dev/null)" '"permissionDecision": "deny"'
+assert_contains "PER-SESSION: the bare file opens nothing for a call with an odd session_id" "$(_alw_ps '../x')" '"permissionDecision": "deny"'
+assert_contains "PER-SESSION: the deny prints the calling session's own door" "$(_alw_ps "$_alw_ps_b")" "$_alw_ps_pfx.$_alw_ps_b before the batch"
+assert_contains "PER-SESSION: the owner hand-off names the calling session's own door" "$(_alw_ps "$_alw_ps_b")" "! touch $_alw_ps_pfx.$_alw_ps_b himself"
+# A file tool never creates a door: Write, MultiEdit, and an upper-case spelling of the caller's own door
+# all deny; a look-alike file beside it is untouched.
+_alw_pw() { python3 -c 'import json,sys; t=sys.argv[1]; p=sys.argv[2]; ti={"file_path":p,"content":""} if t=="Write" else {"file_path":"src/a.ts","edits":[{"file_path":p,"old_string":"a","new_string":"b"}]}; print(json.dumps({"session_id":sys.argv[3],"tool_name":t,"tool_input":ti}))' "$1" "$2" "$_alw_ps_b" | env -u FF_ALWAYS_LOADED_ALLOW_MARKER FF_ALWAYS_LOADED_ALLOW_PREFIX="$_alw_ps_pfx" bash "$ALW" 2>/dev/null; }
+assert_contains "PER-SESSION: a Write of the caller's own door → deny (a file tool never opens it)" "$(_alw_pw Write "$_alw_ps_pfx.$_alw_ps_b")" '"permissionDecision": "deny"'
+assert_contains "PER-SESSION: a MultiEdit whose edits[] name the door → deny" "$(_alw_pw MultiEdit "$_alw_ps_pfx.$_alw_ps_b")" '"permissionDecision": "deny"'
+assert_contains "PER-SESSION: an upper-case spelling of the door → deny (case-insensitive /tmp)" "$(_alw_pw Write "$(printf '%s' "$_alw_ps_pfx.$_alw_ps_b" | tr 'a-z' 'A-Z')")" '"permissionDecision": "deny"'
+assert_empty "PER-SESSION: a look-alike file beside the door (<prefix>-notes.md) → silent" "$(_alw_pw Write "$_alw_ps_pfx-notes.md")"
+# An upper-case alias of A's id opens nothing, even with a file of that exact spelling present.
+_alw_ps_up=$(printf '%s' "$_alw_ps_a" | tr 'a-f' 'A-F'); touch "$_alw_ps_pfx.$_alw_ps_up"
+assert_contains "PER-SESSION: an upper-case session_id opens nothing, even with its own file present (lowercase hex only)" "$(_alw_ps "$_alw_ps_up")" '"permissionDecision": "deny"'
+rm -f "$_alw_ps_pfx.$_alw_ps_up"
+# A quote or a backslash in an env-set prefix cannot break the deny document.
+assert_one_json_doc "PER-SESSION: a quote and a backslash in the prefix still give one parseable deny" "$(printf '{"session_id":"%s","tool_name":"Edit","tool_input":{"file_path":".claude/rules/copy.md","old_string":"a","new_string":"b"}}' "$_alw_ps_b" | env -u FF_ALWAYS_LOADED_ALLOW_MARKER FF_ALWAYS_LOADED_ALLOW_PREFIX="$_alw_ps_pfx\"q\\q" bash "$ALW" 2>/dev/null)" 'deny'
+# APFS folds U+017F (long s) to s, so that spelling of the door names the same file; grep -i folds ASCII only.
+_alw_ls=$(printf '\305\277')
+assert_contains "PER-SESSION: a long-s (U+017F) spelling of the door → deny (APFS folds it to s)" "$(python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[2],"tool_name":"Write","tool_input":{"file_path":sys.argv[1],"content":""}}))' "$_alw_ps_pfx-$_alw_ls.$_alw_ps_b" "$_alw_ps_b" | env -u FF_ALWAYS_LOADED_ALLOW_MARKER FF_ALWAYS_LOADED_ALLOW_PREFIX="$_alw_ps_pfx-s" bash "$ALW" 2>/dev/null)" '"permissionDecision": "deny"'
+assert_contains "PER-SESSION: a Write of the bare marker file (no suffix) → deny" "$(_alw_pw Write "$_alw_ps_pfx")" '"permissionDecision": "deny"'
+rm -f "$_alw_ps_pfx"
 # STATIC CHECK ON THE SUITE'S OWN SOURCE — replaces a runtime read of shared state.
 # The runtime version LATCHED VACUOUS, and worse than the bug it replaced. Branch order was:
 # fail if (present AND pre=0); elif pre=1 -> pass. The elif fired on pre=1 BEFORE any post-run
@@ -3377,10 +3427,18 @@ assert_contains "wiring pinned: MultiEdit matcher routes to always-loaded-claim-
 # assertion rides on the live index's current size.
 tmpmemroot=$(mktemp -d); tmpmem="$tmpmemroot/project-memory"; mkdir -p "$tmpmem"
 python3 -c "open('$tmpmem/MEMORY.md','w').write('x'*20000)"
-out=$(python3 -c "import json;print(json.dumps({'tool_name':'Write','tool_input':{'file_path':'$tmpmem/MEMORY.md','content':'x'*24000}}))" | CLAUDE_HOOK_SMOKE=1 bash .claude/hooks/check-memory-budget.sh 2>&1)
+out=$(python3 -c "import json;print(json.dumps({'tool_name':'Write','tool_input':{'file_path':'$tmpmem/MEMORY.md','content':'x'*24000}}))" | CLAUDE_HOOK_SMOKE=1 CLAUDE_PROJECT_DIR="$tmpmemroot" bash .claude/hooks/check-memory-budget.sh 2>&1)
 assert_contains "FIRE warn-band GROWTH (20KB→24KB, above band) → warns" "$out" 'MEMORY budget'
-out=$(python3 -c "import json;print(json.dumps({'tool_name':'Write','tool_input':{'file_path':'$tmpmem/MEMORY.md','content':'x'*19000}}))" | CLAUDE_HOOK_SMOKE=1 bash .claude/hooks/check-memory-budget.sh 2>&1)
+# WARNED LOG ROW: the warn above also writes ONE `WARNED` row to the
+# smoke log, keyed on this run's mktemp fixture path plus its cur/proj pair (never a before/after line count of a
+# shared log). CLAUDE_PROJECT_DIR is pinned to the fixture root, as the suite header requires of an arm that
+# asserts a record, so an exported CLAUDE_PROJECT_DIR cannot route the row to another tree's log. The SHRINK arm below must leave NO such row: the growth gate is what the log plane now measures.
+_wb_rows=$(grep -cF "WARNED Write $tmpmem/MEMORY.md cur=20000 proj=24000" "$tmpmemroot/.claude/logs/memory-budget-block.smoke.log" 2>/dev/null); _wb_rows=${_wb_rows:-0}
+assert_eq "FIRE warn-band GROWTH → ONE WARNED row (cur=20000 proj=24000) in memory-budget-block.smoke.log" "1" "$_wb_rows"
+out=$(python3 -c "import json;print(json.dumps({'tool_name':'Write','tool_input':{'file_path':'$tmpmem/MEMORY.md','content':'x'*19000}}))" | CLAUDE_HOOK_SMOKE=1 CLAUDE_PROJECT_DIR="$tmpmemroot" bash .claude/hooks/check-memory-budget.sh 2>&1)
 assert_empty "SAFE warn-band SHRINK (20KB→19KB, above band) → silent (growth-only)" "$out"
+_wb_rows=$(grep -cF "WARNED Write $tmpmem/MEMORY.md cur=20000 proj=19000" "$tmpmemroot/.claude/logs/memory-budget-block.smoke.log" 2>/dev/null); _wb_rows=${_wb_rows:-0}
+assert_eq "SAFE warn-band SHRINK → NO WARNED row (cur=20000 proj=19000) in the smoke log" "0" "$_wb_rows"
 rm -rf "$tmpmemroot"
 
 # --- ARM 2: skill-MEMORY no-growth ratchet (2026-08-01) ---
@@ -3867,7 +3925,7 @@ assert_tail_window_fits_band "FIRE read-guard: plan advised window FITS the band
 # this is the control that proves the arm is anchored on the DIRECTORY and not on the substring.
 # ⛔ THE FIXTURE MUST EXIST AND BE OVER-BAND, AND THAT IS THE WHOLE ARM. The first version passed a
 # BARE `src/plans.md`, which does not exist in this repo — and the hook's `[ -f "$FILE_PATH" ] || exit 0`
-# short-circuits BEFORE the case statement, so the arm was silent for a reason that has nothing
+# short-circuits AFTER the case statement classifies it and BEFORE anything fires, so the arm was silent for a reason that has nothing
 # to do with the glob. Measured 2026-09-13 by mutation: broadening the glob to `plans*.md|*/plans*.md`
 # left the whole suite at 1400 PASS / 0 FAIL — the control could not fail, which is the ELEVENTH
 # vacuous-control way (the mutation sat outside the predicate's field of view). Four direct arms with
@@ -6238,7 +6296,7 @@ assert_contains "pre-push empty stdin still exits 0 (a valid no-op push must not
   "$_ppe_empty" "rc=0"
 _ppe_head="$(git rev-parse HEAD)"
 _ppe_real="$(printf 'refs/heads/smoke-probe %s refs/heads/smoke-probe %s\n' "$_ppe_head" "$_ppe_head" \
-  | SKIP_PREPUSH_LOCK=1 SKIP_PREPUSH_SNAPSHOT=1 bash .githooks/pre-push origin . 2>&1; echo "rc=$?")"
+  | HOOK_SMOKE_EXEC=1 SKIP_PREPUSH_LOCK=1 SKIP_PREPUSH_SNAPSHOT=1 bash .githooks/pre-push origin . 2>&1; echo "rc=$?")"
 assert_not_contains "pre-push with a REAL ref range does NOT claim nothing was checked" \
   "$_ppe_real" "NOTHING WAS CHECKED"
 assert_contains "pre-push with a REAL ref range reaches its own gates (positive control)" \
@@ -8205,6 +8263,10 @@ assert_eq "COMPLEMENT: parked, unarmed → exactly ONE speaks (zero = a deaf sea
 : > "$_sb_x/.claude/state/mail-listen-armed-smk9stby"; rm -f "$_sb_x/.claude/state/session-standby-smk9stby"
 assert_eq "COMPLEMENT: armed, not parked → neither speaks" "0" "$(_sb_emits)"
 rm -rf "$_sb_x"
+# The pause branch (a resume in the owner's words while a pause marker stands)
+# has its own 45-arm test; it runs the hook under /bin/bash and logs only to the smoke log.
+_srp_out=$(python3 scripts/standby-resume-pause-test.py 2>&1); _srp_rc=$?
+assert_eq "pause resume-in-words: scripts/standby-resume-pause-test.py exits 0 (read its output on failure)" "0" "$_srp_rc"
 # session-lifecycle.py round trip — the SSOT derivation, isolated state dir, NO transcripts (so a finished
 # marker cannot be superseded and EXITED must win).
 _sb_lc="$(mktemp -d)"
@@ -9599,22 +9661,33 @@ assert_contains "FIRE reader surfaces pending marker" "$out" " PENDING"
 # TWO assertions, and the second is why this is not just a parse check: an over-eager "fix"
 # that STRIPS the quotes also produces valid JSON, and would silently corrupt the operator
 # prose the field exists to show a human. The round-trip is what forbids that.
-_fl_dir=$(mktemp -d /tmp/ff-firelog.XXXXXX)
-_fl_text='and run "plans/x.md" after \ done'
-printf 'compacted=T trigger=manual focus=yes focus_args=%s\n' "$_fl_text" > "$_fl_dir/post-compact-pending-flsmoke"
-printf '{"session_id":"flsmoke","prompt":"go"}' \
-  | COMPACT_STATE_DIR="$_fl_dir" bash "$REPO_ROOT/.claude/hooks/post-compact-pending-check.sh" >/dev/null 2>&1
-_fl_line=$(tail -1 "$REPO_ROOT/.claude/logs/post-compact-pending-fires.smoke.jsonl" 2>/dev/null)
-_fl_verdict=$(FL_TEXT="$_fl_text" printf '%s' "$_fl_line" | FL_TEXT="$_fl_text" python3 -c '
+# BOTH writers (the demand row and the deferred row), and the row is found by THIS arm's session id
+# with a before/after count, never `tail -1`: a hook that writes nothing must read NOROW, not the
+# previous arm's line. The tab is for the control-byte `tr`, which no other arm reaches.
+_fl_log="$REPO_ROOT/.claude/logs/post-compact-pending-fires.smoke.jsonl"
+_fl_check() { # <sid> <operator text> <deferred 0|1>  ->  ROUNDTRIP | LOSSY | UNPARSEABLE | NOROW
+  local d n0 n1 line; d=$(mktemp -d /tmp/ff-firelog.XXXXXX)
+  printf 'compacted=2026-01-01 00:00:00 UTC trigger=manual focus=yes focus_args=%s\n' "$2" > "$d/post-compact-pending-$1"
+  : > "$d/tx.jsonl"
+  [ "$3" = 1 ] && python3 scripts/post-compact-deferral.py decide --sid "$1" --state-dir "$d" --tx "$d/tx.jsonl" >/dev/null 2>&1
+  n0=$(grep -cF "\"session\":\"$1\"" "$_fl_log" 2>/dev/null); n0=${n0:-0}
+  printf '{"session_id":"%s","prompt":"go","transcript_path":"%s"}' "$1" "$d/tx.jsonl" \
+    | COMPACT_STATE_DIR="$d" bash "$REPO_ROOT/.claude/hooks/post-compact-pending-check.sh" >/dev/null 2>&1
+  n1=$(grep -cF "\"session\":\"$1\"" "$_fl_log" 2>/dev/null); n1=${n1:-0}
+  line=$(grep -F "\"session\":\"$1\"" "$_fl_log" 2>/dev/null | tail -1); rm -rf "$d"
+  [ "$n1" -eq $((n0 + 1)) ] || { echo NOROW; return; }
+  printf '%s' "$line" | FL_TEXT="$(printf '%s' "$2" | tr '\t' ' ')" FL_DEF="$3" python3 -c '
 import json, sys, os
 try:
     o = json.loads(sys.stdin.read())
 except Exception:
     print("UNPARSEABLE"); raise SystemExit
-print("ROUNDTRIP" if os.environ["FL_TEXT"] in o.get("marker", "") else "LOSSY")
-' 2>/dev/null)
-assert_eq "fire log stays valid JSON and preserves the operator's quotes verbatim" "ROUNDTRIP" "${_fl_verdict:-EMPTY}"
-rm -rf "$_fl_dir"
+ok = os.environ["FL_TEXT"] in o.get("marker", "") and bool(o.get("deferred")) == (os.environ["FL_DEF"] == "1")
+print("ROUNDTRIP" if ok else "LOSSY")' 2>/dev/null
+}
+_fl_text="$(printf 'and run "plans/x.md" after \\ done\tend')"
+assert_eq "fire log stays valid JSON and preserves the operator's quotes verbatim (demand row)" "ROUNDTRIP" "$(_fl_check flsmoke "$_fl_text" 0)"
+assert_eq "fire log stays valid JSON and preserves the operator's quotes verbatim (deferred row)" "ROUNDTRIP" "$(_fl_check flsmokedef "$_fl_text" 1)"
 
 # --- focus_args: the ARGUMENT, not just the boolean ---
 # These are ON DISK deliberately. The finding on that commit was that its six arms lived
@@ -9764,6 +9837,7 @@ assert_contains "FIRE reader re-fires on 3rd prompt" "$out3" " PENDING"
 : > "$PCP_DIR/smoketest-pcp.jsonl"
 python3 scripts/post-compact-deferral.py decide --sid smoketest-pcp --state-dir "$PCP_DIR" --tx "$PCP_DIR/smoketest-pcp.jsonl" >/dev/null 2>&1
 _pcp_payload() { printf '{"session_id":"smoketest-pcp","prompt":"%s","transcript_path":"%s"}' "$1" "$PCP_DIR/smoketest-pcp.jsonl"; }
+_pcp_dr0=$(grep -F '"session":"smoketest-pcp"' "$REPO_ROOT/.claude/logs/post-compact-pending-fires.smoke.jsonl" 2>/dev/null | grep -c -F '"deferred":true'); _pcp_dr0=${_pcp_dr0:-0}
 outd=$(_pcp_payload deferred | COMPACT_STATE_DIR="$PCP_DIR" bash .claude/hooks/post-compact-pending-check.sh 2>&1)
 assert_contains "DEFERRED reader prints the early-fire line once" "$outd" "no recovery is owed until one lands"
 assert_contains "DEFERRED reader names the trigger it read from the marker" "$outd" "(trigger: auto)"
@@ -9771,7 +9845,7 @@ case "$outd" in *" PENDING"*) fail "DEFERRED reader still printed the recovery d
 if grep -qF 'said=compacted=' "$PCP_DIR/post-compact-deferred-smoketest-pcp"; then pass "DEFERRED reader records said=<marker> in the breadcrumb"; else fail "DEFERRED reader left no said= line in the breadcrumb"; fi
 outd2=$(_pcp_payload deferred-again | COMPACT_STATE_DIR="$PCP_DIR" bash .claude/hooks/post-compact-pending-check.sh 2>&1)
 if [ -z "$outd2" ]; then pass "DEFERRED reader is silent on the next turn (said once per early fire)"; else fail "DEFERRED reader repeated its line on the next turn: $outd2"; fi
-_pcp_deferred_rows=$(grep -c -F '"deferred":true' "$REPO_ROOT/.claude/logs/post-compact-pending-fires.smoke.jsonl" 2>/dev/null); _pcp_deferred_rows=${_pcp_deferred_rows:-0}
+_pcp_deferred_rows=$(grep -F '"session":"smoketest-pcp"' "$REPO_ROOT/.claude/logs/post-compact-pending-fires.smoke.jsonl" 2>/dev/null | grep -c -F '"deferred":true'); _pcp_deferred_rows=$(( ${_pcp_deferred_rows:-0} - _pcp_dr0 ))
 if [ "$_pcp_deferred_rows" -ge 2 ]; then pass "silent DEFERRED turn still logs its deferred row ($_pcp_deferred_rows rows)"; else fail "silent DEFERRED turn did not log its row ($_pcp_deferred_rows rows)"; fi
 # A manual /compact refused at the session limit leaves the same marker: a changed marker is a new
 # fire, so the line is said again and names trigger=manual. A trigger hardcoded to "auto" passes the arm above.
@@ -10242,6 +10316,13 @@ if [ "$(uname)" = "Darwin" ]; then
   assert_one_json_doc "PARSE: agent-dispatch-memory-guard.sh deny arm → ONE parseable hookSpecificOutput doc, the flight-record path survives" "$sout" '.claude/logs/agent-dispatch-memory.jsonl'
   assert_empty "amg: SAFE — 2 GB fake pressure allows silently" \
     "$(printf '%s' '{"tool_name":"Agent","tool_input":{"description":"smoke"}}' | CLAUDE_HOOK_SMOKE=1 FF_AGENT_MEMGUARD_FAKE_PRESSURE_GB=2 bash "$REPO_ROOT/.claude/hooks/agent-dispatch-memory-guard.sh")"
+  # THE EDGES: 40 and 2 GB leave the default 24 and the strict `>` unpinned, so 24->39, 24->18 and
+  # `>`->`>=` all stayed green. AT the threshold allows; one hundredth over denies; a "." threshold is not 0.
+  _amg_at() { printf '%s' '{"tool_name":"Agent","tool_input":{"description":"smoke"}}' | CLAUDE_HOOK_SMOKE=1 FF_AGENT_MEMGUARD_FAKE_PRESSURE_GB="$1" FF_AGENT_MEMGUARD_THRESHOLD_GB="${2:-}" bash "$REPO_ROOT/.claude/hooks/agent-dispatch-memory-guard.sh" 2>/dev/null; }
+  assert_empty "amg: EDGE — 24.00 GB, AT the default, allows (the gate is strictly greater-than)" "$(_amg_at 24.00)"
+  assert_contains "amg: EDGE — 24.01 GB denies at the default threshold" "$(_amg_at 24.01)" '"permissionDecision": "deny"'
+  assert_empty "amg: EDGE — a malformed threshold (.) falls back to 24, never to 0 (fail-closed)" "$(_amg_at 10 .)"
+  assert_not_contains "amg: the deny text no longer calls a fire anomalous (the header retracted it 2026-09-20)" "$(_amg_at 40)" "crash-class-only"
   assert_empty "amg: ESCAPE — SKIP_AGENT_MEMORY_GUARD=1 bypasses even at 40 GB" \
     "$(printf '%s' '{"tool_name":"Agent","tool_input":{"description":"smoke"}}' | CLAUDE_HOOK_SMOKE=1 FF_AGENT_MEMGUARD_FAKE_PRESSURE_GB=40 SKIP_AGENT_MEMORY_GUARD=1 bash "$REPO_ROOT/.claude/hooks/agent-dispatch-memory-guard.sh")"
 else
@@ -10729,6 +10810,21 @@ _kw_o=$(printf '{"session_id":"kwsmoke3-0000","prompt":"[keep-warm] why did that
 assert_contains "FIRE: post-compact-pending-check.sh still demands the recovery on an owner prompt starting with the bare tag" "$_kw_o" " PENDING"
 rm -rf "$_kw_pcd"
 
+echo ""
+echo "=== this-turn-claim-warn.py (Stop + UserPromptSubmit: a /eli5 or /explain reply claiming a this-turn check with 0 tool calls) ==="
+# Behavioural arms (fires on the founding shape, silent when a tool ran / on a negated clause / out of scope / for a
+# sub-agent, the next-prompt surface once, the opt-in block mode) live in their own runner, against the REAL hook file.
+_ttc_out=$(python3 scripts/this-turn-claim-warn-test.py 2>&1); _ttc_rc=$?
+assert_eq "this-turn-claim: scripts/this-turn-claim-warn-test.py exits 0 (read its output on failure)" "0" "$_ttc_rc"
+[ "$_ttc_rc" = 0 ] || printf '%s\n' "$_ttc_out" | grep -F 'FAIL' | head -10
+echo ""
+echo "=== summary-unreviewed.py (/summary step 7: this seat's commits and whether each was sent for review) ==="
+# The 3 states (CRASH rc 2 / NOTHING-COMMITTED / rows), the mail-store suffix set, the FLOOR, touches, the aged hint, the
+# commit tools' own lines: their own runner, against the REAL script, over a throwaway git repo.
+# The test strips the git location vars itself (a linked-worktree pre-push exports GIT_DIR); cleared here too, like the neighbours above.
+_sur_out=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY python3 scripts/summary-unreviewed-test.py 2>&1); _sur_rc=$?
+assert_eq "summary-unreviewed: scripts/summary-unreviewed-test.py exits 0 (read its output on failure)" "0" "$_sur_rc"
+[ "$_sur_rc" = 0 ] || printf '%s\n' "$_sur_out" | grep -F 'FAIL' | head -10
 echo ""
 echo "=== auto-precompact-trigger.py (PostToolUse + UserPromptSubmit: direct /pre-compact ~30k tokens before the automatic compaction) ==="
 # Behavioural arms (off-states, once per crossing, re-arm after a compaction, the 30,000 edge, sub-agent,
@@ -11223,6 +11319,34 @@ else
   fail "pre-push EXECUTED (clone): git clone --shared failed -- exercise did not run"
 fi
 rm -rf "$_ppx_tmp"
+
+# --- PRE-PUSH RECURSION GUARD ---
+# Under HOOK_SMOKE_EXEC=1 the smoke arm must never start the suite, even on a range its path list matches:
+# before this, the only thing keeping this suite from re-entering itself through the hook was that every
+# fixture's range happened to miss that list. A clone carries the WORKING-TREE hook (cp), one committed
+# smoke-gated path, and a stub suite committed beside it (so even a clean-copy run launches the stub,
+# never a real suite); SKIP_PREPUSH_SNAPSHOT=1 runs the hook in place, so the stub is what gets launched
+# and no real nested suite can start under either arm. The stub's file is the verdict, because the hook sends the suite's stdout to its own log.
+_rg_d="$(mktemp -d)"; _rg_c="$_rg_d/clone"
+if git clone --shared --quiet "$REPO_ROOT" "$_rg_c" 2>/dev/null; then
+  cp "$REPO_ROOT/.githooks/pre-push" "$_rg_c/.githooks/pre-push"
+  printf '#!/usr/bin/env bash\n' > "$_rg_c/scripts/zz-rg-touch.sh"
+  printf '#!/usr/bin/env bash\n: > "%s/stub-ran"\nexit 0\n' "$_rg_d" > "$_rg_c/scripts/smoke-test-hooks.sh"
+  git -C "$_rg_c" add scripts/zz-rg-touch.sh scripts/smoke-test-hooks.sh .githooks/pre-push && git -C "$_rg_c" -c user.email=smoke@test -c user.name=smoke commit -qm "smoke: a smoke-gated path + the stub suite, committed"
+  _rg_line="refs/heads/zz $(git -C "$_rg_c" rev-parse HEAD) refs/heads/zz $(git -C "$_rg_c" rev-parse HEAD~1)"
+  _rg_on="$(printf '%s\n' "$_rg_line" | ( cd "$_rg_c" && env -i PATH="$PATH" HOME="$HOME" HOOK_SMOKE_EXEC=1 SKIP_PREPUSH_LOCK=1 SKIP_PREPUSH_SNAPSHOT=1 SKIP_LIGHT_GATE=1 bash .githooks/pre-push origin zz 2>&1 ))"
+  if [ -e "$_rg_d/stub-ran" ]; then _rg_on_ran=RAN; else _rg_on_ran=NOT-RUN; fi
+  rm -f "$_rg_d/stub-ran"
+  _rg_off="$(printf '%s\n' "$_rg_line" | ( cd "$_rg_c" && env -i PATH="$PATH" HOME="$HOME" PUSH_GUARD_NO_LOG=1 SKIP_PREPUSH_LOCK=1 SKIP_PREPUSH_SNAPSHOT=1 SKIP_LIGHT_GATE=1 bash .githooks/pre-push origin zz 2>&1 ))"
+  if [ -e "$_rg_d/stub-ran" ]; then _rg_off_ran=RAN; else _rg_off_ran=NOT-RUN; fi
+  assert_eq "pre-push recursion guard: under HOOK_SMOKE_EXEC=1 a smoke-gated range does not start the suite" "NOT-RUN" "$_rg_on_ran"
+  assert_contains "pre-push recursion guard: under HOOK_SMOKE_EXEC=1 the arm says why it did not run" "$_rg_on" "HOOK_SMOKE_EXEC=1 means this run is a fixture of that suite"
+  assert_eq "pre-push recursion guard (control): the same range without the marker starts the suite" "RAN" "$_rg_off_ran"
+  assert_contains "pre-push recursion guard (control): ...and the hook announces it" "$_rg_off" "running hook smoke suite"
+else
+  fail "pre-push recursion guard: git clone --shared failed -- arm did not run"
+fi
+rm -rf "$_rg_d"
 
 # ── ONE PUSH AT A TIME (a standing rule; grep the same heading in .githooks/pre-push) ──────────
 # The hook takes a `mkdir` lock in the git common dir. A --shared clone has its OWN .git, so these arms
@@ -12746,6 +12870,20 @@ assert_empty "shell-trap-inject: ...and is silent" "$(printf 'not json' | bash .
 # Its own --self-test carries the arms this section does not repeat: the cap path, the 9,700-char document ceiling,
 # the drop notice and the dedupe/compaction-reset arms. It writes only inside its own mktemp dirs and removes them,
 # so calling it here is safe.
+# THE CLAMP AND THE RANKING on the command carrying the FIRST key of EVERY entry. The self-test's
+# worst case emits 9,697 chars with MAX_DOC removed, so it never reaches the clamp, and no arm read the order:
+# deleting the sort or reversing it stayed green. VOID unless the clamp note shows the unclamped size over 9700.
+st_all="$(python3 -c 'import re,sys; b=re.split(r"(?m)^<!-- TRAP keys: (.*?) -->$", open(sys.argv[1], encoding="utf-8").read()); ks=[[k.strip() for k in b[i].split(",") if k.strip()] for i in range(1, len(b)-1, 2)]; f=lambda k: k[5:].strip() if k.startswith("main:") else k; print(" ; ".join(f(k[0]) for k in ks if k))' .claude/traps/shell-traps.md)"
+st_allv="$(_st "$st_all" | ST_CMD="$st_all" python3 -c 'import json,os,re,sys
+ctx=json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"]; cmd=os.environ["ST_CMD"]
+m=re.search(r"CLAMPED at \d+ of (\d+) chars", ctx)
+if not m or int(m.group(1)) <= 9700: print("VOID"); sys.exit()
+b=re.split(r"(?m)^<!-- TRAP keys: (.*?) -->$", open(".claude/traps/shell-traps.md", encoding="utf-8").read())
+f=lambda k: k[5:].strip() if k.startswith("main:") else k
+pos=sorted((ctx.index(b[i+1].strip()), len(f([k.strip() for k in b[i].split(",") if k.strip()][0]))) for i in range(1, len(b)-1, 2) if b[i+1].strip() in ctx and [k for k in b[i].split(",") if k.strip()])
+L=[p[1] for p in pos]
+print("LEN_OK" if len(ctx) <= 9700 else "OVER", "ORDER_OK" if len(L) > 1 and all(L[i] >= L[i+1] for i in range(len(L)-1)) else "ORDER_BAD")' 2>/dev/null)"
+assert_eq "shell-trap-inject: every-entry command is clamped to 9700 and delivered longest-key first" "LEN_OK ORDER_OK" "${st_allv:-EMPTY}"
 assert_contains "shell-trap-inject: its own --self-test is clean (cap path, document ceiling, drop notice)" "$(bash .claude/hooks/shell-trap-inject.sh --self-test 2>&1)" "OK: self-test clean"
 
 echo "=== write-scope-inject.sh (PreToolUse Edit|Write, creation-only rules pointer — 2026-09-21) ==="
@@ -12945,6 +13083,41 @@ assert_eq "limit-recovery-check: a malformed payload exits 0" "0" "$lr_rc"
 assert_empty "limit-recovery-check: ...and is silent" "$(printf 'not json' | LIMIT_RECOVERY_SUBAGENTS_DIR="$_lr_dir/nope" bash .claude/hooks/limit-recovery-check.sh 2>/dev/null)"
 assert_contains "limit-recovery.py: its own --self-test is clean (every decision-table row, the hook doc, the digest, the mark)" "$(python3 scripts/limit-recovery.py --self-test 2>&1)" "self-test: 0 failed"
 rm -rf "$_lr_dir"
+
+echo ""
+echo "=== decisions-archive-zero-hit.py (PostToolUse Bash|Grep, warn-mode — the zero-hit net for the split decisions log, 2026-10-26) ==="
+# PostToolUse (Bash, Grep), warn-mode: a grep that named DECISIONS.md ALONE and returned 0 hits gets ONE context
+# line naming the archive beside it (in the source project, its first split moved 495 older entries out of the
+# live file while 354 citations still named the live file and a date, and an empty grep reads as "no such ruling").
+# The arms run against a scratch root holding a 2-heading fake archive, so the real fires log is never written.
+assert_eq "decisions-archive-zero-hit.py --self-test passes (12 arms: fires on the live-only zero and on all-<file>:0 counts, silent on a hit incl. a Grep content-mode hit, on the archive glob and DECISIONS*.md, with no archive, on a non-grep, under SKIP)" "0" \
+  "$(python3 .claude/hooks/decisions-archive-zero-hit.py --self-test >/dev/null 2>&1; echo $?)"
+_dazh_root=$(mktemp -d "${TMPDIR:-/tmp}/dazh.XXXXXX")
+printf '# log\n\n## Shipped\n\n### 2026-09-03 — a\n' > "$_dazh_root/DECISIONS.md"
+printf '# archive\n\n## Shipped\n\n### 2026-07-04 — b\n\n### 2026-06-23 — c\n' > "$_dazh_root/DECISIONS-ARCHIVE-2026-03-2026-08-31.md"
+_dazh_out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"grep -n 2026-07-04 DECISIONS.md"},"tool_response":{"stdout":"","stderr":"","interrupted":false}}' \
+  | env -u SKIP_DECISIONS_ARCHIVE_ZERO_HIT -u HOOK_FIRES_LOG_DIR CLAUDE_PROJECT_DIR="$_dazh_root" python3 .claude/hooks/decisions-archive-zero-hit.py 2>/dev/null); _dazh_rc=$?
+assert_eq "FIRE: a grep of the live file only with 0 hits → exit 0 (warn-mode)" "0" "$_dazh_rc"
+assert_one_json_doc "PARSE: the fire → ONE parseable doc naming the archive" "$_dazh_out" 'DECISIONS-ARCHIVE-2026-03-2026-08-31.md'
+assert_contains "FIRE: the line carries the archive's entry count (2 in the fixture)" "$_dazh_out" '2 entries'
+assert_empty "SAFE: the same grep with a hit is silent" "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"grep -n 2026-09-03 DECISIONS.md"},"tool_response":{"stdout":"5:### 2026-09-03","stderr":"","interrupted":false}}' \
+  | env -u SKIP_DECISIONS_ARCHIVE_ZERO_HIT -u HOOK_FIRES_LOG_DIR CLAUDE_PROJECT_DIR="$_dazh_root" python3 .claude/hooks/decisions-archive-zero-hit.py 2>/dev/null)"
+assert_empty "SAFE: a grep already naming the archive glob is silent on 0 hits" "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"grep -n x DECISIONS.md DECISIONS-ARCHIVE-*.md"},"tool_response":{"stdout":"","stderr":"","interrupted":false}}' \
+  | env -u SKIP_DECISIONS_ARCHIVE_ZERO_HIT -u HOOK_FIRES_LOG_DIR CLAUDE_PROJECT_DIR="$_dazh_root" python3 .claude/hooks/decisions-archive-zero-hit.py 2>/dev/null)"
+assert_eq "SAFE: the fixture root's fires log holds exactly the FIRE arm's one row (the safe arms wrote none)" "1" \
+  "$(grep -c '' "$_dazh_root/.claude/logs/decisions-archive-zero-hit-fires.jsonl" 2>/dev/null)"
+# The row goes to $HOOK_FIRES_LOG_DIR when that is set (the arms above unset it, so their rows land in the
+# fixture root), and it carries the command, so a false fire can be read off the log.
+mkdir -p "$_dazh_root/hfl"
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"grep -n 2026-07-04 DECISIONS.md"},"tool_response":{"stdout":"","stderr":"","interrupted":false}}' \
+  | env -u SKIP_DECISIONS_ARCHIVE_ZERO_HIT HOOK_FIRES_LOG_DIR="$_dazh_root/hfl" CLAUDE_PROJECT_DIR="$_dazh_root" python3 .claude/hooks/decisions-archive-zero-hit.py >/dev/null 2>&1
+assert_eq "FIRE: with HOOK_FIRES_LOG_DIR set the row lands there, carrying the command" "1" \
+  "$(grep -cF '"cmd": "grep -n 2026-07-04 DECISIONS.md"' "$_dazh_root/hfl/decisions-archive-zero-hit-fires.jsonl" 2>/dev/null)"
+assert_eq "SAFE: ...and the fixture root log still holds only the first FIRE arm row" "1" \
+  "$(grep -c '' "$_dazh_root/.claude/logs/decisions-archive-zero-hit-fires.jsonl" 2>/dev/null)"
+assert_eq "SAFE: no arm in this section wrote a row to the suite's own HOOK_FIRES_LOG_DIR (each pins its log dir)" "0" \
+  "$(cat "$_SMOKE_HFL_DIR/decisions-archive-zero-hit-fires.jsonl" 2>/dev/null | grep -c '')"
+rm -rf "$_dazh_root"; unset _dazh_root _dazh_out _dazh_rc
 
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"

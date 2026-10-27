@@ -87,7 +87,7 @@ function buildMemoryCorpus(root = REPO_ROOT) {
       `cat .claude/skills/*/MEMORY*.md .claude/project-memory/*.md ` +
         `.claude/rules/*.md '.claude/skills'/*/SKILL.md '.claude/skills'/*/references/*.md .claude/orchestrator/*.md ` +
         `.claude/docs/*.md .claude/meta-corrections-registry.md ` +
-        `AGENTS.md CLAUDE.md DECISIONS.md todo.txt 2>/dev/null || true`,
+        `AGENTS.md CLAUDE.md DECISIONS.md DECISIONS-ARCHIVE-*.md todo.txt 2>/dev/null || true`,
       { cwd: root, encoding: "utf8", maxBuffer: 80 * 1024 * 1024 },
     );
   } catch { return ""; }
@@ -299,28 +299,89 @@ const dpSkipVerdict = ({ fired, ran, planned, declared }) =>
 const DP_WRAP_CMD = "<command-" + "name>/wrap</command-" + "name>";
 const DP_WRAP_BASE_RE = new RegExp("^Base directory for this skill: [^\\n]*/\\.claude/skills/wrap\\n");
 const DP_WRAP_LOADED = "Skill /wrap is already " + "loaded above";
+// A user record's own text; null for a tool result (a probe's output, never an invocation) or no content.
+const userText = (r) => {
+  const c = r.message?.content;
+  if (typeof c === "string") return c;
+  if (!Array.isArray(c) || c.some((b) => b?.type === "tool_result")) return null;
+  return c.filter((b) => b?.type === "text").map((b) => b.text).join("\n");
+};
+const isWrapLoad = (r) => {
+  if (!r || r.type !== "user" || r.isCompactSummary) return false;
+  const text = userText(r);
+  if (text == null) return false;
+  return r.isMeta ? DP_WRAP_BASE_RE.test(text) || text.startsWith(DP_WRAP_LOADED) : text.includes(DP_WRAP_CMD);
+};
 const dpLastWrap = (lines) => {
   let ms = NaN, idx = -1;
   for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
     let r;
-    try { r = JSON.parse(l); } catch { continue; }
-    if (!r || r.type !== "user" || r.isCompactSummary) continue;
-    const c = r.message?.content;
-    let text;
-    if (typeof c === "string") text = c;
-    else if (Array.isArray(c)) {
-      if (c.some((b) => b?.type === "tool_result")) continue;   // a probe's output, never an invocation
-      text = c.filter((b) => b?.type === "text").map((b) => b.text).join("\n");
-    } else continue;
-    const hit = r.isMeta
-      ? DP_WRAP_BASE_RE.test(text) || text.startsWith(DP_WRAP_LOADED)
-      : text.includes(DP_WRAP_CMD);
-    if (hit) { const t = Date.parse(r.timestamp); if (Number.isFinite(t)) { ms = t; idx = i; } }
+    try { r = JSON.parse(lines[i]); } catch { continue; }
+    if (isWrapLoad(r)) { const t = Date.parse(r.timestamp); if (Number.isFinite(t)) { ms = t; idx = i; } }
   }
   return { ms, idx };
 };
+// ── SELF-STARTED WRAP AFTER A RECOVERY ──
+// The recovery "never acts on the recovered context" and a wrap is never run unasked, so a /wrap whose load
+// follows the newest /post-compact with no owner record between them started on its own. Owner records follow
+// post-compact-recovery-index.py's classify_record; machine turns (a task notification, a peer, a cron, an
+// auto-continuation), harness lines (`promptSource: system`, "Auto resume", a side agent's note), meta records
+// and compaction summaries are not him. inFlight: a /wrap load sits between his last message before the recovery
+// and the recovery, so a wrap he may have asked for was cut by the compaction and re-loaded. Notes only.
+const PC_BASE_RE = new RegExp("^Base directory for this skill: [^\\n]*/\\.claude/skills/post-compact\\n");
+const MACHINE_TURN_ORIGINS = new Set(["task_notification", "peer", "auto_continuation", "scheduled"]);
+const OWNER_PROMPT_SOURCES = new Set(["typed", "queued", "suggestion_accepted"]);
+const HARNESS_PROMPT_RE = /^\s*(?:auto resume\s*$|here is a note offered by a side agent:|<task-notification>)/i;
+const PC_ARGS_RE = /^\s*(?:post-compact|postmortem)(?:\s|$)/;
+const tagOf = (s, name) => { const m = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(s); return m ? m[1].trim() : null; };
+function isOwnerRecord(r) {
+  if (!r || r.isMeta || r.isCompactSummary || MACHINE_TURN_ORIGINS.has(r.turnOrigin)) return false;
+  if (r.type === "attachment") {
+    const a = r.attachment || {};
+    return a.type === "queued_command" && a.origin?.kind === "human" && a.commandMode === "prompt";
+  }
+  if (r.type === "system") return r.subtype === "local_command" && String(r.content ?? "").includes("<command-name>");
+  if (r.type !== "user") return false;
+  if (r.toolDenialKind === "user-rejected") return true;                       // he refused a tool call
+  const ans = r.toolUseResult?.answers;
+  if (ans && typeof ans === "object" && Object.keys(ans).length) return true;   // he answered a question
+  const text = userText(r);
+  if (text == null) return false;
+  if (OWNER_PROMPT_SOURCES.has(r.promptSource)) return !HARNESS_PROMPT_RE.test(text);
+  return r.promptSource == null && typeof r.message?.content === "string" && text.includes("<command-name>");
+}
+function isRecoveryRecord(r) {
+  if (!r) return false;
+  if (r.type === "assistant") {
+    const c = r.message?.content;
+    return Array.isArray(c) && c.some((b) => b?.type === "tool_use" && b.name === "Skill"
+      && (b.input?.skill === "post-compact" || (b.input?.skill === "meta" && PC_ARGS_RE.test(String(b.input?.args ?? "")))));
+  }
+  if (r.type !== "user" || r.isCompactSummary) return false;
+  const text = userText(r);
+  if (text == null) return false;
+  if (r.isMeta) return PC_BASE_RE.test(text);
+  const cmd = tagOf(text, "command-name");
+  return cmd === "/post-compact" || (cmd === "/meta" && PC_ARGS_RE.test(tagOf(text, "command-args") ?? ""));
+}
+// null when there is no wrap load, or no recovery before it; else the recovery and whether he spoke since.
+function wrapAfterRecovery(lines, wrapIdx) {
+  if (!(wrapIdx >= 0)) return null;
+  const recs = lines.slice(0, wrapIdx + 1).map((l) => { try { return JSON.parse(l); } catch { return null; } });
+  let rec = -1;
+  for (let i = wrapIdx - 1; i >= 0; i--) if (isRecoveryRecord(recs[i])) { rec = i; break; }
+  if (rec < 0) return null;
+  const ownerBetween = recs.slice(rec + 1, wrapIdx + 1).filter(isOwnerRecord).length;
+  let lastOwner = -1;
+  for (let i = rec - 1; i >= 0; i--) if (isOwnerRecord(recs[i])) { lastOwner = i; break; }
+  const inFlight = recs.slice(lastOwner + 1, rec).some(isWrapLoad);
+  return { recoveryTs: recs[rec]?.timestamp ?? null, wrapTs: recs[wrapIdx]?.timestamp ?? null, ownerBetween, selfStarted: ownerBetween === 0, inFlight };
+}
 const dpLastWrapMs = (lines) => dpLastWrap(lines).ms;
+// The notes line for a wrapAfterRecovery result; null when the wrap was not self-started.
+const afterRecoveryNote = (ar) => !ar?.selfStarted ? null : ar.inFlight
+  ? `⚠️  WRAP RE-STARTED AFTER A RECOVERY: this wrap was running when the session compacted (recovery at ${ar.recoveryTs}), and it started again at ${ar.wrapTs} with no message from you in between.`
+  : `⚠️  SELF-STARTED WRAP: This wrap started on its own after a recovery, with no message from you in between (recovery at ${ar.recoveryTs}, wrap at ${ar.wrapTs}).`;
 // The transcript's line count when the pass began: the last record stamped at or before runMs.
 // Slice ranges number the STRIPPED copy, which blanks payloads and keeps every line, so the two
 // line spaces agree.
@@ -344,6 +405,21 @@ const dpUnfiredSlack = (linesAtRun, file) => {
   if (!file || file.last == null || file.noRange.length || !file.medianWidth || !linesAtRun) return null;
   const slack = linesAtRun - file.last;
   return { slack, width: file.medianWidth, flagged: slack > file.medianWidth };
+};
+// The returns dirs in a scratchpad listing, as { name, run }. Two spellings: the bare
+// `dp-returns-<epoch-s>`, and `dp-returns-<sid8>-<epoch-s>`, which is the deep-pass spec's own
+// run suffix (`…-<sid>-$(date +%s)/`). Matching only the bare form read a sid-suffixed run as
+// absent and printed BLIND over a 26-slice pass with every report on disk.
+const dpReturnsTokens = (names) => names
+  .map((name) => ({ name, m: name.match(/^dp-returns-(?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-|[0-9a-f]{8}-)?(\d+)$/) }))
+  .filter((x) => x.m)
+  .map((x) => ({ name: x.name, run: Number(x.m[1]) }));
+// The current run's returns folder in a scratchpad listing, as { name, run }; null when none. The
+// runtime joins `name`, never a rebuilt `dp-returns-<run>`, so a sid-suffixed folder stays found.
+const dpCurrentReturnsDir = (names, wrapMs) => {
+  const found = dpReturnsTokens(names);
+  const run = dpCurrentReturnsRun(found.map((f) => f.run), wrapMs);
+  return run == null ? null : found.find((f) => f.run === run);
 };
 // The newest `dp-returns-<epoch-s>` run token created at or after the wrap began; null when none.
 // One second of slack: the token is whole seconds and the wrap record carries milliseconds.
@@ -884,11 +960,12 @@ function wrapSubSkillGaps(logText, sessionId) {
     if (r && r.session === sessionId && Number.isFinite(Date.parse(r.ts))) recs.push(r);
   }
   const at = (r) => Date.parse(r.ts);
-  const wraps = recs.filter((r) => r.skill === "wrap" && !isCheckpointWrap(r.args)).map(at);
-  const since = wraps.length ? Math.max(...wraps) : null;
+  // Every /wrap row starts its own window, a checkpoint included: checkpoint mode is "same steps, same rigor".
+  const last = recs.filter((r) => r.skill === "wrap").reduce((a, r) => (!a || at(r) >= at(a) ? r : a), null);
+  const since = last ? at(last) : null;
   const missing = since == null ? null
     : WRAP_SUBSKILLS.filter(([, is]) => !recs.some((r) => at(r) >= since && is(r))).map(([name]) => name);
-  return { since: since == null ? null : new Date(since).toISOString(), missing, unparsed, heads, mine };
+  return { since: since == null ? null : new Date(since).toISOString(), checkpoint: last ? isCheckpointWrap(last.args) : null, missing, unparsed, heads, mine };
 }
 
 // ── SELF-TEST (deterministic; proves the content-match + norm) ──
@@ -1355,7 +1432,7 @@ if (args.includes("--self-test")) {
     //      line that exists in a references file and in NO other file the corpus globs, so dropping
     //      the references glob from buildMemoryCorpus() turns this arm RED.
     const refs = shq(`cat .claude/skills/*/references/*.md 2>/dev/null`);
-    const others = shq(`cat .claude/skills/*/SKILL.md .claude/rules/*.md .claude/orchestrator/*.md .claude/docs/*.md AGENTS.md CLAUDE.md DECISIONS.md todo.txt .claude/meta-corrections-registry.md 2>/dev/null`);
+    const others = shq(`cat .claude/skills/*/SKILL.md .claude/rules/*.md .claude/orchestrator/*.md .claude/docs/*.md AGENTS.md CLAUDE.md DECISIONS.md DECISIONS-ARCHIVE-*.md todo.txt .claude/meta-corrections-registry.md 2>/dev/null`);
     const refNeedle = (refs.match(/^.{40,}$/gm) || []).find(
       (l) => !routers.includes(l) && !shards.includes(l) && !projmem.includes(l) && !others.includes(l),
     );
@@ -1373,6 +1450,16 @@ if (args.includes("--self-test")) {
         writeFileSync(join(d, ".claude", "rules", "only.md"), "## corpus-partial-needle-7f3\n");
         t("corpus survives a missing member: a root with only one rules file still yields it",
           buildMemoryCorpus(d).includes("corpus-partial-needle-7f3"));
+      } finally { rmSync(d, { recursive: true, force: true }); }
+    }
+    // (9d) The DECISIONS archive: a lesson whose only home is an older archived
+    //      entry lives in DECISIONS-ARCHIVE-*.md, so dropping that glob must turn this row RED.
+    {
+      const d = mkdtempSync(join(tmpdir(), "wr-corpus-"));
+      try {
+        writeFileSync(join(d, "DECISIONS-ARCHIVE-2026-03-2026-08-31.md"), "### 2026-08-01 — corpus-archive-needle-4c1\n");
+        t("corpus reaches DECISIONS-ARCHIVE-*.md: a root holding only an archive file still yields it",
+          buildMemoryCorpus(d).includes("corpus-archive-needle-4c1"));
       } finally { rmSync(d, { recursive: true, force: true }); }
     }
   }
@@ -1491,6 +1578,15 @@ if (args.includes("--self-test")) {
     dpCurrentReturnsRun([Math.floor(Date.parse(_W1) / 1000) + 60], _w2) === null
     && dpCurrentReturnsRun([Math.floor(Date.parse(_W1) / 1000) + 60, Math.floor(_w2 / 1000) + 30, Math.floor(_w2 / 1000) + 90], _w2) === Math.floor(_w2 / 1000) + 90
     && dpCurrentReturnsRun([Math.floor(_w2 / 1000) + 30], NaN) === null);
+  const _fxu = "f1c70e00-0000-4000-8000-" + "0".repeat(12);   // a session uuid composed at run time
+  const _rt = dpReturnsTokens(["dp-returns-1793088280", "dp-returns-c0ffee01-1793088281", "dp-returns-c0ffee01", "dp-returns-zz-1", `dp-returns-${_fxu}-1793088282`, "dp-returns-c0ffee01-1111-1793088283", "dp-topups-1793088280", "dp-plan.txt"]);
+  t("deep-pass plan source: a returns dir is found under both spellings, bare and sid-suffixed, and nothing else is",
+    _rt.length === 3 && _rt[0].name === "dp-returns-1793088280" && _rt[0].run === 1793088280
+    && _rt[1].name === "dp-returns-c0ffee01-1793088281" && _rt[1].run === 1793088281
+    && _rt[2].name === `dp-returns-${_fxu}-1793088282` && _rt[2].run === 1793088282);
+  const _cr = Math.floor(_w2 / 1000) + 30, _cd = dpCurrentReturnsDir([`dp-returns-c0ffee01-${_cr}`, `dp-topups-${_cr}`, `dp-returns-${Math.floor(Date.parse(_W1) / 1000)}`], _w2);
+  t("deep-pass plan source: the current run's folder is returned under its own sid-suffixed name, an older run and the topups dir passed over",
+    _cd != null && _cd.name === `dp-returns-c0ffee01-${_cr}` && _cd.run === _cr && dpCurrentReturnsDir(["dp-topups-1"], _w2) === null);
   const _sf = (i, a, b, st = "returned") => ({ name: `slice-${String(i).padStart(2, "0")}.md`, text: `range: ${a}-${b}\nstatus: ${st}\n\nreport` });
   const _fp = dpReturnsPlan([_sf(0, 1, 364), _sf(1, 365, 1091), _sf(2, 1092, 1694), { name: "notes.txt", text: "range: 1-9" }]);
   t("deep-pass plan source: three contiguous returned slice files read as a plan of 3 over 1-1694, other files ignored",
@@ -1573,25 +1669,73 @@ if (args.includes("--self-test")) {
     estimatedClockLabels("~15:07 and ~20:53").map((h) => h.labels.length).join() === "2");
   t("clock labels: a longer digit run or a hex tail is not a label",
     estimatedClockLabels("offset ~12:345 ms, register 12:0x1f").length === 0);
-  // Iron Law #6 leg. ONE fixture, and each filter has a record that only it excludes: an earlier full
-  // wrap's /decisions (the boundary), a peer session's /decisions (the session), a /session-memory between the
-  // full wrap and a later --checkpoint (the checkpoint exclusion). A record split by a raw newline holds this
+  // Iron Law #6 leg. ONE fixture, and each filter has a record that only it excludes: an earlier wrap's
+  // /decisions (the boundary), a peer session's /decisions (the session), a /decisions between the full wrap and a
+  // later --checkpoint (the checkpoint starts its own window). A record split by a raw newline holds this
   // session's /decisions and is still MISSING — the stated limit, counted rather than solved.
   {
     const rec = (hms, skill, a = "", session = "sess-a") => JSON.stringify({ ts: `2026-10-10T0${hms}Z`, skill, args: a, session });
-    const log = [rec("1:00:00", "wrap"), rec("1:05:00", "decisions"), rec("2:00:00", "wrap"), rec("2:00:30", "hanging-work"), rec("2:01:00", "session-memory"), rec("2:29:00", "me", "learn-session"),
-      rec("2:30:00", "wrap", "--checkpoint --light"), rec("2:31:00", "meta", "learn"), rec("2:32:00", "meta", "post-compact"),
+    const log = [rec("1:00:00", "wrap"), rec("1:05:00", "decisions"), rec("2:00:00", "wrap"), rec("2:05:00", "decisions"),
+      rec("2:30:00", "wrap", "--checkpoint --light"), rec("2:30:30", "hanging-work"), rec("2:31:00", "session-memory"), rec("2:31:30", "me", "learn-session"),
+      rec("2:32:00", "meta", "learn"), rec("2:32:30", "meta", "post-compact"),
       rec("2:33:00", "decisions", "", "sess-b"), '{"ts":"2026-10-10T02:34:00Z","skill":"decisions","args":"split', 'here","session":"sess-a"}', ""].join("\n");
     const g = wrapSubSkillGaps(log, "sess-a");
-    t("sub-skills: learn present, decisions absent since the last full /wrap → exactly 1 MISSING, unparsed lines counted",
-      JSON.stringify(g.missing) === '["/decisions"]' && g.since === "2026-10-10T02:00:00.000Z" && g.unparsed === 2 && g.heads === 1 && g.mine === 1);
-    t("sub-skills: a meta that is not `learn` does not count; a session whose only /wrap is the bare `checkpoint` alias is N/A, not clean",
+    t("sub-skills: a --checkpoint /wrap starts its own window — the /decisions before it does not count, so exactly 1 MISSING, unparsed lines counted",
+      JSON.stringify(g.missing) === '["/decisions"]' && g.since === "2026-10-10T02:30:00.000Z" && g.checkpoint === true && g.unparsed === 2 && g.heads === 1 && g.mine === 1);
+    t("sub-skills: a meta that is not `learn` does not count; a session whose only /wrap is the bare `checkpoint` alias is checked, not N/A",
       JSON.stringify(wrapSubSkillGaps(log.replace('"learn"', '"post-compact"'), "sess-a").missing) === '["/meta learn","/decisions"]'
-      && wrapSubSkillGaps(rec("3:00:00", "wrap", "checkpoint --light"), "sess-a").missing === null);
+      && JSON.stringify(wrapSubSkillGaps(rec("3:00:00", "wrap", "checkpoint --light"), "sess-a").missing) === '["/hanging-work","/meta learn","/session-memory","/decisions","/me learn-session"]'
+      && wrapSubSkillGaps(rec("3:00:00", "wrap", "checkpoint --light"), "sess-a").checkpoint === true);
+    t("sub-skills (W1): checkpoint-only session — the four run after the checkpoint count, the one skipped is flagged; no /wrap at all stays N/A",
+      JSON.stringify(wrapSubSkillGaps([rec("5:00:00", "wrap", "--checkpoint"), rec("5:01:00", "hanging-work"), rec("5:02:00", "meta", "learn"),
+        rec("5:03:00", "session-memory"), rec("5:04:00", "me", "learn-session")].join("\n"), "sess-a").missing) === '["/decisions"]'
+      && wrapSubSkillGaps(rec("5:00:00", "decisions"), "sess-a").missing === null);
     t("sub-skills (W1): a /me that is not `learn-session` does not count",
       JSON.stringify(wrapSubSkillGaps(log.replace('"learn-session"', '"check"'), "sess-a").missing) === '["/decisions","/me learn-session"]');
     t("sub-skills (W1): a full /wrap with nothing after it names every WRAP_SUBSKILLS member, so dropping one from the list reds",
       JSON.stringify(wrapSubSkillGaps(rec("4:00:00", "wrap"), "sess-a").missing) === '["/hanging-work","/meta learn","/session-memory","/decisions","/me learn-session"]');
+  }
+  // Self-started wrap after a recovery. Between the recovery and the wrap sit every
+  // record that is NOT him — a task notification, "Auto resume", the harness's limit-reset line, a side agent's
+  // note, a peer's slash command, a tool result — so the bare fixture is flagged; one typed line between is clean.
+  {
+    let n = 0;
+    const ts = () => `2026-10-11T08:${String(n++).padStart(2, "0")}:00Z`;
+    const u = (content, extra = {}) => JSON.stringify({ type: "user", timestamp: ts(), message: { content }, ...extra });
+    const skill = (name, args = "") => JSON.stringify({ type: "assistant", timestamp: ts(), message: { content: [{ type: "tool_use", name: "Skill", input: { skill: name, args } }] } });
+    const load = (name) => u([{ type: "text", text: `Base directory for this skill: /r/.claude/skills/${name}\n\n# ${name}` }], { isMeta: true });
+    const typed = (text) => u(text, { promptSource: "typed", turnOrigin: "human" });
+    const mk = (between, pre = []) => {
+      n = 0;
+      const ls = [typed("as recommended"), ...pre, u("This session is being continued from a previous conversation.", { isCompactSummary: true }),
+        skill("post-compact"), load("post-compact"), ...between, skill("wrap", "--checkpoint"), load("wrap")];
+      return wrapAfterRecovery(ls, dpLastWrap(ls).idx);
+    };
+    const machine = () => [u("<task-notification>\n<task-id>b1</task-id>", { promptSource: "system", turnOrigin: "task_notification" }),
+      u("Auto resume", { promptSource: "queued", turnOrigin: "human" }),
+      u("Your claude.ai usage limit has reset. Continue the task", { promptSource: "system", isMeta: true }),
+      u("Here is a note offered by a side agent:\n\n> Heads up", { promptSource: "typed", turnOrigin: "human" }),
+      u("<command-name>/pause</command-name>\n<command-args>--resume</command-args>", { turnOrigin: "scheduled" }),
+      u([{ type: "tool_result", content: "<command-name>/wrap</command-name> quoted by a probe" }])];
+    const flagged = mk(machine());
+    t("self-started wrap: only machine and harness records between the recovery and the /wrap → flagged",
+      flagged?.selfStarted === true && flagged.ownerBetween === 0 && flagged.inFlight === false && flagged.recoveryTs === "2026-10-11T08:03:00Z");
+    const clean = mk([...machine(), typed("ok, wrap it up")]);
+    t("self-started wrap: one typed owner line between the recovery and the /wrap → clean; an owner-typed /wrap or an answered question is him too",
+      clean?.selfStarted === false && clean.ownerBetween === 1
+      && mk([u("<command-message>wrap</command-message>\n<command-name>/wrap</command-name>", { turnOrigin: "human" })])?.selfStarted === false
+      && mk([u([{ type: "tool_result", content: "answered" }], { toolUseResult: { answers: { "Wrap now?": "Yes" } } })])?.selfStarted === false);
+    n = 0;
+    const noRec = [typed("hi"), skill("wrap"), load("wrap")];
+    const viaMeta = [typed("hi"), u("<command-message>meta</command-message>\n<command-name>/meta</command-name>\n<command-args>post-compact</command-args>"), skill("wrap"), load("wrap")];
+    t("self-started wrap: no recovery before the /wrap → N/A; a typed `/meta post-compact` is a recovery; a wrap running at the compaction is marked in flight",
+      wrapAfterRecovery(noRec, dpLastWrap(noRec).idx) === null
+      && wrapAfterRecovery(viaMeta, dpLastWrap(viaMeta).idx)?.selfStarted === true
+      && mk([], [skill("wrap"), load("wrap")])?.inFlight === true);
+    t("self-started wrap: the note names the case — self-started, re-started (in flight), or none when he spoke or there was no recovery",
+      afterRecoveryNote(flagged)?.startsWith("⚠️  SELF-STARTED WRAP:") === true
+      && afterRecoveryNote(mk([], [skill("wrap"), load("wrap")]))?.startsWith("⚠️  WRAP RE-STARTED AFTER A RECOVERY:") === true
+      && afterRecoveryNote(clean) === null && afterRecoveryNote(null) === null);
   }
   t("compacted: the deep-pass gate reads transcriptCompacted(lines), never the phrase regex",
     /^const compacted = transcriptCompacted\(lines\);$/m.test(readFileSync(fileURLToPath(import.meta.url), "utf8")));
@@ -2087,14 +2231,13 @@ if (sid && Number.isFinite(dpWrapMs)) {
   try {
     const scratch = execSync(`ls -d /private/tmp/claude-*/${PROJECT_KEY}/${sid}/scratchpad 2>/dev/null | head -1`, { encoding: "utf8" }).trim();
     if (scratch && existsSync(scratch)) {
-      const tokens = readdirSync(scratch).map((n) => n.match(/^dp-returns-(\d+)$/)).filter(Boolean).map((m) => Number(m[1]));
-      const run = dpCurrentReturnsRun(tokens, dpWrapMs);
-      if (run != null) {
-        dpReturnsDir = `${scratch}/dp-returns-${run}`;
+      const cur = dpCurrentReturnsDir(readdirSync(scratch), dpWrapMs);
+      if (cur) {
+        dpReturnsDir = `${scratch}/${cur.name}`;
         dpFilePlan = dpReturnsPlan(readdirSync(dpReturnsDir).map((name) => {
           try { return { name, text: readFileSync(`${dpReturnsDir}/${name}`, "utf8") }; } catch { return { name, text: "" }; }
         }));
-        dpFileRunMs = run * 1000;
+        dpFileRunMs = cur.run * 1000;
       }
     }
   } catch { dpFilePlan = null; }
@@ -2407,11 +2550,15 @@ else if (markerDeferred) notes.push(`ℹ️  DEFERRED: Claude Code fired its pre
 let subSkills = null;
 try { if (sid) subSkills = wrapSubSkillGaps(readFileSync(join(REPO_ROOT, SKILL_LOG), "utf8"), sid); } catch { subSkills = null; }
 if (!subSkills) notes.push(`ℹ️  SUB-SKILLS (Iron Law #6): not checked — ${sid ? `${SKILL_LOG} unreadable` : "no CLAUDE_CODE_SESSION_ID"}.`);
-else if (subSkills.missing == null) notes.push(`ℹ️  SUB-SKILLS (Iron Law #6): N/A — no non-checkpoint /wrap record for this session in ${SKILL_LOG}, so there is no window to check.`);
+else if (subSkills.missing == null) notes.push(`ℹ️  SUB-SKILLS (Iron Law #6): N/A — no /wrap record for this session in ${SKILL_LOG}, so there is no window to check.`);
 else {
-  for (const m of subSkills.missing) notes.push(`⚠️  ${m} MISSING (verify the sub-skill's own skip gate) — no ${SKILL_LOG} record for this session at or after the last non-checkpoint /wrap (${subSkills.since}).`);
+  for (const m of subSkills.missing) notes.push(`⚠️  ${m} MISSING (verify the sub-skill's own skip gate) — no ${SKILL_LOG} record for this session at or after the last /wrap${subSkills.checkpoint ? " (a checkpoint)" : ""} (${subSkills.since}).`);
   notes.push(`ℹ️  SUB-SKILLS (Iron Law #6): ${WRAP_SUBSKILLS.length - subSkills.missing.length} of ${WRAP_SUBSKILLS.length} invoked since ${subSkills.since}. Limits: ${subSkills.unparsed} non-empty log line(s) fail JSON.parse (${subSkills.heads} begin a record, ${subSkills.mine} name this session) and could hold an invocation, so a MISSING may be false; and a legitimate skip leaves the same absence as a skipped step, which this log cannot tell apart.`);
 }
+// Self-started after a recovery — a warning line in notes, never a finding.
+const afterRecovery = wrapAfterRecovery(lines, dpWrap.idx);
+const afterRecoveryLine = afterRecoveryNote(afterRecovery);
+if (afterRecoveryLine) notes.push(afterRecoveryLine);
 
 // ✅ is EARNED only when BOTH sides were actually computed AND no findings — and a
 // LIKELY-REWRITTEN downgrade demotes the accusation WITHOUT greening the top line
@@ -2421,14 +2568,14 @@ else {
 for (const problem of smokeSkipProblems(smoke.skip, smoke.seen)) blind.push(problem);
 const verdict = deriveVerdict(blind.length, findings.length, likelyRewritten.length);
 if (asJson) {
-  console.log(JSON.stringify({ ok: verdict === "CLEAN", verdict, blind, skipped: smoke.skipped, notes, emitted, emittedNone, unclassified, persisted, persistNote, unmatchedHeaders, likelyRewritten, echoedInArtifact, delta, deepPassFired, deepPassRan, markerPresent, postCompactPending, pendingFocus, postCompactDeferred: markerDeferred, anchorNote, tasksNote, subSkills, findings }));
+  console.log(JSON.stringify({ ok: verdict === "CLEAN", verdict, blind, skipped: smoke.skipped, notes, emitted, emittedNone, unclassified, persisted, persistNote, unmatchedHeaders, likelyRewritten, echoedInArtifact, delta, deepPassFired, deepPassRan, markerPresent, postCompactPending, pendingFocus, postCompactDeferred: markerDeferred, anchorNote, tasksNote, subSkills, afterRecovery, findings }));
 } else {
   console.log(`wrap-reconcile (warn-mode) — transcript ${nLines} lines`);
   console.log(`  memory-updates: ${emitted} emitted (${emittedNone} None-skips, ${unclassified} unclassified) · ${persisted == null ? "?" : persisted} persisted${persistNote ? ` [${persistNote}]` : ""}${anchorNote ? ` [${anchorNote}]` : ""}`);
   console.log(`  deep-pass: fired=${deepPassFired} ran=${deepPassRan}`);
   console.log(`  post-compact marker: ${markerOwed ? `PENDING (focus=${pendingFocus})` : markerDeferred ? "DEFERRED (hook fired, no compaction landed)" : "cleared"}`);
   console.log(`  step-probes: 0 (wrapped-stamp) · 7d (arch-counts) = artifact-bearing → findings; 7e (distill) · 7h (defer-triggers) · plan clock-labels = surface-bearing → printed above`);
-  console.log(`  coverage: COMPUTED = memory-delta + deep-pass + post-compact-marker + the 4 step-probes + the plan clock-label note + the sub-skill invocation check (Iron Law #6, report-only). Every OTHER wrap step is still SELF-ATTESTED (cite its artifact inline; a new mandatory step → add a probe here or list it as UNVERIFIED, same commit)`);
+  console.log(`  coverage: COMPUTED = memory-delta + deep-pass + post-compact-marker + the 4 step-probes + the plan clock-label note + the sub-skill invocation check (Iron Law #6, report-only) + the self-started-wrap-after-a-recovery check (report-only). Every OTHER wrap step is still SELF-ATTESTED (cite its artifact inline; a new mandatory step → add a probe here or list it as UNVERIFIED, same commit)`);
   if (blind.length) { console.log(""); console.log(`  ⚠️  BLIND — could NOT verify completeness (this is NOT a pass): ${blind.join("; ")}. Verify the persists manually before claiming complete.`); }
   if (findings.length) { console.log(""); findings.forEach((f) => console.log("  " + f)); }
   for (const n of notes) console.log(`  ${n}`);

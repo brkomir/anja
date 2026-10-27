@@ -16,13 +16,21 @@ becomes a paid turn:
 Every non-sentinel prompt only updates state and exits 0 silently.
 
 THE RULES:
-  * due window   — the status line's cache countdown (cache_expires_at) shows 1..19 minutes left, so with
-                   the 15-minute timer (7,22,37,52) the ping lands around minute 44-59 of the hour
+  * due window   — the status line's cache countdown (cache_expires_at) shows 9..27 minutes left (1..19 earlier), so with
+                   the 15-minute timer (7,22,37,52) the ping lands 33-51 minutes after the last request (41-59
+                   earlier), always before the harness's own idle compaction, which summarises a 200,000+ token
+                   session about 54 minutes after its last request (settings reference, `idleCompaction`, on by
+                   default; measured to START 53.8-54.0 min after the last request in 3 fires here (the compact_boundary record lands 2-3 min later, when the summary finishes), blocked ticks in between — a blocked tick is not
+                   activity). The window moved because a late FIRST ping was losing to it
+                   — under 1..19 the first ping after a request landed at 41-59 min, under 9..27 at 33-48;
+                   passed pings then sit on the tick lattice 45 min apart under either window, so the move changes
+                   only that first ping. After the stop rule the idle compaction is expected to end the window warm
+                   (provisional: the only stop-rule end on record did not compact).
                    (the */5 tick printed a 'blocked by hook' line 12x an hour; a hook's suppressOutput does NOT hide it,
-                   tested live; the window is wider than the tick so one tick always lands in it; 19 not 16 leaves period +
+                   tested live; the window is wider than the tick so one tick always lands in it; 18 wide (19 not 16 when the window was 1..19) leaves period +
                    2x the cron jitter, and at 16 the slack was zero; the countdown, not a faster tick, picks the
                    moment, so a 15-minute timer is enough).
-                   No fresh countdown -> fallback: the last main request is 31..58 min old.
+                   No fresh countdown -> fallback: the last main request is 33..51 min old (51 exclusive; 31..58 earlier).
   * off-states   — SKIP_KEEP_WARM=1, no fleet switch (.claude/state/keep-warm-enabled) and no pilot marker
                    for this session, /keep-warm off, /standby, /pause (unless its keep-warm window is
                    open; /pause --cold writes none), a pending post-compact recovery (a marker whose compaction
@@ -35,8 +43,7 @@ THE RULES:
   * context      — NOT a rule: a ping near or past the
                    auto-compact point passes and compacts while the cache is warm. The fire line logs
                    context_tokens and compact_left
-  * stop rule    — 14 passed pings in a row with no owner message (about 12 hours away at one ping per
-                   ~45-60 min); lifted inside a /pause keep-warm
+  * stop rule    — 14 passed pings in a row with no owner message (about 11-12 hours away at one ping per 45 min — passed pings sit on the 15-minute tick lattice; 17 for about an hour on a false "~42 min apart" premise, measured and reverted); lifted inside a /pause keep-warm
                    window, which instead ends 12 hours after the pause (the epoch /pause writes)
   * switch       — a ping that came back as a full re-cache (an account switch killed the cache, or it
                    expired) stops keep-warm for the session until the owner speaks
@@ -81,11 +88,11 @@ def env_num(name, default, cast=float):
         return cast(default)
 
 
-MIN_LEFT_S = env_num('KEEP_WARM_MIN_LEFT_MIN', '1') * 60
-MAX_LEFT_S = env_num('KEEP_WARM_MAX_LEFT_MIN', '19') * 60
-MIN_GAP_S = env_num('KEEP_WARM_MIN_GAP_MIN', '31') * 60
-MAX_GAP_S = env_num('KEEP_WARM_MAX_GAP_MIN', '58') * 60
-STOP_PINGS = env_num('KEEP_WARM_STOP_PINGS', '14', int)
+MIN_LEFT_S = env_num('KEEP_WARM_MIN_LEFT_MIN', '9') * 60    # 1 earlier (idle compaction, header)
+MAX_LEFT_S = env_num('KEEP_WARM_MAX_LEFT_MIN', '27') * 60   # 19 earlier; the window stays 18 min wide
+MIN_GAP_S = env_num('KEEP_WARM_MIN_GAP_MIN', '33') * 60     # 31 earlier
+MAX_GAP_S = env_num('KEEP_WARM_MAX_GAP_MIN', '51') * 60     # 58 earlier
+STOP_PINGS = env_num('KEEP_WARM_STOP_PINGS', '14', int)     # passed pings sit on the 15-min tick lattice, 45 min apart in both windows, so 14 keeps ~11.5 h
 USAGE_CEILING = env_num('KEEP_WARM_USAGE_CEILING', '100')   # the limit itself
 # No context guard: a ping may carry the session over the auto-compact point, because there is nothing to keep
 # warm once a fully loaded context goes stale, and that is the most expensive case keep-warm exists to prevent.

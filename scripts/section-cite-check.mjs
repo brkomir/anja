@@ -67,7 +67,9 @@
  *
  * HISTORY FILES. A cite whose CITING file is a history file — basename
  * `MEMORY*.md` or `CHANGELOG*.md` (the live MEMORY.md / CHANGELOG.md routers and
- * every dated shard), or any file under .claude/docs/rules-ARCHIVE/ — keeps its
+ * every dated shard), `review-ledger.md` (append-only: a past row is never edited,
+ * so its cites age like a shard's, 2026-10-27), or any file under
+ * .claude/docs/rules-ARCHIVE/ — keeps its
  * class but is reported as `history:<class>` and NEVER fails the run: those files
  * record what was true when written, and a cite there going dead is the record
  * aging, not a broken pointer a reader will follow. History counts print on
@@ -155,7 +157,7 @@ const FAILING = new Set(["heading-missing", "file-missing"]);
 const STRONG = new Set(["resolved", "bold-heading", "alias"]);
 const LONG_HEADING = 12;
 /** History files: they record what was true when written, so a dead cite there never fails. */
-const HISTORY_BASENAMES = [/^MEMORY.*\.md$/, /^CHANGELOG.*\.md$/];
+const HISTORY_BASENAMES = [/^MEMORY.*\.md$/, /^CHANGELOG.*\.md$/, /^review-ledger\.md$/];
 const HISTORY_DIR = ".claude/docs/rules-ARCHIVE/";
 /** A provenance header: a level-2/3 heading opening `from `, naming where the text came from. */
 const PROVENANCE = /^#{2,3}\s+from\s/;
@@ -365,7 +367,10 @@ export function takeText(rest, insideBackticks) {
       const close = rest.indexOf("`", i + 1);
       if (close < 0) break;
       const span = rest.slice(i + 1, close);
-      if (/\.md\b/.test(span) || span.includes("/")) break; // another file cite starts here
+      // Another file cite starts here — unless nothing has been taken yet: a cite whose text STARTS
+      // with a slash-bearing span (a slash command, `§ `/review-hub --retire`, step 5`, or a path) is the heading text, not a new cite
+      // (2026-10-27; it read as an empty text and was silently skipped before).
+      if (/\.md\b/.test(span) || (span.includes("/") && norm(out) !== "")) break;
       out += rest.slice(i, close + 1);
       i = close + 1;
       continue;
@@ -734,6 +739,7 @@ function selfTest() {
         "### CALIBRATE AN EXPOSURE REPORT TO WHERE THE VALUE LIVES",
         "### PADDLE-VERIFIED PAGES ARE FROZEN ON TERMS",
         "### SIZE A RAISE TO ABSORB THE ROUND",
+        "### `/alpha --retire` — the ordered sequence",
         "## 2026-09-02 — a dated archive heading",
         "**BOLD RUN-IN HEADING.** body text",
         "⛔ **ONE EXCEPTION — the memory read.** body",
@@ -770,6 +776,10 @@ function selfTest() {
       ["resolved", "Cite's own first clause: `alpha.md` § CALIBRATE AN EXPOSURE REPORT, and I said so"],
       ["resolved", "Short heading, step-shaped token: `alpha.md` § Process 4b"],
       ["resolved", "Markdown link form: [`alpha.md`](alpha.md) § Commands"],
+      ["resolved", "Slash-opening cite text: `alpha.md` § `/alpha --retire`, step 5"],
+      ["resolved", "Symbol, then a slash command: `alpha.md` § ⏸ `/alpha --retire`, steps 6-9"],
+      ["heading-missing", "NEG slash-opening dead: `alpha.md` § `/alpha --gone` here"],
+      ["resolved", "Text, then a path span (the break this rule exists for): `alpha.md` § Commands `scripts/alpha.mjs` here"],
       ["resolved", "Italic-wrapped cite text: `alpha.md` § *Commands* and prose"],
       ["resolved", "Bold-wrapped cite text: `alpha.md` § **Commands** here"],
       ["weak-prefix", "Shared 16-char prefix, then diverges: `alpha.md` § PADDLE-VERIFIED PAGES rather than a paraphrase"],
@@ -828,8 +838,8 @@ function selfTest() {
     const vend = inCites.filter((f) => f.class === "out-of-corpus" && f.target?.startsWith(VENDOR_DOCS));
     ok("vendored cites name the vendored file they resolved to", vend.length === 3 && vend.some((f) => f.target.endsWith("02-route-segment-config/maxDuration.md")), JSON.stringify(vend.map((f) => f.target)));
     ok("vendored docs present: the run reports none unchecked", sum.vendorPresent === true && sum.unchecked === 0, JSON.stringify({ v: sum.vendorPresent, u: sum.unchecked }));
-    ok("summary: 8 heading-missing", sum.counts["heading-missing"] === 8, JSON.stringify(sum.counts));
-    ok("summary: 19 resolved (17 + fenced + dir-relative)", sum.counts.resolved === 19, JSON.stringify(sum.counts));
+    ok("summary: 9 heading-missing", sum.counts["heading-missing"] === 9, JSON.stringify(sum.counts));
+    ok("summary: 22 resolved (17 + fenced + dir-relative + 2 slash-opening + text-then-path)", sum.counts.resolved === 22, JSON.stringify(sum.counts));
     const zero = Object.fromEntries(ALL_CLASSES.map((c) => [c, 0]));
     ok("exit code: 1 on this fixture, 0 on a clean count, 0 on ambiguous alone, 0 on weak-prefix alone", exitCode(sum) === 1 && exitCode({ counts: zero }) === 0 && exitCode({ counts: { ...zero, ambiguous: 3 } }) === 0 && exitCode({ counts: { ...zero, "weak-prefix": 3 } }) === 0, JSON.stringify(sum.counts));
     ok("summary total = every cite in the fixture", sum.total === cases.length + 3, `total=${sum.total}`);

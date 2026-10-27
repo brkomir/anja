@@ -1325,6 +1325,18 @@ export function zeroDelegationCheck({ sid, sentCount, mailDir = MAIL_DIR, projec
   return { fires: true, floor: fr.floor, hub: readHubClaim(stateDir), sent };
 }
 
+// The zero-delegation advice line. A requester-side check, so on the seat that HOLDS the review-hub
+// claim the old single branch told the hub to delegate to itself: compare the claim holder with the
+// seat first. Extracted so the self-test reads the line report() prints, not a copy of it.
+export function zeroDelegationAdvice(zd, sid) {
+  const selfHub = zd.hub && String(zd.hub.session).slice(0, 8) === String(sid || "").slice(0, 8);
+  return selfHub
+    ? `   THIS SEAT HOLDS THE REVIEW-HUB CLAIM — there is nobody to delegate to: its ledger/plan commits owe no review; route any other commit to a fresh lens (review-hub/SKILL.md § THE HUB REVIEWS EVERYONE AND NOBODY REVIEWS THE HUB).`
+    : zd.hub
+      ? `   A review-hub claim stands (${zd.hub.session}) — behavioral-anti-patterns #9: delegate now (mail-send the shas), or name PER COMMIT why review is not owed.`
+      : `   No hub claim found — the #9 carve-out: broadcast for pickup, await an ack, self-run only on real silence.`;
+}
+
 function report(sid, hours) {
   const { verdicts, pruned } = scan(sid, hours);
   const sent = scanSent(sid);
@@ -1495,9 +1507,7 @@ function report(sid, hours) {
   }
   if (zd.fires) {
     console.log(`\n\u26d4 ZERO-DELEGATION: >=${zd.floor} unpushed commit(s) carry this session's creation records while it sent ZERO review requests all session.`);
-    console.log(zd.hub
-      ? `   A review-hub claim stands (${zd.hub.session}) — behavioral-anti-patterns #9: delegate now (mail-send the shas), or name PER COMMIT why review is not owed.`
-      : `   No hub claim found — the #9 carve-out: broadcast for pickup, await an ack, self-run only on real silence.`);
+    console.log(zeroDelegationAdvice(zd, sid));
     console.log(`   Zero is the one number a disposition-shaped net cannot otherwise see (a 9-commit session incl. legal pages read Clean here, 2026-08-12).`);
   }
   return 0;
@@ -2225,6 +2235,19 @@ function selfTest() {
   fs.writeFileSync(path.join(claimDir, "fleet-claim-review-hub"), "token: review-hub\nsession: hub7777\nclaimed: 2026-08-06T00:00:00Z\n");
   assert("readHubClaim parses the claimant sid", readHubClaim(claimDir)?.session === "hub7777");
   assert("readHubClaim: missing file reads null, never throws", readHubClaim(path.join(tmp, "nope")) === null);
+  // The hub seat is never told to delegate to itself.
+  const selfAdvice = zeroDelegationAdvice({ fires: true, floor: 3, hub: { session: "hub7777" } }, "hub7777");
+  assert("zero-delegation on the HUB'S OWN seat: says it holds the claim, never 'delegate now'",
+    selfAdvice.includes("THIS SEAT HOLDS THE REVIEW-HUB CLAIM") && !selfAdvice.includes("delegate now"));
+  assert("zero-delegation SELF-HUB compares on the 8-char sid (a full-uuid claim still matches)",
+    zeroDelegationAdvice({ hub: { session: "hub77770-0000-4000-8000-000000000000" } }, "hub77770").includes("THIS SEAT HOLDS"));
+  assert("zero-delegation CONTROL: another seat holding the claim still says delegate now",
+    zeroDelegationAdvice({ hub: { session: "hub7777" } }, SID).includes("delegate now (mail-send the shas)"));
+  assert("zero-delegation CONTROL: no claim reads the #9 carve-out",
+    zeroDelegationAdvice({ hub: null }, SID).includes("No hub claim found"));
+  const zdFireAt = fenceSrc.indexOf("if (zd.fires) {");
+  assert("report() prints the advice through zeroDelegationAdvice (no inline copy of the branch)",
+    zdFireAt > -1 && fenceSrc.slice(zdFireAt, fenceSrc.indexOf("\n  }", zdFireAt)).includes("zeroDelegationAdvice(zd, sid)"));
 
   fs.rmSync(tmp, { recursive: true, force: true });
   const failed = checks.filter((c) => !c.ok);

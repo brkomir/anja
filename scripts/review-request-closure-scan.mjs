@@ -151,7 +151,8 @@ import { parseLedgerShas, lookupSha } from "./lib/review-ledger.mjs";
 // FF_MAIL_DIR mirrors the sibling scan's override so a fixture store can be pointed
 // at without touching the real one.
 const MAIL = process.env.FF_MAIL_DIR || ".claude/state/session-mail";
-const me = (process.env.CLAUDE_CODE_SESSION_ID || "").slice(0, 8);
+// The seat whose queue this reads: `--sid <sid8>` names it, else the environment's identity.
+const ENV_ME = (process.env.CLAUDE_CODE_SESSION_ID || "").slice(0, 8);
 
 const SHA = /\b[0-9a-f]{7,12}\b/g;
 // A request ASKS. Matched on the body+subject, deliberately broad — a missed
@@ -264,6 +265,22 @@ export function classifyCitedShas(text, subject) {
     targets: all.filter((s) => subj.has(s) || anchored.has(s)),
     context: all.filter((s) => !subj.has(s) && !anchored.has(s)),
   };
+}
+
+// ── A LEDGER-ONLY COMMIT IS CONTEXT, NEVER A TARGET ─────────
+// A commit whose diff touches ONLY the review ledger is a hub's record of review state. A
+// requester cites one as a BASE ("the ledger row at X") and no verdict will ever name it, so as
+// a target it reads OPEN forever: a hub's own `ledger(...)` arrival-row
+// commit, read OPEN here, in review-queue.py and in the poller for 54 h (2026-10-24..26). It is
+// MOVED to the context tier, never dropped — the same no-silent-filter posture as the split above.
+// Pure over the commit's file list against its FIRST parent (`git show --diff-merges=first-parent
+// --name-only --format=`): the default combined diff lists only a merge's conflict-resolved files, so a
+// merge whose one conflict was the ledger read ledger-only while it brought a branch of code. An
+// unreadable sha lists nothing and is NOT ledger-only: the safe direction, it stays a target.
+export const LEDGER_DOC_REL = ".claude/docs/review-ledger.md";
+export function isLedgerOnlyNameList(names) {
+  const n = (names || []).map((x) => String(x).trim()).filter(Boolean);
+  return n.length === 1 && n[0] === LEDGER_DOC_REL;
 }
 
 // ⛔ RESIDUAL MECHANISM (3) IS NAMED-REJECTED, NOT FIXED — DO NOT RE-ATTEMPT WITHOUT
@@ -742,7 +759,7 @@ export function parseMailDir(dir, self) {
     const addressed = to === BROADCAST
       ? isBroadcastRequest(hdr(t, "subject"))
       : to === self &&
-        (BROADCAST_REQUEST_RE.test(hdr(t, "subject") || "") ||
+        (BROADCAST_REQUEST_RE.test(hdr(t, "subject") || "") || /^--code\b/i.test(hdr(t, "subject") || "") ||
           !BROADCAST_VERDICT_RE.test(hdr(t, "subject") || ""));
     if (addressed && from !== self) inbound.push({ f, t, from, when: hdr(t, "created") });
     // `subject` is carried explicitly so buildAnsweredIndex can key on the mail's CLASS.
@@ -756,8 +773,15 @@ export function parseMailDir(dir, self) {
 
 const hdr = (t, k) => (t.match(new RegExp(`^${k}:\\s*(.+)$`, "mi")) || [, ""])[1].trim();
 
-function main() {
-if (!me) { console.error("closure-scan: no CLAUDE_CODE_SESSION_ID; refusing to guess identity."); process.exit(2); }
+// `json`: ONE JSON document on stdout and nothing else — the requests, their open shas and what
+// closed each answered one — so review-queue.py takes its OPEN set from THIS predicate instead of
+// re-deriving "answered" (the two disagreed on 1 of 4 flagged shas for
+// one hub at one minute). The default text report is byte-unchanged: every print below goes through
+// `log`, a no-op under --json, and the three exits emit the document with their own `control`.
+function main({ sid = ENV_ME, json = false } = {}) {
+const me = sid;
+const log = json ? () => {} : (...a) => console.log(...a);
+if (!me) { console.error("closure-scan: no CLAUDE_CODE_SESSION_ID and no --sid; refusing to guess identity."); process.exit(2); }
 const { inbound, outbound, foreign } = parseMailDir(MAIL, me);
 const answered = buildAnsweredIndex(outbound);
 const fleetAnswered = buildForeignVerdictIndex(foreign);
@@ -878,15 +902,32 @@ try {
   ledgerStatus = `${ledgerIdx.size} shas indexed, ${disp} with a finished verdict`;
 } catch { /* no ledger on this checkout — every other closure path still applies */ }
 
+const ledgerOnlyCache = new Map();
+const isLedgerOnly = (sha) => {
+  if (ledgerOnlyCache.has(sha)) return ledgerOnlyCache.get(sha);
+  let names = [];
+  try {
+    names = execFileSync("git", ["show", "--diff-merges=first-parent", "--name-only", "--format=", sha],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\n");
+  } catch { names = []; }
+  const ok = isLedgerOnlyNameList(names);
+  ledgerOnlyCache.set(sha, ok);
+  return ok;
+};
+
 const rows = [];
+const unanchored = [];   // asks that cite no commit at all: carried in --json, never dropped
 for (const m of inbound) {
   if (!ASKS.test(m.t)) continue;
   const subject = hdr(m.t, "subject");
   const { targets, context } = classifyCitedShas(stripExcluded(m.t), subject);
-  const shas = targets.filter(isCommit);
-  const ctx = context.filter(isCommit);
+  const ledgerOnly = [...targets, ...context].filter(isCommit).filter(isLedgerOnly);
+  const shas = targets.filter(isCommit).filter((s) => !ledgerOnly.includes(s));
+  const ctx = [...context.filter(isCommit).filter((s) => !ledgerOnly.includes(s)), ...ledgerOnly];
   const phantom = [...targets, ...context].filter((x) => !isCommit(x));
-  if (!shas.length && !ctx.length) continue;       // no anchor -> cannot adjudicate
+  // No anchor -> nothing to adjudicate, but the ask is CARRIED in --json's `unanchored`, never dropped:
+  // review-queue.py shows it as NO SHA CITED.
+  if (!shas.length && !ctx.length) { unanchored.push({ from: m.from, when: m.when, file: m.f, subject, phantom }); continue; }
   // m.from is the REQUESTER — the recipient an answer to this request must reach.
   // A sha counts as answered by THIS seat's outbound (broad matcher) or by any
   // FOREIGN seat's subject-named verdict (strict gate) — see buildForeignVerdictIndex.
@@ -902,8 +943,8 @@ for (const m of inbound) {
   const shrugged = shas.filter(s => !isAns(s) && dismissed.has(s));
   // Cited mid-prose and never announced as a target. NOT dropped: printed below.
   const openContext = ctx.filter(s => !isAns(s) && !dismissed.has(s));
-  rows.push({ from: m.from, when: m.when, shas, ctx, open, phantom, shrugged, openContext, paths,
-              subj: (subject || "(no subject)").slice(0, 78) });
+  rows.push({ from: m.from, when: m.when, shas, ctx, open, phantom, shrugged, openContext, paths, ledgerOnly,
+              subj: (subject || "(no subject)").slice(0, 78), subject, file: m.f });
 }
 
 // ── THE CLOSURE LEDGER: what each path actually closed ────────────────────────
@@ -927,46 +968,68 @@ for (const r of rows) {
 // the likely cause is a broken/absent `git`, not a store full of phantoms - and the
 // failure is silent-by-construction: every row drops at `!shas.length` and the scan
 // prints a clean "0 requests", which reads identical to a genuinely empty queue.
+const ledgerRowOf = (s) => { const v = lookupSha(ledgerIdx, s); return v ? { ...v } : null; };
+const emitJson = (control, code) => {
+  const closedN = rows.filter((r) => !r.open.length).length;
+  process.stdout.write(`${JSON.stringify({
+    seat: me, control,
+    ledger: { path: LEDGER_FILE, status: ledgerStatus },
+    counts: { requests: rows.length, closed: closedN, withUnanswered: rows.length - closedN, closedVia: pathCounts },
+    requests: rows.map((r) => ({
+      from: r.from, when: r.when, file: r.file, subject: r.subject,
+      targets: r.shas, context: r.ctx, ledgerOnly: r.ledgerOnly, phantom: r.phantom,
+      open: r.open, openContext: r.openContext, dismissed: r.shrugged,
+      closedVia: Object.fromEntries(r.paths),
+      ledgerRows: Object.fromEntries([...r.shas, ...r.ctx].map((x) => [x, ledgerRowOf(x)])),
+    })),
+    unanchored,
+  })}\n`);
+  process.exit(code);
+};
+
 const totCited = [...shaCache.values()];
 if (totCited.length && !totCited.some(Boolean)) {
-  console.log(`\n  \u26d4 FILTER CONTROL FAILED: ${totCited.length} sha-shaped token(s) cited,`);
-  console.log(`     zero resolved as commits. Suspect git, not the store. Not a clean queue.`);
+  if (json) emitJson("filter-control-failed", 2);
+  log(`\n  \u26d4 FILTER CONTROL FAILED: ${totCited.length} sha-shaped token(s) cited,`);
+  log(`     zero resolved as commits. Suspect git, not the store. Not a clean queue.`);
   process.exit(2);
 }
 
 // POSITIVE CONTROL on the DETECTOR, not on the queue. If nothing is answered, the
 // scan cannot distinguish "clean" from "broken" — the oracle-half trap.
 const closed = rows.filter(r => !r.open.length).length;
-console.log(`review-request closure scan — session ${me}`);
-console.log(`  requests found ......... ${rows.length}`);
-console.log(`  fully answered ......... ${closed}`);
-console.log(`  with unanswered SHAs ... ${rows.length - closed}`);
+log(`review-request closure scan — session ${me}`);
+log(`  requests found ......... ${rows.length}`);
+log(`  fully answered ......... ${closed}`);
+log(`  with unanswered SHAs ... ${rows.length - closed}`);
 // ALWAYS PRINTED, ZEROS INCLUDED. A mechanism that is silent when it fires is
 // indistinguishable from one that is broken, and that is not a hypothetical here: the
 // cross-hub path shipped invisible and was reported as still-broken by a reader with no
 // way to see it. A zero on this line is now a MEASUREMENT ("the widening closed nothing
 // on this run"), where before it was an absence of evidence.
-console.log(`  closed via ............. ${OWN_DIRECT} ${pathCounts[OWN_DIRECT]}` +
+log(`  closed via ............. ${OWN_DIRECT} ${pathCounts[OWN_DIRECT]}` +
             ` · ${OWN_BROADCAST} ${pathCounts[OWN_BROADCAST]}` +
             ` · ${CROSS_HUB} verdict ${pathCounts[CROSS_HUB]}` +
             ` · ${LEDGER} ${pathCounts[LEDGER]}   (cited SHAs, not rows)`);
 // The ledger count MIXES three populations — this seat's own verdicts whose mail expired, other
 // hubs' expired verdicts, and verdicts that were never on this seat's mail at all — so "own-outbound
 // falls, ledger rises" is not a clean trend on its own.
-console.log(`  ledger ................. ${ledgerStatus}` +
+log(`  ledger ................. ${ledgerStatus}` +
             (ledgerIdx.size ? "   (ledger closures include answers never on this seat's mail)" : ""));
   { // TRUTH IN OUTPUT: the target/context split is a JUDGEMENT the scan is making on
     // your behalf, so its size is reported whether or not any row changed tier. A
     // silent filter is the one thing this file has never allowed itself.
     const c = rows.reduce((a, r) => a + r.openContext.length, 0);
-    if (c) console.log(`  cited mid-prose ........ ${c} sha(s) read as CONTEXT, not targets (listed below)`); }
+    if (c) log(`  cited mid-prose ........ ${c} sha(s) read as CONTEXT, not targets (listed below)`);
+    const lo = new Set(rows.flatMap((r) => r.ledgerOnly));
+    if (lo.size) log(`  ledger-only commits .... ${lo.size} sha(s) read as CONTEXT: each commit touches only ${LEDGER_DOC_REL}`); }
   { const d = rows.flatMap(r => r.shrugged || []);
-    if (d.length) { console.log(`  DISMISSED (still shown, never hidden):`);
-      for (const x of new Set(d)) console.log(`    ${x} — ${dismissed.get(x)}`); } }
+    if (d.length) { log(`  DISMISSED (still shown, never hidden):`);
+      for (const x of new Set(d)) log(`    ${x} — ${dismissed.get(x)}`); } }
 for (const r of rows.filter(x => x.open.length)) {
-  console.log(`\n  ⚠️  OPEN  from=${r.from}  ${r.when}`);
-  console.log(`      ${r.subj}`);
-  console.log(`      unanswered sha(s): ${r.open.join(", ")}   (of ${r.shas.length} cited)`);
+  log(`\n  ⚠️  OPEN  from=${r.from}  ${r.when}`);
+  log(`      ${r.subj}`);
+  log(`      unanswered sha(s): ${r.open.join(", ")}   (of ${r.shas.length} cited)`);
   // THE SIBLINGS THAT DID CLOSE, AND BY WHICH MECHANISM. This is the line that answers
   // the question a partially-open row could not: is this row flagged because the fix
   // never fired, or because ONE unrelated sha of N is unanswered? TARGETS only, so the
@@ -978,16 +1041,16 @@ for (const r of rows.filter(x => x.open.length)) {
     const show = p === LEDGER
       ? got.map((s) => { const x = r.paths.get(s); return `${s} (${x.verdict} · ${x.reviewer})`; })
       : got;
-    console.log(`      answered via ${p}: ${show.join(", ")}`);
+    log(`      answered via ${p}: ${show.join(", ")}`);
   }
   for (const s of r.open) {
     const fd = foreignDismissed.get(s);
     // ADVISORY ONLY — the row above stays flagged. See the foreign-ledger block.
-    if (fd) console.log(`      ℹ️  ${s} was dismissed by hub ${fd.sid} (NOT applied here): ${fd.reason}`);
+    if (fd) log(`      ℹ️  ${s} was dismissed by hub ${fd.sid} (NOT applied here): ${fd.reason}`);
   }
-  if (r.openContext.length) console.log(`      also cited mid-prose, read as CONTEXT: ${r.openContext.join(", ")}`);
-  if (r.phantom.length) console.log(`      ignored, not commits here: ${r.phantom.join(", ")}`);
-  if (r.shrugged.length) console.log(`      dismissed: ${r.shrugged.map(x => `${x} (${dismissed.get(x)})`).join(", ")}`);
+  if (r.openContext.length) log(`      also cited mid-prose, read as CONTEXT: ${r.openContext.join(", ")}`);
+  if (r.phantom.length) log(`      ignored, not commits here: ${r.phantom.join(", ")}`);
+  if (r.shrugged.length) log(`      dismissed: ${r.shrugged.map(x => `${x} (${dismissed.get(x)})`).join(", ")}`);
 }
 
 // ── THE CROSS-HUB TIER: every closure the WIDENING produced, named ───────────
@@ -998,13 +1061,13 @@ for (const r of rows.filter(x => x.open.length)) {
 // COMPLETE ON PURPOSE, even though partially-open rows also annotate inline above: one
 // `grep -i cross-hub` must return the whole set, or an audit built on it is a floor.
 if (crossHub.length) {
-  console.log(`\n  — closed by a CROSS-HUB verdict: ${crossHub.length} sha(s) this session never answered itself —`);
-  console.log(`    (another seat's verdict. Gated: verdict-SHAPED subject, NOT request-shaped, sha in`);
-  console.log(`     that subject. Each one is a row this scan would otherwise still be flagging OPEN.)`);
+  log(`\n  — closed by a CROSS-HUB verdict: ${crossHub.length} sha(s) this session never answered itself —`);
+  log(`    (another seat's verdict. Gated: verdict-SHAPED subject, NOT request-shaped, sha in`);
+  log(`     that subject. Each one is a row this scan would otherwise still be flagging OPEN.)`);
   for (const c of crossHub) {
-    console.log(`  🔗 ${c.sha} (${c.tier})  requested by ${c.requester}  ${c.when}`);
-    console.log(`      request: ${c.subj}`);
-    console.log(`      closed by ${c.from} -> ${c.to}: ${(c.subject || "(no subject)").slice(0, 78)}`);
+    log(`  🔗 ${c.sha} (${c.tier})  requested by ${c.requester}  ${c.when}`);
+    log(`      request: ${c.subj}`);
+    log(`      closed by ${c.from} -> ${c.to}: ${(c.subject || "(no subject)").slice(0, 78)}`);
   }
 }
 
@@ -1016,17 +1079,18 @@ if (crossHub.length) {
 // under-report this scan exists to catch.
 const ctxOnly = rows.filter(r => !r.open.length && r.openContext.length);
 if (ctxOnly.length) {
-  console.log(`\n  — lower confidence: ${ctxOnly.length} request(s) whose only unanswered shas are cited mid-prose —`);
+  log(`\n  — lower confidence: ${ctxOnly.length} request(s) whose only unanswered shas are cited mid-prose —`);
   for (const r of ctxOnly) {
-    console.log(`  ℹ️  CONTEXT-ONLY  from=${r.from}  ${r.when}`);
-    console.log(`      ${r.subj}`);
-    console.log(`      unanswered, but never announced as a target: ${r.openContext.join(", ")}`);
+    log(`  ℹ️  CONTEXT-ONLY  from=${r.from}  ${r.when}`);
+    log(`      ${r.subj}`);
+    log(`      unanswered, but never announced as a target: ${r.openContext.join(", ")}`);
   }
 }
 
 if (rows.length && closed === 0) {
-  console.log(`\n  ⛔ CONTROL FAILED: zero requests read as answered. The detector cannot`);
-  console.log(`     report success, so it cannot report failure either. Fix before trusting.`);
+  if (json) emitJson("zero-answered", 2);
+  log(`\n  ⛔ CONTROL FAILED: zero requests read as answered. The detector cannot`);
+  log(`     report success, so it cannot report failure either. Fix before trusting.`);
   process.exit(2);
 }
 if (rows.length === closed) {
@@ -1036,7 +1100,7 @@ if (rows.length === closed) {
   // ...and a CONTEXT-ONLY row is not an answered one either. Claiming "every request
   // is answered" over a tier the scan itself moved would be exactly the certifying
   // shape the dismissal wording above exists to avoid.
-  console.log(ctxOnly.length
+  log(ctxOnly.length
     ? `\n  ✅ every request's TARGETS are answered — ${ctxOnly.length} row(s) still carry unanswered CONTEXT shas above.`
     : anyDismissed
       ? `\n  ✅ every request is either answered or explicitly DISMISSED with a reason above.`
@@ -1046,13 +1110,14 @@ if (rows.length === closed) {
   // false — a green certifying sentence about work this session never did. Same posture
   // as the DISMISSED wording directly above: name what actually closed it.
   if (crossHub.length) {
-    console.log(`     — ${crossHub.length} of those closed on ANOTHER seat's verdict (listed above), not on anything this session sent.`);
+    log(`     — ${crossHub.length} of those closed on ANOTHER seat's verdict (listed above), not on anything this session sent.`);
   }
 }
-console.log(`\n  NOT a queue verdict — a prompt to look. A request whose verdict named no`);
-console.log(`  SHA reads OPEN here and may be closed; read the thread before acting.`);
-console.log(`  A sha cited mid-prose is reported as CONTEXT, never dropped — if one was`);
-console.log(`  really a target, it is in the context line, not missing.`);
+log(`\n  NOT a queue verdict — a prompt to look. A request whose verdict named no`);
+log(`  SHA reads OPEN here and may be closed; read the thread before acting.`);
+log(`  A sha cited mid-prose is reported as CONTEXT, never dropped — if one was`);
+log(`  really a target, it is in the context line, not missing.`);
+if (json) emitJson("ok", 0);
 process.exit(0);
 }
 
@@ -1068,15 +1133,30 @@ const isMain = isMainModule(import.meta.url);
 // is indistinguishable from a self-test that passed. That makes any gate composed above it
 // false-green (a runner's "helpful" path certifies nothing). Measured the same day, by a
 // seat that ran `--self-test` on this file and got the live queue back.
+// `--sid <sid8>` and `--json` are the two it takes (2026-10-26); anything else still
+// refuses, for the reason above.
+export function parseScanArgs(argv) {
+  const opts = { sid: ENV_ME, json: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--json") opts.json = true;
+    else if (a === "--sid" && argv[i + 1] && !argv[i + 1].startsWith("-")) opts.sid = argv[++i].toLowerCase().slice(0, 8);
+    else return { error: a };
+  }
+  return opts;
+}
+
 if (isMain) {
   const argv = process.argv.slice(2);
-  if (argv.length) {
-    console.error(`closure-scan: takes no arguments; got ${JSON.stringify(argv)}`);
-    console.error("  usage: node scripts/review-request-closure-scan.mjs");
-    console.error("  identity comes from CLAUDE_CODE_SESSION_ID (refuses rather than guessing).");
+  const opts = parseScanArgs(argv);
+  if (opts.error !== undefined) {
+    console.error(`closure-scan: unknown or incomplete argument ${JSON.stringify(opts.error)}; got ${JSON.stringify(argv)}`);
+    console.error("  usage: node scripts/review-request-closure-scan.mjs [--sid <sid8>] [--json]");
+    console.error("  identity comes from --sid, else CLAUDE_CODE_SESSION_ID (refuses rather than guessing).");
+    console.error("  --json prints ONE JSON document (requests, open shas, closed-via) and nothing else.");
     console.error("  SESSION-SCOPED: two seats read DISJOINT populations (measured 120 / 30 / 3 on one");
     console.error("  store), so 'it does not reproduce on my run' means nothing. To check a peer's");
-    console.error("  reading, run it as them: CLAUDE_CODE_SESSION_ID=<their-sid8> node <this file>.");
+    console.error("  reading, run it as them: node <this file> --sid <their-sid8>.");
     console.error("  to suppress a known false-RED row, add '<sha7> <reason>' (one per line) to");
     console.error("  .claude/state/closure-scan-dismissed-<your-sid8>.txt — documented nowhere else.");
     console.error("");
@@ -1090,5 +1170,5 @@ if (isMain) {
     console.error("  56% comments and records its own read-failure.)");
     process.exit(2);
   }
-  main();
+  main(opts);
 }

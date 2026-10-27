@@ -22,8 +22,10 @@
 # earlier scan change (09-02 22:46) split context-only shas into a separate
 # `ℹ️  CONTEXT-ONLY` tier and gated the OPEN print on rows with unanswered shas -- 69 minutes
 # BEFORE this script was authored. Measured on the live store the same day: 0 OPEN rows, 24
-# CONTEXT-ONLY, and the grep below cannot match the CONTEXT-ONLY tier at all. So EVERY fire of
-# this poller is a genuine unanswered target, and the retired clause trained its only reader to
+# CONTEXT-ONLY, and the grep below cannot match the CONTEXT-ONLY tier at all. So every fire of
+# this poller is a sha a requester named as a TARGET that no verdict has named -- usually, not
+# always, a review owed: on 2026-10-24 it fired for 2h, the hub's own ledger
+# commit cited as a base. Read the row, never discount it. The retired clause trained its only reader to
 # discount fires as probable noise -- habituation-by-documentation, the exact mechanism the
 # DO-NOT paragraph below exists to prevent.
 #

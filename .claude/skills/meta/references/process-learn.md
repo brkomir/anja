@@ -179,7 +179,7 @@ renumber.
 
 **RULES.md write-target classification (applied to every new lesson at write-time):**
 
-A new lesson promotes to **`.claude/skills/meta/RULES.md`** if it has ALL three:
+A new lesson promotes to **`.claude/skills/meta/RULES.md`** if it has ALL three — and know what the promotion buys: since `SKIP_BAND_O_INJECT=1` (the per-turn injection is parked) no hook or payload delivers a RULES row; it is reached by `grep` of the dir only (30 days to 2026-10-26: 91 rows added, 150 RULES greps in 37 sessions, 97 of them inside the writing wrap). A row's composition-time reach comes from the rule or conventions row that cites its `L{N}`, not from the shard:
 - **Trigger** — concrete textual or structural cue (phrase you're about to write, output you see, file shape)
 - **Action** — concrete sub-15-second check or substitution
 - **Generalizable** — fires across many contexts, not one specific incident
@@ -287,7 +287,7 @@ For each skill that surfaced a gap or rough edge during the session:
 
 6. **Agent regen nudge:** if the proposed edit touches a domain-expert SKILL.md (one with a matching `.claude/agents/{name}.md`), output: "After applying, run `node scripts/generate-expert-agents.mjs` to sync the agent." Orchestration-only skills (meta, audit-check, wrap, expert-review, etc.) don't have agents and don't need this.
 
-7. Before presenting, grep the target file name and the edit's subject in your own record (ALL of `DECISIONS.md` — rejected entries also sit under § Shipped and § Maintenance, not only § Rejected — plus `.claude/skills/meta/ADOPTION-QUEUE.md` and `.claude/skills/meta/COMPARISON.md` § REJECTED; not in this copy); drop a proposal that matches a rejection whose revisit trigger has not fired, and say so. Generate proposed diffs, present for user approval; a proposal the owner declines gets one dated line under `DECISIONS.md` § Rejected (target · edit · reason · revisit trigger).
+7. Before presenting, grep the target file name and the edit's subject in your own record (ALL of `DECISIONS.md` and `DECISIONS-ARCHIVE-*.md` — rejected entries can also sit under § Shipped, not only § Rejected — plus `.claude/skills/meta/ADOPTION-QUEUE.md` and `.claude/skills/meta/COMPARISON.md` § REJECTED; not in this copy); drop a proposal that matches a rejection whose revisit trigger has not fired, and say so. Generate proposed diffs, present for user approval; a proposal the owner declines gets one dated line under `DECISIONS.md` § Rejected (target · edit · reason · revisit trigger).
 
 ## Step 4b: Non-skill folder health check
 

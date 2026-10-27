@@ -3,6 +3,7 @@
 
     python3 scripts/memguard-recalibrate.py --check    # preview, writes nothing
     python3 scripts/memguard-recalibrate.py            # apply
+    python3 scripts/memguard-recalibrate.py --owner-ruled='<his words>'   # apply past the headroom refusal (single quotes: the shell must not expand his words)
     python3 scripts/memguard-recalibrate.py --self-test  # fixture regression, reads/writes nothing
 
 WHY (investigated 2026-09-19):
@@ -10,8 +11,9 @@ WHY (investigated 2026-09-19):
   1. The guard gates on swap + compressor. Those are different resources - swap is
      disk, the compressor is RAM - and their sum has read 51.5 GB on a 36 GB machine.
      No measure of RAM scarcity can exceed the RAM.
-  2. Its denial text quotes p50 ~9.0 / p95 ~17.2 / max ~20.7 over 611 samples and
-     says it is crash-class-only. Those figures match the COMPRESSOR ALONE (its
+  2. Its denial text quoted p50 ~9.0 / p95 ~17.2 / max ~20.7 over 611 samples and
+     said it was crash-class-only (both removed 2026-10-26, at the hook's 24, with
+     this script's OLD re-anchored). Those figures match the COMPRESSOR ALONE (its
      all-time max is exactly 20.7), so the calibration was measured on one term and
      applied to the sum.
   3. The 115 GB incidents the text blames on agent fan-out were traced 2026-08-01
@@ -44,6 +46,14 @@ review caught it before any run. Both defects were fail-OPEN on a fleet-wide gua
 
 UNDO: git checkout -- .claude/settings.json .claude/hooks/agent-dispatch-memory-guard.sh
 
+HEADROOM OVERRIDE (2026-10-26): the headroom check dies when the observed max exceeds
+THRESHOLD, because a number picked without that figure in front of the owner would
+still deny real work. Once the owner has re-decided WITH the figure,
+`--owner-ruled='<his words>'` turns that
+die into a printed warning and, on apply, records his words beside the figures in
+.claude/logs/memguard-recalibrate-overrides.jsonl. It overrides the HEADROOM check
+only: the data, numeric, anchor, dirty-tree and read-back checks still refuse.
+
 NOTE: the threshold is read at SESSION LAUNCH. Existing sessions keep using 24
 until restarted. A shell `export` does NOT reach this hook - the settings `env`
 block is the only channel that does.
@@ -64,20 +74,26 @@ SETTINGS = ROOT / ".claude/settings.json"
 HOOK = ROOT / ".claude/hooks/agent-dispatch-memory-guard.sh"
 LOG = ROOT / ".claude/logs/agent-dispatch-memory.jsonl"
 ENV_KEY = "FF_AGENT_MEMGUARD_THRESHOLD_GB"
+OVERRIDE_LOG = ROOT / ".claude/logs/memguard-recalibrate-overrides.jsonl"
+OWNER_FLAG = "--owner-ruled="
 SINCE = "2026-09-01"
 
 # Exact anchor from the hook's deny heredoc. It is `cat <<EOF`, NOT printf, so a
 # literal % stays a single %. Doubling it would ship "%%" to every blocked seat.
+# Re-anchored 2026-10-26: the deny text's opening was corrected at the hook's 24
+# (the crash-class-only claim and the 611-sample figures removed), so OLD is now
+# the sentence that followed ${THRESHOLD_GB} after that correction, and NEW opens
+# with " GB." because the text no longer carries the "(swap ..." parenthesis.
 OLD = (
-    "; measured p50 ~9.0 / p95 ~17.2 / max ~20.7 GB over 611 stamped-real samples)"
-    ". At 24 GB this guard is crash-class-only, so a fire here means genuinely "
-    "anomalous pressure, not routine load — an agent fan-out at this level is how "
-    "the /wrap deep-pass took the machine to 115 GB twice."
+    " GB. This threshold fires on ordinary multi-agent waves, and swap+compressor "
+    "LAGS real pressure, so a fire is not by itself evidence the machine is short of "
+    "memory: read memory_pressure -Q before reporting it as one. An agent fan-out "
+    "under real pressure is how the /wrap deep-pass took the machine to 115 GB twice."
 )
 # ⛔ NO BACKTICK, NO $, NO ", NO BACKSLASH - the consuming heredoc is UNQUOTED.
 # assert_heredoc_safe() enforces this; do not relax it to "improve" the wording.
 NEW = (
-    "). Re-derived over the flight record since {since}: {dist}. The max MOVES - it "
+    " GB. Re-derived over the flight record since {since}: {dist}. The max MOVES - it "
     "rose 27.3 to 28.9 inside two hours on 2026-09-19 as one session's own lens "
     "fan-out pushed it - so read it as a floor, never a bound. WARNING - THIS SUM IS "
     "NOT A RAM-SCARCITY MEASURE: swap is disk, the compressor is RAM, and the sum has "
@@ -180,6 +196,26 @@ def denials_at(vals, threshold):
     return sum(1 for v in vals if v > threshold)
 
 
+def headroom_verdict(headroom, owner_ruled):
+    """The one decision the owner's words can move. Returns (action, message):
+    'ok' (nothing to say), 'warn' (under 1 GB, print and continue), 'override'
+    (negative headroom, owner words present: print and continue) or 'die'
+    (negative headroom, no words). main() and --self-test both call this."""
+    if headroom < 0:
+        if owner_ruled:
+            return ("override",
+                    "headroom is NEGATIVE (%.1f GB); the headroom check is overridden on the "
+                    "owner's words: %r" % (headroom, owner_ruled))
+        return ("die",
+                "by %.1f GB - recalibrating would still deny real work. Re-decide the number "
+                "with that figure in front of the owner, then re-run with "
+                "--owner-ruled='<his words>'." % (-headroom))
+    if headroom < 1.0:
+        return ("warn", "headroom is under 1 GB and the max has been RISING - consider a higher "
+                        "threshold before applying.")
+    return ("ok", "")
+
+
 def self_test():
     """Fixture regression over the REAL functions above. Reads no log and writes no
     file. Returns a process exit code."""
@@ -239,6 +275,12 @@ def self_test():
             got = "ValueError"
         check("%s raises" % label, got, "ValueError")
 
+    print("\nARM 5 - headroom_verdict: only the owner's words move a negative headroom")
+    check("negative headroom, no words -> die", headroom_verdict(-11.6, "")[0], "die")
+    check("negative headroom, owner words -> override", headroom_verdict(-11.6, "30")[0], "override")
+    check("headroom under 1 GB -> warn, words or not", (headroom_verdict(0.5, "")[0], headroom_verdict(0.5, "30")[0]), ("warn", "warn"))
+    check("headroom 1 GB or more -> ok", headroom_verdict(1.0, "")[0], "ok")
+
     print("\n%s - %d failure(s)" % ("FAIL" if failures else "PASS", len(failures)))
     return 1 if failures else 0
 
@@ -247,13 +289,22 @@ def main(argv):
     if argv == ["--self-test"]:
         return self_test()
     check = "--check" in argv
+    owner_ruled = ""
 
     # ⛔ Unknown flags must not fall through to a WRITE.
     for a in argv:
-        if a != "--check":
-            print("⛔ unknown argument %r - only --check (or --self-test alone) is accepted" % a,
-                  file=sys.stderr)
-            sys.exit(2)
+        if a == "--check":
+            continue
+        if a.startswith(OWNER_FLAG):
+            owner_ruled = a[len(OWNER_FLAG):].strip()
+            if not owner_ruled:
+                print("⛔ --owner-ruled needs his words after the = (the quote is what gets logged)",
+                      file=sys.stderr)
+                sys.exit(2)
+            continue
+        print("⛔ unknown argument %r - only --check, --owner-ruled='<words>' (or --self-test "
+              "alone) is accepted" % a, file=sys.stderr)
+        sys.exit(2)
 
     for f in (SETTINGS, HOOK):
         if not f.exists():
@@ -276,13 +327,11 @@ def main(argv):
         print("    denials at %g GB: %d (%.2f%%)" % (t, n, 100.0 * n / len(vals)))
     headroom = float(THRESHOLD) - observed_max
     print("    headroom of the proposed %s GB over the observed max: %.1f GB" % (THRESHOLD, headroom))
-    if headroom < 0:
-        die("the observed max %.1f GB EXCEEDS the proposed threshold %s - recalibrating to "
-            "%s would still deny real work. Re-decide the number before applying."
-            % (observed_max, THRESHOLD, THRESHOLD))
-    if headroom < 1.0:
-        print("  ⚠️  headroom is under 1 GB and the max has been RISING - consider a higher "
-              "threshold before applying.")
+    action, msg = headroom_verdict(headroom, owner_ruled)
+    if action == "die":
+        die("the observed max %.1f GB EXCEEDS the proposed threshold %s %s" % (observed_max, THRESHOLD, msg))
+    elif action in ("warn", "override"):
+        print("  ⚠️  %s" % msg)
 
     # ---- 1. VALIDATE EVERYTHING. Nothing below this line writes. -------------
     if not re.fullmatch(r"[0-9]+(\.[0-9]+)?", THRESHOLD):
@@ -291,7 +340,8 @@ def main(argv):
     new_text = NEW.format(since=SINCE, dist=dist)
     assert_heredoc_safe(new_text, "the replacement text")
 
-    cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    settings_src = SETTINGS.read_text(encoding="utf-8")
+    cfg = json.loads(settings_src)
     env = cfg.setdefault("env", {})
     threshold_current = env.get(ENV_KEY)
     threshold_todo = threshold_current != THRESHOLD
@@ -336,8 +386,8 @@ def main(argv):
     if not text_todo:
         print("✓ denial text already corrected")
     else:
-        print("  denial text: replacing 4 stale claims (distribution, crash-class-only, "
-              "611 samples, agent fan-out blamed for 115 GB)")
+        print("  denial text: adding the live distribution and replacing the agent "
+              "fan-out claim for the 115 GB incidents")
 
     if check:
         print("\n--check: nothing was written.")
@@ -358,6 +408,14 @@ def main(argv):
             "re-run:\n" + dirty)
 
     # ---- 2. WRITE. Every check above has passed. ---------------------------------
+    # Pre-write bytes, so a failed verify below can put BOTH files back: the dirty
+    # check above just proved these equal HEAD, so restoring them sweeps nobody's work.
+    before = {SETTINGS: settings_src, HOOK: src}
+
+    def restore_and_die(msg):
+        for p, data in before.items():
+            write_preserving_mode(p, data)
+        die(msg + "\nBOTH files restored to their pre-run bytes; the override was not logged.")
     if threshold_todo:
         env[ENV_KEY] = THRESHOLD
         write_preserving_mode(SETTINGS, json.dumps(cfg, indent=2) + "\n")
@@ -369,14 +427,20 @@ def main(argv):
     # ---- 3. VERIFY what actually landed ------------------------------------------
     rc = subprocess.run(["bash", "-n", str(HOOK)], capture_output=True, text=True)
     if rc.returncode != 0:
-        die("the hook NO LONGER PARSES - revert now:\n"
-            "  git checkout -- .claude/hooks/agent-dispatch-memory-guard.sh\n" + rc.stderr)
+        restore_and_die("the patched hook did not parse:\n" + rc.stderr)
     print("✓ hook still parses")
 
     back = json.loads(SETTINGS.read_text(encoding="utf-8")).get("env", {}).get(ENV_KEY)
     if back != THRESHOLD:
-        die("read-back failed: %s is %r, expected %r" % (ENV_KEY, back, THRESHOLD))
+        restore_and_die("read-back failed: %s is %r, expected %r" % (ENV_KEY, back, THRESHOLD))
     print("✓ read back %s=%s" % (ENV_KEY, back))
+    if action == "override":
+        OVERRIDE_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(OVERRIDE_LOG, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"ts": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                 "threshold": THRESHOLD, "observed_max": observed_max,
+                                 "headroom": round(headroom, 1), "owner_ruled": owner_ruled}) + "\n")
+        print("✓ recorded the owner's words beside the figures in %s" % OVERRIDE_LOG.relative_to(ROOT))
 
     print("\n✅ done. Takes effect on NEW sessions only - restart to pick it up.")
     print("   undo: git checkout -- .claude/settings.json "

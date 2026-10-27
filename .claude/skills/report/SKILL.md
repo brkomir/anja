@@ -42,8 +42,13 @@ A number the page cannot source gets a visible **unverified** mark in its cell, 
 
 1. **Self-contained and offline.** One `.html`, inline CSS (the house stylesheet below), system fonts,
    no CDN, no script unless a control needs one. Opens from `file://` on the owner's box.
-2. **The answer at the top.** Under the `<h1>`: a `.note` paragraph of at most three sentences — what
-   the page shows, the verdict or recommendation, the one caveat. The owner reads this first and may stop there.
+2. **The answer at the top.** Under the `<h1>`: a `.note` paragraph of at most three sentences and about
+   80 words — what the page shows, the verdict or recommendation, the one caveat. The owner reads this first and
+   may stop there. Directly under it, one `.meta` line in plain words saying when and from what the page
+   was built — *"Built 2026-09-20 09:45Z from commit <sha>; covers runs up to 09:30Z"* — and, when the
+   code the page measures has changed since, *"Out of date: the gate changed at <sha>"* instead of a
+   paragraph about the working tree (the owner once had to ask whether a page was up to date when its only sha
+   sat in its last paragraph).
 3. **One row per item.** A `<section class="row good|bad|mixed|silent">` per frame / model / version /
    decision, in the order that answers the question (worst first for a triage, corpus order for a run).
    Each row: `<h2>` with the item's name and a `.tag` verdict; a `.meta` line with the label, the
@@ -58,11 +63,25 @@ A number the page cannot source gets a visible **unverified** mark in its cell, 
    `mixed` (amber) split; `silent` (grey) abstained / no data. The `.tag` text says the same in words.
 6. **The numbers in cells.** A results `<table>` at the end (or the top, for a run): one row per item,
    one column per measured quantity, the totals row last. Per-model or per-version comparisons are
-   side-by-side columns of ONE table, never two tables.
+   side-by-side columns of ONE table for the arms the question compares (about three); extra arms
+   (bisect legs, controls the owner did not ask about) go in a second table below it, so the main table stays
+   under about eight columns (a 20-column bisect page drew a complaint about too many columns,
+   2026-10-19; its 8-column rebuild drew rulings). Tokens, dollars and timings go in a closed
+   `<details>` after the results, never above them. The `.note` and the cells never disagree: a verdict a
+   later step changed shows both, `FAIL (paid run) → PASS ($0 replay)` (a page whose cells still read
+   fail after a later pass drew the question why, 2026-10-20).
 7. **Sources at the bottom.** A `.meta` paragraph naming every artifact the page was derived from
    (file names, shas, the command that produced them) so a reader can regenerate it.
 8. **Decisions, if any, in their own block** near the top: what needs the owner, my recommendation first,
    what happens if the owner says nothing — the `/summary` §2 rule, rendered.
+9. **A legend in plain words, and what the owner is asked to judge.** Directly under the `.note`: one line per mark
+   drawn on an image (each box, line and colour) and per column header that is not plain English, saying
+   what the mark IS in the photograph and what it tells the owner — never the name of the computation behind it
+   (*"p5/p95 mass extent (the gate's witness)"* drew a request for a legend from a page that had a legend,
+   2026-09-15). Then a "What to judge" line as an if/then: *"if the subject reaches the
+   edge, the fire is wrong; if it stops inside, the fire is right."* Grey (`silent`) means no data; a row
+   waiting on the owner's ruling is amber with the tag "your call", never grey. A page built for a review panel
+   shown to the owner carries all of this too, with the panel's apparatus in a closed `<details>`.
 
 ### House stylesheet (lift verbatim; extend, do not restyle)
 
@@ -81,22 +100,35 @@ body{font:15px/1.45 -apple-system,Helvetica,Arial,sans-serif;margin:24px auto;ma
    scratchpad when it will not — that reads the artifacts and emits the HTML plus the thumbs. Hand-typed
    cells are where restatement errors live (`/summary`'s founding incident). A narrative report over a
    decision or a method may be composed by hand, with every number sourced.
-   **Named generators (2026-09-13, the Revisit clause below having fired; none of the four scripts named here is in this copy):** `scripts/report-smoke.mts` — a smoke or
-   probe run, N legs × M models, manifest-driven; `scripts/report-smoke-judge.mts` — a judge-ON focus run, one row per
-   frame with the judge beside the draw. Their shared chrome (`shortName`, the note-sentence gate, the provenance
-   stamp) lives in `scripts/lib/report-page.mts` and frame-cache resolution in `scripts/lib/focus-frame-cache.mts`:
-   a third generator IMPORTS both — the judge generator hand-copied the chrome and four already-paid findings
+   **Generators (none of the scripts named here is in this copy):** the recurring ones live in `scripts/report-*.mts` (`ls` them; every one imports
+   `scripts/lib/report-page.mts`); a one-shape page may commit its generator beside it as `<page>.gen.mts`.
+   Their shared chrome (`shortName`, the note-sentence gate, the provenance stamp, the render check) lives in
+   `scripts/lib/report-page.mts` and frame-cache resolution in `scripts/lib/focus-frame-cache.mts`:
+   a new generator IMPORTS both — the judge generator hand-copied the chrome and four already-paid findings
    came with it, one blocking and one serious finding among them.
 4. **Write it under `plans/<arc>/report-<slug>-<YYYY-MM-DD>.html`** (assets in
    `plans/<arc>/report-<slug>-<YYYY-MM-DD>/`), never under `/tmp`, never online
-   (on disk first, an online artifact only when the owner asks — there is no delete for one).
+   (on disk first, an online artifact only when the owner asks —
+   there is no delete for one). A page named any other way drops out of every count of these pages
+   (one was missing from a 2026-10-25 census of 93).
 5. **`open` it** (macOS) BEFORE writing the chat reply:
-   the owner should be looking at the page while the owner reads the answer.
+   the owner should be looking at the page while the owner reads the answer. It is the step that gets skipped: `open` ran in
+   14 of 19 invocations, 2026-09-11 to 2026-10-25. Before `open`, the generator runs
+   `assertRenderResolves` (`scripts/lib/report-page.mts`): every local `src`/`href` target inside a tag
+   (either quote) exists, and, when the generator passes a row count (every generator but `report-smoke`, whose
+   rows have no single item list, so its row count goes unchecked), the row count equals the items the
+   subject names. Three pages opened in one session failed exactly that
+   (2026-09-17 and 2026-09-19: one with seven rows of the wrong frames and an empty
+   assets folder, two whose images did not render). There is no privacy exception: no photo used on these pages is private,
+   so every target is committed beside the page and the check has nothing to skip.
 6. **Commit** the page + assets + generator with `scripts/safe-commit.sh` (explicit files, own counts);
    a `--signal info` FYI to the live hub per the records rule; a `--code` request when a reusable
    generator under `scripts/` shipped.
 7. **The chat reply is the answer plus the pointer**, plain register: the three-sentence verdict from the
-   page's `.note`, the file path, and what needs the owner. Never the page's contents re-typed in chat.
+   page's `.note`, the file path, and what needs the owner. Never the page's contents re-typed in chat: no table
+   and no sha in the reply, since the page's cells carry those (2 of 19 replies put a markdown table in chat,
+   one with shas in its cells, and the 5 replies measured for length on 2026-10-25 ran a median of 424
+   words against a `.note` of about 80).
 
 ## Anti-scope
 
@@ -109,8 +141,10 @@ body{font:15px/1.45 -apple-system,Helvetica,Arial,sans-serif;margin:24px auto;ma
 
 ## Revisit
 
-- If three reports in a row are read once and never reopened, the format is too heavy — shorten.
-- If the owner keeps asking `/explain` on cells of a report, the cells carry too little source — add the
-  per-item sources inline rather than at the bottom.
+- Reopen signal: an owner message carrying the page's `file://` path, or a `[Image #N]` of one of its rows with a question. Measured 2026-09-11 to 2026-10-25 over 120 transcripts: 4 path pastes on 3 pages, 12 row screenshots after 4 pages, of 19 pages built under this command. 3 pages in a row with neither ⇒ the format is too heavy — shorten.
+- Too-little-source signal: a row screenshot whose question the row should have answered (a question asking why one row's score had not flagged it and what its prose said, 2026-10-19), or `/eli5` / `/explain` within an hour of the page — 6 of 19 pages drew one, 4 of those quoting the CHAT reply's closing list and 0 a page cell. Either ⇒ add the per-item sources inline rather than at the bottom, and put the decisions on the page (contract item 8) rather than re-typing them in chat, which is where the owner quotes from.
+- If the owner asks whether a page is current (baseline 2 in the same window, 2026-09-15 and
+  2026-09-20), the build line under the note is missing or unclear.
 - If a generator gets written twice for the same artifact shape, promote it to `scripts/` and name it here. *Fired
-  2026-09-13 — both generators are named in Process 3, with the shared lib they import.*
+  2026-09-13 — the two generators were named in Process 3; since 2026-10-25 Process 3 points at `scripts/report-*.mts`
+  and the shared lib they import.*

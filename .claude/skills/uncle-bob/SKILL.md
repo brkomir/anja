@@ -230,7 +230,7 @@ SOLID findings on such hot-path surfaces MUST include a "performance impact: neg
 
 **Source:** the source project's own codified posture across ~280 L# lessons. Many encode pragmatic deviations from textbook clean code (e.g., registry hygiene's intentional shotgun surgery; an earlier audit's process lesson that "lean framing is a red flag" — pure-theoretical findings are themselves a smell).
 
-**Apply:** before emitting any finding, grep `meta/MEMORY.md` and `DECISIONS.md` for the affected surface. If a codified L# decision contradicts the finding, the L# wins — drop or rephrase to acknowledge the codified position. *Codified position contradicts theory* is the strongest possible defer signal.
+**Apply:** before emitting any finding, grep `meta/MEMORY.md` and `DECISIONS.md` + `DECISIONS-ARCHIVE-*.md` for the affected surface. If a codified L# decision contradicts the finding, the L# wins — drop or rephrase to acknowledge the codified position. *Codified position contradicts theory* is the strongest possible defer signal.
 
 ### Clause 6 — No TDD orthodoxy
 

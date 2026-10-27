@@ -137,15 +137,16 @@ rc, out = r.deny()
 check('tool call after the marker cleared -> allowed', rc == 0 and out == '', (rc, out))
 
 # 3. gap window
-for gap, want_block, label in ((20, True, 'fresh 20m'), (31, False, 'edge 31m'), (46, False, '46m'), (59, True, 'cold 59m')):
+for gap, want_block, label in ((20, True, 'fresh 20m'), (31, True, 'fresh 31m (33 is the floor since 2026-10-27)'), (32, True, 'fresh 32m (one under the 33 floor)'), (33, False, 'edge 33m'), (46, False, '46m'), (50, False, '50m (before the ~54m idle compaction)'), (51, True, 'cold 51m (MAX_GAP is exclusive)'), (52, True, 'cold 52m'), (59, True, 'cold 59m')):
     r = due_rig(gap_min=gap)
     rc, out = r.gate(PING, T0)
     check(f'gap {label} -> {"BLOCK" if want_block else "PASS"}', blocked(out) == want_block, out)
 
 # 3b. countdown (status line cache_expires_at) decides when present
-for left_min, want_block, label in ((8, False, '8m left'), (18, False, '18m left (inside the 19m window)'), (21, True, '21m left (outside it)'), (20, True, '20m left'), (-1, True, 'countdown at zero'), (0.5, True, '30s left'),
-                                  (19, False, '19m left exactly (the 1..19 window is inclusive)'), (18.5, False, '18m30s left'),
-                                  (1, False, '60s left exactly (inclusive)'), (1.5, False, '90s left')):
+for left_min, want_block, label in ((8, True, '8m left (under the 9m floor since 2026-10-27)'), (18, False, '18m left (inside the 9..27 window)'), (21, False, '21m left (inside it)'), (20, False, '20m left'), (-1, True, 'countdown at zero'), (0.5, True, '30s left'),
+                                  (27, False, '27m left exactly (the 9..27 window is inclusive)'), (27.5, True, '27m30s left (outside it)'), (26.5, False, '26m30s left'),
+                                  (9, False, '9m left exactly (inclusive)'), (8.5, True, '8m30s left (too close: the idle compaction would win)'),
+                                  (1, True, '60s left (passed until 2026-10-27)'), (1.5, True, '90s left')):
     r = due_rig(gap_min=5)                     # transcript says fresh; the countdown must win
     r.status(cache_expires_at=T0 + left_min * 60, five_hour_pct=10)
     rc, out = r.gate(PING, T0)
@@ -336,7 +337,7 @@ rc, out = r.gate(PING, T0)
 check('stale status file (1h old) -> guards skipped, PASS', rc == 0 and out == '', out)
 
 # 7. stop rule: STOP passes with no owner prompt, then BLOCK; owner prompt resets it
-STOP = 14   # the gate's KEEP_WARM_STOP_PINGS default: pings stop after about 12 hours without an owner prompt
+STOP = 14   # the gate's KEEP_WARM_STOP_PINGS default: pings stop after about 12 hours without an owner prompt (pings stay 45 min apart in the 9..27 window)
 r = due_rig()
 t = T0
 results = []
@@ -478,7 +479,7 @@ check("KEEP_WARM_USAGE_CEILING='nan' falls back to 100, never disables the limit
       blocked(b.stdout.strip()) and 'limit reached' in b.stdout, (b.returncode, b.stdout[-160:]))
 
 # 13. ordering and edges the first 37 arms left open
-for label, status in (('usage 100%', {'five_hour_pct': 100}), ('countdown 20m left', {'cache_expires_at': T0 + 20 * 60})):
+for label, status in (('usage 100%', {'five_hour_pct': 100}), ('countdown 30m left', {'cache_expires_at': T0 + 30 * 60})):
     r = due_rig()
     r.touch(f'session-pause-{SID8}', '1')
     r.touch(f'keep-warm-pause-{SID8}', str(int(T0 + 5 * 3600)))

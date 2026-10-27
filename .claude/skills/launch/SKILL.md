@@ -1,6 +1,6 @@
 ---
 name: launch
-description: Show launch-readiness status from the LAUNCH.md runbook — critical-path / in-control / discretionary / paid-launch tracks, with done/open counts and the next action. Use when asking "where are we on launch?" or "what's left before we can ship?". Companion to /flows + /ops (audit coverage) and /launch-check (on-demand cross-system checklist generator).
+description: Show launch-readiness status from the LAUNCH.md runbook — critical-path / in-control / discretionary / paid-launch tracks, with done/open counts and the next action. Use when asking "where are we on launch?" or "what's left before we can ship?". `/launch check` runs the automated pre-launch checklist (tsc, tests, migrations, env, security/SEO/legal grep; the former /launch-check, merged here). Companion to /flows + /ops (audit coverage).
 ---
 
 # Launch Runbook Status
@@ -11,8 +11,10 @@ Show the current state of the launch checklist. Read-only — reports status, ne
 
 When the user types `/launch` or asks about launch readiness / "what's left before we can ship?" / "are we on track for the date?".
 
+**Argument `check`** → skip § Instructions and § Output Format; run § Subcommand: `check` below (marker stays `[launch]`).
+
 **Distinct from:**
-- `/launch-check` — the **command** that *generates* a fresh cross-system readiness checklist by inspecting code/config. `/launch` *reads the persisted tracker* (`LAUNCH.md`) — the ordered runbook with status.
+- `/launch check` (the former `/launch-check`, merged here; § Subcommand: `check` below) — the subcommand that *generates* a fresh cross-system readiness checklist by inspecting code/config. Bare `/launch` *reads the persisted tracker* (`LAUNCH.md`) — the ordered runbook with status.
 - `/flows` + `/ops` — audit-coverage trackers (which surfaces have been audited). `/launch` is the go-live execution checklist (deploy / vendor / dashboard / ops steps), most of which are owner actions, not audits.
 
 ## Instructions
@@ -57,3 +59,45 @@ Keep detail rows only for the track currently in focus (the first track with ope
 ## Response-mode prefix
 
 `/launch` is a read-only state-query skill (same class as `/flows`, `/ops`, `/status`) — emit output prefixed **`[launch]`**. ⛔ **The mode marker is visible.** This section previously said *unprefixed, no `[launch]` prefix*, which directly contradicted the house rule that every command's output carries the command's own name as its marker. A seat reading this spec at the moment of use would have followed the wrong one.
+
+## Subcommand: `check` — the AUTOMATED pre-launch checklist (merged from `/launch-check`)
+
+`/launch check` runs the former `/launch-check` command, which the source project merged here (its old-name stub is not in this copy). The bare `/launch` above reads the runbook; `check` INSPECTS code and config and reports a traffic light per area.
+
+Run this before deploying to production. Checks all critical systems.
+
+### Steps
+
+1. **Read LAUNCH.md** — the open 🔴/🟠 items are the launch blockers (bare `/launch` reports them).
+
+2. *(Dropped: it read a tracker section that does not exist; the number stays so the steps keep their cited numbers.)*
+
+3. **Type check**: `npx tsc --noEmit` — must pass with zero `src/` errors.
+
+4. **Tests**:
+   - `npx vitest run` — 100% unit tests pass.
+   - `npm run test:integration` — 100% integration tests pass.
+   - `./scripts/run-changed-e2e.sh --all` — full e2e suite on pre-launch (this is the one time we run the full suite). Skipped-with-reason tests allowed if each has a replacement unit/integration test documented.
+
+5. **Migrations**: Compare migration files in `supabase/migrations/` against what's applied. List any unapplied migrations.
+
+6. **Environment variables**: Check that all required env vars are documented. Scan for `process.env.` references and verify each has a corresponding entry in `.env.example` or is documented in todo.txt.
+   - **Dangerous-escape-hatch flags MUST be absent/off in prod**: a `*_BYPASS` flag that skips an auth or MFA gate (bootstrap-only) must NOT be set in the deployment platform's production environment (list the production env vars and grep for it → expect no hit). Same check for any `*_KILLSWITCH` left "on": a kill switch must be unset/off.
+
+7. **Security quick scan**:
+   - All tables have RLS enabled (grep migrations for `ENABLE ROW LEVEL SECURITY`)
+   - No secrets in source code
+   - Payment-provider webhook signature verified + idempotency via a processed-events table
+   - Auth callback validates redirect URLs
+
+8. **SEO check**:
+   - All public pages have `generateMetadata` or `export const metadata`
+   - `robots.ts` and `sitemap.ts` exist and reference correct domain
+   - OG images configured
+
+9. **Legal check**:
+   - Privacy Policy and Terms of Service are comprehensive (not stub)
+   - Signup page has ToS/Privacy consent text
+   - Cookie consent banner loads before tracking scripts
+
+10. **Report**: Traffic-light summary (GREEN / YELLOW / RED) for each area.

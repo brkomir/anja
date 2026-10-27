@@ -117,6 +117,18 @@ if [ "$SELFTEST" -eq 0 ]; then
   # message that lands is not the message written (bash-environment.md). Force -F.
   case "$MSG" in *'`'*) echo "safe-commit: REFUSED — backtick in -m body; use -F <file>" >&2; exit 1 ;; esac
 
+  # A declared `*` or `?` is a git GLOB to the `git add` below, which stages every modified match (a
+  # peer's unstaged edit included), and Gate 1 then refuses it anyway (it compares plain strings), with
+  # those matches left staged (arm AF). Refuse before anything is staged. `[` stays allowed: 181 tracked
+  # paths carry `[locale]`-style segments and 0 carry `*` or `?` (2026-10-24).
+  for _sc_p in "${PATHS[@]}"; do
+    case "$_sc_p" in *'*'*|*'?'*)
+      echo "safe-commit: REFUSED — '$_sc_p' carries a glob character; nothing was staged." >&2
+      echo "  Declare the FILES (git diff --cached --name-only --no-renames -- '<glob>' after a quoted git add)." >&2
+      exit 1 ;;
+    esac
+  done
+
   # FIRE LEDGER (2026-08-25). OBSERVABILITY ONLY, never a gate: the
   # commit-row rule class had no falsifier — nobody could say whether its rewrites changed
   # outcomes. rc!=0 = refusal, rc=0 = commit (sha recorded). Fail-open by design: a ledger
@@ -187,10 +199,12 @@ if [ "$SELFTEST" -eq 0 ]; then
   # core.quotePath=false: ls-files C-quotes a non-ASCII path ("caf\303\251.txt"), the exact-path awk
   # below then misses it, and the restore falls to `git rm --cached` = a staged DELETION of a tracked file.
   PRE_INDEX="$(git -c core.quotePath=false ls-files --stage -- "${PATHS[@]}" 2>/dev/null || true)"
+  # Every other git verb below reads a declared path LITERALLY: `[...]` is still a glob to git (arm AK).
+  LPATHS=("${PATHS[@]/#/:(literal)}")
   unstage_ours() {
     if [ "$STAGED_MODE" -eq 1 ]; then
       # A blob a peer commit SWEPT is no longer staged, so "STILL IN THE SHARED INDEX" would be false; say what happened.
-      if git diff --cached --quiet HEAD -- "${PATHS[@]}" 2>/dev/null; then
+      if git diff --cached --quiet HEAD -- "${LPATHS[@]}" 2>/dev/null; then
         _sc_h1="$(git rev-parse -q --verify HEAD 2>/dev/null || true)"
         echo "safe-commit: nothing is staged for your paths any more (HEAD ${SC_H0:0:9} -> ${_sc_h1:0:9})." >&2
         [ "$_sc_h1" = "$SC_H0" ] || echo "  HEAD MOVED DURING THIS RUN — whose commit took them: git log --oneline ${SC_H0:0:9}..${_sc_h1:0:9} -- <paths>" >&2
@@ -235,7 +249,9 @@ if [ "$SELFTEST" -eq 0 ]; then
           # A DIRECTORY pathspec has no exact PRE_INDEX entry, so it always reads "not pre-staged" and
           # `git reset -- <dir>` would unstage children the caller staged and the commit never took.
           if [ "$e0" = "$(printf '%s' "$mode${sha:+ $sha}")" ] && [ "${e0%% *}" != 040000 ] && [ "${eh%% *}" != 040000 ]; then
-            git reset -q -- "$pth" 2>/dev/null || true
+            # :(literal) — every git verb in this restore takes a DECLARED path, and git reads `*`, `?` and
+            # `[...]` in a pathspec as a glob: `x[1].txt` also resets a staged `x1.txt` (arm AC).
+            git reset -q -- ":(literal)$pth" 2>/dev/null || true
             swept="$swept    $pth"$'\n'
             continue
           fi
@@ -246,7 +262,10 @@ if [ "$SELFTEST" -eq 0 ]; then
         fi
       fi
       if [ -n "$mode" ] && [ -n "$sha" ]; then
-        git update-index --cacheinfo "$mode,$sha,$pth" 2>/dev/null || true
+        # --add: our own `git add` of a path deleted on disk REMOVED its entry, and without --add git
+        # refuses to re-create it (rc 128, "missing --add option?"), the `|| true` hides that, and the
+        # deletion stays staged under an "ALREADY STAGED BEFORE THIS RUN" warning (arm AE).
+        git update-index --add --cacheinfo "$mode,$sha,$pth" 2>/dev/null || true
       else
         # ⛔ NO `-r`, DELIBERATELY — REVERTED 2026-08-13 within minutes of adding it. `-r` was
         # applied untested and it is DESTRUCTIVE on a DIRECTORY pathspec.
@@ -258,7 +277,9 @@ if [ "$SELFTEST" -eq 0 ]; then
         # rm simply fails and the caller's own pre-staged dir survives — which is CORRECT: they
         # staged it, so leaving it and warning is the intended behaviour, not a bug.
         # The real dir fix is a per-entry restore from PRE_INDEX, not a wholesale rm — filed.
-        git rm -q --cached --force -- "$pth" 2>/dev/null || true
+        # :(literal) for the same reason, the GLOB form of it: a declared `d/*.md` has no exact PRE_INDEX
+        # entry either, and as a plain pathspec this rm evicted every match (16 of 16, arm AD).
+        git rm -q --cached --force -- ":(literal)$pth" 2>/dev/null || true
       fi
     done
     # SAY IT WAS A SWEEP. The Gate 1 text above reads like an ordinary staged-set mismatch, and the
@@ -276,7 +297,7 @@ if [ "$SELFTEST" -eq 0 ]; then
       printf '%s' "$movedpre" >&2
       echo "  Their pre-run entries were restored and may now REVERT that commit. Read" >&2
       echo "  git diff --cached HEAD -- <path>; if it undoes the commit, unstage: git reset -q -- <path>" >&2
-      echo "  (undo that reset: git update-index --cacheinfo <mode>,<blob>,<path> with the pre-run entry above)" >&2
+      echo "  (undo that reset: git update-index --add --cacheinfo <mode>,<blob>,<path> with the pre-run entry above)" >&2
     fi
     # THE RESTORE IS TO PRE-INVOCATION STATE, NOT TO HEAD. A path the CALLER had already staged
     # is restored INTO the shared index and LEFT there -- the same state the --staged branch above
@@ -288,7 +309,7 @@ if [ "$SELFTEST" -eq 0 ]; then
     # endpoint survived a Gate 1 refusal in silence and a peer bare commit took it minutes later.
     # Assert the STATE after the restore rather than a remembered flag: that IS the exposed set.
     for pth in "${PATHS[@]}"; do
-      git diff --cached --quiet HEAD -- "$pth" || left="$left    $pth"$'\n'
+      git diff --cached --quiet HEAD -- ":(literal)$pth" || left="$left    $pth"$'\n'
     done
     [ -n "$left" ] || return 0
     echo "safe-commit: WARN -- DECLARED PATHS WERE ALREADY STAGED BEFORE THIS RUN AND REMAIN IN THE SHARED INDEX:" >&2
@@ -297,13 +318,13 @@ if [ "$SELFTEST" -eq 0 ]; then
     echo '  These are YOURS -- both exits are open: commit them, or unstage them.' >&2
     echo '  A blob left here is takeable by any peer bare commit.' >&2
   }
-  [ "$STAGED_MODE" -eq 1 ] || git add -- "${PATHS[@]}"
+  [ "$STAGED_MODE" -eq 1 ] || git add -- "${LPATHS[@]}"
 
   # GATE 1 — foreign PATHS. Compare the staged set to the declared set.
   # core.quotePath=false: name-only C-quotes a non-ASCII path ("caf\303\251.txt") while
   # DECLARED holds it as typed, so without it a staged café.txt never equals its own
   # declaration and the gate refuses every such commit (arm AA).
-  STAGED="$(git -c core.quotePath=false diff --cached --name-only | sort)"
+  STAGED="$(git -c core.quotePath=false diff --cached --name-only --no-renames | sort)"
   DECLARED="$(printf '%s\n' "${PATHS[@]}" | sort -u)"
   if [ "$STAGED" != "$DECLARED" ]; then
     echo "safe-commit: REFUSED — staged set != declared set." >&2
@@ -333,7 +354,7 @@ if [ "$SELFTEST" -eq 0 ]; then
                            echo "  Check: git log -1 -S '<your text>' -- <path>" >&2; }
     echo "  If you DECLARED A DIRECTORY: this gate compares FILE paths, so a directory can never" >&2
     echo "  match -- every staged file reads foreign and the directory reads missing, which mimics a" >&2
-    echo "  peer collision. Expand it (git diff --cached --name-only -- <dir>) and declare the FILES." >&2
+    echo "  peer collision. Expand it (git diff --cached --name-only --no-renames -- <dir>) and declare the FILES." >&2
     echo "  If you passed ':(literal)...' pathspec magic: git add honors it, this gate string-compares" >&2
     echo "  PLAIN paths -- declare the plain path; keep :(literal) for git diff/show." >&2
     echo "  NOT repairing. Unstage them yourself (record their blob SHAs first:" >&2
@@ -351,7 +372,7 @@ if [ "$SELFTEST" -eq 0 ]; then
   # earns its keep (it catches "you hand-staged, then edited your own file again, and the
   # commit would miss it") — it just cannot tell that case from deliberate exclusion, so the
   # caller acknowledges with --drift-ok rather than the tool guessing.
-  DRIFT="$(git diff --numstat -- "${PATHS[@]}")"
+  DRIFT="$(git diff --numstat -- "${LPATHS[@]}")"
   if [ -n "$DRIFT" ] && [ "$STAGED_MODE" -eq 1 ] && [ "$DRIFT_OK" -eq 1 ]; then
     echo "safe-commit: index!=worktree ACKNOWLEDGED (--drift-ok) — deliberate isolation:" >&2
     printf '%s\n' "$DRIFT" | sed 's/^/    /' >&2
@@ -432,8 +453,8 @@ if [ "$SELFTEST" -eq 0 ]; then
   # is never noticed, and git permanently records the wrong author. Measured 2026-08-07,
   # one commit after this gate shipped with only the delete half: a commit took 8 lines of
   # a peer's row under a message about withdrawing my own.
-  ACT_DEL="$(git diff --cached --numstat HEAD -- "${PATHS[@]}" | awk '{s+=$2} END {print s+0}')"
-  ACT_ADD="$(git diff --cached --numstat HEAD -- "${PATHS[@]}" | awk '{s+=$1} END {print s+0}')"
+  ACT_DEL="$(git diff --cached --numstat HEAD -- "${LPATHS[@]}" | awk '{s+=$2} END {print s+0}')"
+  ACT_ADD="$(git diff --cached --numstat HEAD -- "${LPATHS[@]}" | awk '{s+=$1} END {print s+0}')"
   gate_col() {   # $1=label $2=actual $3=declared $4=diff-prefix $5=flag $6=verb
     [ "$2" = "$3" ] && return 0
     echo "safe-commit: REFUSED — $1 $2, declared $3." >&2
@@ -445,7 +466,7 @@ if [ "$SELFTEST" -eq 0 ]; then
     # lines and died, skipping the "re-run with" guidance, the derived pair, AND `unstage_ours` —
     # so the caller's paths stayed in the shared index. That is precisely the arming-on-refusal
     # this function's own header says "deadlocked two seats tonight", alive on the zero-count path.
-    git diff --cached -U0 HEAD -- "${PATHS[@]}" | grep "^$4" | grep -v "^$4$4$4" | cut -c1-140 | sed 's/^/    /' >&2 || true
+    git diff --cached -U0 HEAD -- "${LPATHS[@]}" | grep "^$4" | grep -v "^$4$4$4" | cut -c1-140 | sed 's/^/    /' >&2 || true
     echo "  If they are all yours, re-run with $5 $2." >&2
     # BOTH numbers, because ONE is not enough to finish. Deletions gate first and exit, so a
     # commit wrong on both columns costs two round trips: you learn --del, fix it, re-run, THEN
@@ -1170,6 +1191,116 @@ else
   FAIL=$((FAIL+1)); echo "  FAIL AB: rc=$RC (want 1, GATE 4, HEAD unmoved)"; sed 's/^/      /' "$SC_OUT" || true
 fi
 git reset -q -- "$SC_NATS" 2>/dev/null || true; rm -f "$SC_NATS"
+
+# ── THE RESTORE'S GIT VERBS READ A DECLARED PATH AS A PATHSPEC ──
+# `[`, `*` and `?` are glob characters to git, so each verb below gets :(literal). Fixtures use a bracket
+# path (`x[1].txt` globs to `x1.txt`) because a declared `*`/`?` is now refused before the add (arm AF).
+printf 'x\n' > 'x[1].txt'; printf 'one\n' > x1.txt; printf 'n\n' > n1.txt; printf 'gone\n' > gone.txt
+git add -- ':(literal)x[1].txt' x1.txt n1.txt gone.txt; git commit -qm brackets
+# Arm AG (the left-over check): a foreign STAGED x1.txt refuses Gate 1; a plain `diff --cached -- 'x[1].txt'`
+# then counts x1.txt as OURS and prints a false "ALREADY STAGED BEFORE THIS RUN" naming x[1].txt.
+# MUTATION: drop :(literal) from the `left` loop's diff -> this arm reds.
+echo mine >> 'x[1].txt'; echo peer7 >> x1.txt; git add x1.txt
+run -m "bracket path, foreign glob sibling" -- 'x[1].txt'
+if [ "$RC" = 1 ] && ! grep -qF 'ALREADY STAGED BEFORE THIS RUN' "$SC_OUT" && git diff --cached --quiet HEAD -- ':(literal)x[1].txt' \
+   && ! git diff --cached --quiet HEAD -- x1.txt; then
+  PASS=$((PASS+1)); echo "  PASS AG: a staged glob-sibling of a bracket path is not reported as our pre-staged path"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AG: rc=$RC (want 1, no ALREADY STAGED, x[1].txt unstaged, x1.txt still staged)"; sed 's/^/      /' "$SC_OUT" || true
+fi
+git reset -q -- ':(literal)x[1].txt' x1.txt; git checkout -q -- ':(literal)x[1].txt' x1.txt
+# Arm AD (the `git rm --cached` branch, a path with no exact PRE_INDEX entry): a NEW n[1].txt refuses on
+# a foreign path; a plain rm of 'n[1].txt' also evicts the tracked n1.txt, a staged DELETION.
+# MUTATION: drop :(literal) from the rm -> this arm reds.
+printf 'new\n' > 'n[1].txt'; echo peer8 >> theirs.txt; git add theirs.txt
+run -m "new bracket path" -- 'n[1].txt'
+if [ "$RC" = 1 ] && [ -z "$(git diff --cached --diff-filter=D --name-only HEAD)" ] && [ -z "$(git ls-files -- ':(literal)n[1].txt')" ]; then
+  PASS=$((PASS+1)); echo "  PASS AD: a refusal on a new bracket path evicts no tracked glob sibling"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AD: rc=$RC staged deletions: $(git diff --cached --diff-filter=D --name-only HEAD | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
+fi
+git reset -q -- n1.txt theirs.txt; git checkout -q -- theirs.txt; rm -f 'n[1].txt'
+# Arm AE (the `update-index` branch): a declared path deleted on disk. Our `git add` removes its entry;
+# without --add the restore fails silently, the deletion stays staged and is reported as the caller's.
+# MUTATION: drop --add from `update-index --cacheinfo` -> this arm reds.
+rm gone.txt; echo peer9 >> theirs.txt; git add theirs.txt
+run -m "deleted path" -- gone.txt
+if [ "$RC" = 1 ] && git diff --cached --quiet HEAD -- gone.txt && ! grep -qF 'ALREADY STAGED BEFORE THIS RUN' "$SC_OUT"; then
+  PASS=$((PASS+1)); echo "  PASS AE: a refusal on a deleted path restores its index entry (no staged deletion left)"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AE: rc=$RC status='$(git diff --cached --name-status HEAD -- gone.txt)' (want 1, '', no ALREADY STAGED)"; sed 's/^/      /' "$SC_OUT" || true
+fi
+git reset -q -- gone.txt theirs.txt; git checkout -q -- gone.txt theirs.txt
+# Arm AF (a declared `*`): refused before the add, so a peer's UNSTAGED edit to a match is never staged.
+# MUTATION: delete the glob-character refusal -> the add stages d2/b.md and leaves it staged; this arm reds.
+mkdir -p d2; printf 'a\n' > d2/a.md; printf 'b\n' > d2/b.md; git add d2; git commit -qm d2
+echo mine >> d2/a.md; echo peer-unstaged >> d2/b.md; echo peer10 >> theirs.txt; git add theirs.txt
+run -m "glob" -- 'd2/*.md'
+if [ "$RC" = 1 ] && grep -qF 'glob character' "$SC_OUT" && [ -z "$(git diff --cached --name-only -- d2)" ] && [ "$(git ls-files d2 | wc -l | tr -d ' ')" = 2 ]; then
+  PASS=$((PASS+1)); echo "  PASS AF: a declared glob is refused before anything is staged"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AF: rc=$RC staged under d2: $(git diff --cached --name-status -- d2 | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
+fi
+git reset -q -- d2 theirs.txt; git checkout -q -- d2 theirs.txt
+# Arm AC (the moved-HEAD `git reset` branch): our add stages x[1].txt, a peer bare commit sweeps it and
+# then stages x1.txt. Gate 1 refuses; the reset of 'x[1].txt' must not also unstage the peer's x1.txt.
+# MUTATION: drop :(literal) from that reset -> this arm reds.
+printf '#!/bin/sh\n"%s" "$@"; rc=$?\nif [ "$1" = add ] && [ -f "%s" ]; then mv "%s" "%s.ran"; sh "%s.ran"; fi\nexit $rc\n' \
+  "$SC_REALGIT" "$T/.sweep-arm" "$T/.sweep-arm" "$T/.sweep-arm" "$T/.sweep-arm" > "$T/.sweepbin/git"
+echo swept >> 'x[1].txt'
+printf '"%s" commit -q -m "peer sweeps x[1]"\necho peer11 >> x1.txt\n"%s" add x1.txt\n' "$SC_REALGIT" "$SC_REALGIT" > "$T/.sweep-arm"
+set +e; PATH="$T/.sweepbin:$PATH" "$SELF" -m "bracket swept" -- 'x[1].txt' >"$SC_OUT" 2>&1; RC=$?; set -e
+if [ "$RC" = 1 ] && [ -f "$T/.sweep-arm.ran" ] && grep -qF 'A COMMIT TOOK THESE' "$SC_OUT" && ! git diff --cached --quiet HEAD -- x1.txt; then
+  PASS=$((PASS+1)); echo "  PASS AC: the sweep reset of a bracket path leaves the peer's staged glob sibling staged"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AC: rc=$RC peer-ran=$([ -f "$T/.sweep-arm.ran" ] && echo y || echo n) x1.txt staged=$(git diff --cached --name-only HEAD -- x1.txt | grep -c .)"; sed 's/^/      /' "$SC_OUT" || true
+fi
+rm -f "$T/.sweep-arm" "$T/.sweep-arm.ran"; git reset -q -- x1.txt
+# Arm AH (a shard roll refused by a FOREIGN staged path): a rename done on disk, BOTH endpoints declared.
+# The restore must leave the index at HEAD for rs/: the old name re-entered (needs --add), the new unstaged.
+# MUTATION: drop --add from `update-index --cacheinfo` -> the old name stays a staged deletion; this arm reds.
+mkdir -p rs; seq 1 40 > rs/S-old.md; git add rs; git commit -qm shard; mv rs/S-old.md rs/S-new.md
+echo peer12 >> theirs.txt; git add theirs.txt
+run -m "roll" -- rs/S-old.md rs/S-new.md
+if [ "$RC" = 1 ] && [ -z "$(git diff --cached --name-only HEAD -- rs)" ] && [ -z "$(git ls-files -- rs/S-new.md)" ]; then
+  PASS=$((PASS+1)); echo "  PASS AH: a refused shard roll leaves the index at HEAD (no staged deletion of the old name)"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AH: rc=$RC staged under rs: $(git diff --cached --name-status HEAD -- rs | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
+fi
+git reset -q -- theirs.txt; git checkout -q -- theirs.txt
+# Arm AI (Gate 1 --no-renames, the both-endpoints declaration): the same roll with no foreign path COMMITS.
+# MUTATION: drop --no-renames from GATE 1 -> name-only lists only rs/S-new.md, the old name reads MISSING; this arm reds.
+run -m "roll both endpoints" -- rs/S-old.md rs/S-new.md
+if [ "$RC" = 0 ] && [ "$(git show --name-status --format= HEAD -- rs | cut -c1)" = R ] && [ -z "$(git status --porcelain -- rs)" ]; then
+  PASS=$((PASS+1)); echo "  PASS AI: a roll declared with both endpoints commits as one rename"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AI: rc=$RC head=$(git show --name-status --format= HEAD -- rs | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
+fi
+# Arm AJ (Gate 1 --no-renames, the hiding direction): a FOREIGN staged deletion pairs as a rename with our
+# NEW file, so a rename-folded name-only lists only our path and Gate 1 passes, committing the deletion.
+# MUTATION: drop --no-renames from GATE 1 -> the commit lands with the peer's deletion in it; this arm reds.
+seq 1 40 | sed 's/^/l /' > pd-old.md; git add pd-old.md; git commit -qm pd; git rm -q --cached pd-old.md
+{ seq 1 40 | sed 's/^/l /'; echo mine; } > my-new.md
+run --add 41 -m "new file beside a staged foreign deletion" -- my-new.md
+if [ "$RC" = 1 ] && git cat-file -e HEAD:pd-old.md 2>/dev/null && grep -qF 'pd-old.md' "$SC_OUT"; then
+  PASS=$((PASS+1)); echo "  PASS AJ: a foreign staged deletion that pairs as a rename is refused, not committed"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AJ: rc=$RC pd-old.md in HEAD: $(git cat-file -e HEAD:pd-old.md 2>/dev/null && echo y || echo n)"; sed 's/^/      /' "$SC_OUT" || true
+fi
+git reset -q -- pd-old.md my-new.md; rm -f my-new.md
+
+# Arm AK (LPATHS: the main add, Gate 2 and the numstat read a declared path literally): a bracket path
+# whose glob sibling holds a peer's UNSTAGED edit commits only the declared file.
+# MUTATION: build LPATHS without :(literal) -> our add stages the sibling and Gate 1 refuses; this arm reds.
+mkdir -p 'k/[id]' k/i; printf 'a\n' > 'k/[id]/p.txt'; printf 'b\n' > k/i/p.txt; git add -- ':(literal)k/[id]/p.txt' k/i/p.txt; git commit -qm k
+echo mine >> 'k/[id]/p.txt'; echo peer-unstaged >> k/i/p.txt
+run --add 1 -m "bracket path beside an unstaged glob sibling" -- 'k/[id]/p.txt'
+if [ "$RC" = 0 ] && [ "$(git show --name-only --format= HEAD)" = 'k/[id]/p.txt' ] && [ -z "$(git diff --cached --name-only)" ] && ! git diff --quiet -- k/i/p.txt; then
+  PASS=$((PASS+1)); echo "  PASS AK: a bracket path commits alone beside a glob sibling's unstaged edit"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AK: rc=$RC head=$(git show --name-only --format= HEAD | tr '\n' ' ') staged=$(git diff --cached --name-only | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
+fi
+git checkout -q -- k/i/p.txt
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
