@@ -10,7 +10,7 @@ been away from the detail, or in it so long the thread has frayed. It exists so 
 not lose track of the owner's own thoughts: rebuilding THE OWNER'S thread is the job,
 and plain English is how.
 
-**Every reply opens with `[eli5]`**. **Read-only:** no commits, no
+**Every reply opens with `[eli5]`**, and nothing comes before it — no progress line while the derivation runs (6 of 47 replies after the 2026-10-15 fold opened on one; one of them came back an hour later as a request to explain its 3 items again). **Read-only:** no commits, no
 mail, no tracker or memory edits, no file writes. If something needs filing, say so and do it
 as a separate, named act.
 
@@ -26,8 +26,8 @@ September's outputs to 11% of October's).
 1. **Every fact was derived this turn, or its own sentence says it was not** — *"I haven't
    checked whether…"*, *"that came from another session"*, *"this is from memory"*. Never in a footer.
 2. **Numbers are digits:** 6 experts, 12 languages, 2 commits, $3, 0.7 cents, 10 minutes, 7 of
-   the 8. No size threshold and no exceptions — digits are allowed for every number, and typing
-   numbers out does not add to readability. Keep every number the work earned, inside a sentence.
+   the 8. A count at the start of a sentence is a digit too (*2 limits on that:*, *2 corrections*), and so is one that names a choice (*close at 2*). No size threshold and no exceptions — digits are allowed for every number, and typing
+   numbers out does not add to readability. Keep every number the work earned, inside a sentence, and a comparison (steadier, cheaper, beat, missed more) carries its numbers in the sentence that makes it (a bare *"X was steadier"* left the owner asking for the numbers).
    "One" as a pronoun (*one of them*) is not a count.
 3. **Open with the answer, alone** — after the quoted block when you are quoting the owner (check 10);
    1 or 2 sentences, no label on it. A bare `/eli5` may open on 1 line saying what follows, as
@@ -63,7 +63,7 @@ September's outputs to 11% of October's).
    this because the owner lost the thread, so a word the owner used an hour ago is one the owner no longer holds. On
    2026-10-14 `/eli5` was run on 2 paragraphs of one `/eli5` answer within 2 minutes; the sentence
    that failed read *"the ledger holds exactly one fx-04 row, the seven-tenths-of-a-cent smoke
-   from this afternoon"*. Product nouns — the product's own names for what it sells and does — are the owner's words.
+   from this afternoon"*. Product nouns — the product's own names for what it sells and does — are the owner's words. A closing item gets read apart from the body — pasted back alone, re-read after a compaction, or on a phone — so a work-word in an item is said in plain words there too, even when the body already defined it. The example has no such item, so this is optional: drop it on its Revisit trigger.
 10. **Quoted text sits in a block before it is explained** — the owner's line or a row in a `>` block;
     a UI string, a config value or anything the owner will copy in a fenced block: what it says now,
     what you propose, how it renders.
@@ -74,13 +74,13 @@ September's outputs to 11% of October's).
     question with its choices, the way the praised message does it (*"an already-published lesson
     describes that same deleted screen. Same fix, or leave it?"*), then your recommendation in 1
     clause (the praised message has none; the preferred version attaches it to the
-    first option). 3 or more choices go under the question, 1 per line. Never a label followed by choices chained
+    first option). 3 or more choices go under the question, 1 per line. When 2 of the choices can both be done, say so, or offer the pair as a choice (a fork written as either-or once drew the owner's question why not do all of them; not in the example, so optional on its Revisit trigger). Never a label followed by choices chained
     with commas — *"Two words from you unlock the chain: the shape, fx-04 or the other fixture,
     and the extension, yes with up to three dollars, decide at the trigger, or no"* left the owner
     asking what exactly there was to rule on, and *"the sentence stays, goes, or
     grows"* left the owner still not knowing what to decide.
     The split is do-vs-decide, both sides the owner's. What you will do next, if anything, is 1 clause
-    inside the last item; an empty side is left out, not announced.
+    inside the last item; an empty side is left out, not announced. Anything else this turn owes the owner (a mail, a listener re-arm, a peer's verdict) is done BEFORE the `[eli5]` reply, with no line of it above the marker, or waits for the owner's next message: the closing ask is the last thing on the owner's screen.
 
 **No apparatus in sentences.** Paths, shas, symbols, rule names and row ids are things the owner would
 use to check you, not to act. A name the owner needs to DO the next thing stays (a command, a migration
@@ -198,6 +198,8 @@ in the owner's words.
 - **Not a licence elsewhere.** Every owner-facing message is already written this way
   (`.claude/orchestrator/conventions.md` § Write to the owner the way you would say it out loud);
   this command produces 1 specific artifact.
+- **A comparison across arms with numbers (models, efforts, versions, cost, time) is /report's.**
+  Answer the owner's first question in 1 sentence, then build the page or offer it in 1 clause.
 
 ## Revisit
 
@@ -212,8 +214,7 @@ in the owner's words.
 - Before adding a check above, find it in the example; a check the example does not contain is
   optional with its own removal trigger, as check 8 is. This spec once added 5 sections the praised
   message lacked, and the next message the owner rejected carried all 5.
-- Any of the next 10 owner-invoked runs (`"source":"user-prompt"` in
-  `.claude/logs/skill-invocations.jsonl`, counted from this edit's commit) writes a count of 2 or
-  more as a word ⇒ the checklist and exemplar are not landing; read that run's output before adding words.
-- The owner runs `/eli5` on a sentence of an earlier `/eli5` answer in a third session (baseline 4 cases
-  in 2 sessions, 2026-10-14) ⇒ the coined-word check is not landing.
+- Fired 2026-10-17: of the 10 owner-invoked runs after (`"source":"user-prompt"` in
+  `.claude/logs/skill-invocations.jsonl`), runs 8, 9 and 10 wrote *two* as a count (*close at two*, *two ways*); over the first 47 runs, 10 did, 16 tokens, against 160 of 164 runs before the fold. Read 2026-10-25: a sentence-initial *Two* and a count naming a choice were the only survivors, and check 2 now names both. Next bar: 3 or more of the next 20 owner-invoked runs counted from (2026-10-25) write a count of 2 or more as a word ⇒ the example form is not reaching the writer; read them before adding words.
+- The owner runs `/eli5` on a sentence of an earlier `/eli5` answer — fired in 3 sessions after the fold (2 on 2026-10-18, 1 on 2026-10-25; baseline 4 cases in 2 sessions, 2026-10-14). Read 2026-10-25: 2 of the 3 quoted an item of the answer's own closing list — one with 3 choices chained by commas, the form check 11 forbids; one with 2 coined names inside the question — and 1 a body sentence. Walking a list of decisions 1 `/eli5` at a time is the command's normal use, so a closing-list case counts against check 11, a body case against check 9; a second body case ⇒ the coined-word check is not landing.
+- From (2026-10-25): the owner says a closing item repeats what the body said ⇒ check 9's closing-item sentence goes; the owner turns down an offered pair, or asks for one choice only, ⇒ check 11's both-can-be-done sentence goes (neither is in the example).

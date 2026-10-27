@@ -655,6 +655,7 @@ if (cmd === "check") {
     "listing-count": "LISTING DRIFTS (1):\\n  hooks: claimed 50, listed 51",
     "listing-missing": "LISTING DRIFTS (1):\\n  hooks MISSING from listing: hooks/new-guard.sh",
     "listing-extra": "LISTING DRIFTS (1):\\n  hooks EXTRA in listing: hooks/deleted-guard.sh",
+    "meta-heading": "META ENTRY-POINT HEADING DRIFT (1):\\n  meta/SKILL.md heading \\"Primary entry points (15 — …)\\" — claimed 15, bullets 16 — hand-edit the heading's number",
     "appx-c": "APPENDIX C COVERAGE (1):\\n  L# cited in body but missing from Appendix C: L7",
     "anchor-rot": "NARRATIVE ANCHOR ROT (1):\\n  skills: every narrative matcher for this key matched ZERO sentences while architecture.md exists — the anchor sentence was likely reworded or removed. Rot here is otherwise SILENT (no match → no drift entry → a stale number is never re-checked). Re-anchor the matcher in PATTERNS, or retire the key from NARRATIVE_EXPECTED_KEYS if the doc deliberately dropped the claim.",
     "reworded": "COUNT + NARRATIVE DRIFTS (1):\\n  line 12: skill roster: claims 100 but there are 107",
@@ -703,6 +704,7 @@ console.error("stub: unknown command " + cmd); process.exit(2);
       expect("arch: MISSING from listing → ARCH_DOC_LISTING_MISSING", ["arch", "--json"], "listing-missing", "architecture.md", "ARCH_DOC_LISTING_MISSING marks=0");
       expect("arch: EXTRA in listing → ARCH_DOC_LISTING_EXTRA (was dropped unread)", ["arch", "--json"], "listing-extra", "architecture.md", "ARCH_DOC_LISTING_EXTRA marks=0");
       expect("arch: APPENDIX C COVERAGE → ARCH_DOC_APPENDIX_C (was dropped unread)", ["arch", "--json"], "appx-c", "architecture.md", "ARCH_DOC_APPENDIX_C marks=0");
+      expect("arch: META ENTRY-POINT HEADING DRIFT → META_ENTRY_POINT_HEADING_DRIFT (was read as a crash)", ["arch", "--json"], "meta-heading", "architecture.md", "META_ENTRY_POINT_HEADING_DRIFT marks=0");
       expect("arch: NARRATIVE ANCHOR ROT → ARCH_DOC_ANCHOR_ROT (was dropped unread)", ["arch", "--json"], "anchor-rot", "architecture.md", "ARCH_DOC_ANCHOR_ROT marks=0");
       expect("arch: sub-process crash (rc=1, a stack, no section) → one marker (was a clean unit)", ["arch", "--json"], "crash", "architecture.md", "ARCH_DOC_DRIFT marks=1");
       expect("arch: a section line no shape matches → one marker naming the section (was a silently dropped finding)", ["arch", "--json"], "reworded", "architecture.md", "ARCH_DOC_DRIFT marks=1");
@@ -1024,6 +1026,9 @@ const ARCH_SECTIONS = [
   ] },
   { name: "NARRATIVE ANCHOR ROT", header: /^NARRATIVE ANCHOR ROT \((\d+)\):/, exact: true, shapes: [
     { re: /^\s+(\S+):\s+every narrative matcher for this key matched ZERO sentences/, code: "ARCH_DOC_ANCHOR_ROT", msg: (m) => `${m[1]}: architecture-counts' narrative matcher for this key matched ZERO sentences while architecture.md exists — the anchor sentence was reworded or removed and the count it guards is no longer re-checked; re-anchor the matcher in PATTERNS or retire the key from NARRATIVE_EXPECTED_KEYS` },
+  ] },
+  { name: "META ENTRY-POINT HEADING DRIFT", header: /^META ENTRY-POINT HEADING DRIFT \((\d+)\):/, exact: true, shapes: [
+    { re: /^\s+meta\/SKILL\.md heading .*— claimed (\d+), bullets (\d+)/, code: "META_ENTRY_POINT_HEADING_DRIFT", msg: (m) => `meta/SKILL.md "Primary entry points" heading claims ${m[1]}; its list has ${m[2]} \`/meta\` bullets — hand-edit the heading's number` },
   ] },
   { name: "APPENDIX C COVERAGE", header: /^APPENDIX C COVERAGE \((\d+)\):/, exact: true, shapes: [
     { re: /^\s+L# cited in body but missing from Appendix C:\s+(.+)/, code: "ARCH_DOC_APPENDIX_C", msg: (m) => `L# cited in architecture.md's body but missing from Appendix C: ${m[1]}` },

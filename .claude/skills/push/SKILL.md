@@ -13,11 +13,11 @@ description: Push dev to GitHub so the private staging plane rebuilds, then hand
 | **`/push --emergency`** | a hotfix branch cut from `main` → production, skipping the PR | the owner's yes to step 0's named question, for that sha only |
 | **`/promote`** | `dev` (or a hotfix branch) → production by pull request, then the post-deploy watch and rollback rules that `/deploy` used to hold | the owner's "merge it", for the exact head, or his advance go bound to it (`/promote` iron rule 1b) |
 
-`/deploy` is retired into `/promote` (its watch window, all-clear board, rollback authority and launch mode live there now); typing `/deploy` routes to `/promote`. **Everything below `§ Direct-push route` is the `--emergency` route** — its own paragraphs still say "push" where they mean the production push.
+`/deploy` is retired into `/promote` (its watch window, all-clear board, rollback authority and launch mode live there now); the `/deploy` alias stub was since deleted, so the name no longer resolves. **Everything below `§ Direct-push route` is the `--emergency` route** — its own paragraphs still say "push" where they mean the production push.
 
 `git push origin main` is a **production deploy**: push-to-main auto-triggers a `<your deploy host>` prod build that **deploys BEFORE CI completes**. So a push is the highest-stakes, least-reversible action in the workflow — and a dropped step is expensive (the 2026-06-25 push failed at the hook's e2e gate because the pre-verify didn't include e2e → a multi-hour recovery). This skill is the authoritative sequence that turned that freehand-push failure into repeatable, fully-verified pushes.
 
-Absorbs: deploy-support delegation, the `.githooks/pre-push` + `scripts/pre-deploy-check.sh` gate, and the `deploy-check` skill.
+Absorbs: deploy-support delegation, the `.githooks/pre-push` + `scripts/pre-deploy-check.sh` gate, and the `deploy-check` skill (since retired; the pre-verify is `scripts/pre-deploy-check.sh`, which this skill runs).
 
 ## When to Use
 - **`/push` (no argument) — `dev` to staging.** When there is something worth seeing on staging (a fix the
@@ -332,7 +332,7 @@ which the hook does not; an inherited `PREPUSH_LIGHT=1` would make it the light 
 
 ⚠️ **State the trade out loud when you report, because the deploy does not wait for CI.** An integration- or e2e-only regression now **reaches production** and serves users until someone reverts it; CI *reports* it, it does not *prevent* it. That is the accepted cost, not a gap to paper over — and it is why step 6's CI disposition is mandatory rather than advisory.
 
-**Both defaults are deliberately asymmetric** — the hook exports `PREPUSH_DEFER_SLOW_TIERS=1`, `pre-deploy-check.sh` defaults it to `0`. So the push is fast and an interactive `deploy-check` keeps **full** coverage; only the push was too slow. Full local gate on demand: `PREPUSH_DEFER_SLOW_TIERS=0 git push`.
+**Both defaults are deliberately asymmetric** — the hook exports `PREPUSH_DEFER_SLOW_TIERS=1`, `pre-deploy-check.sh` defaults it to `0`. So the push is fast and an interactive `scripts/pre-deploy-check.sh` run keeps **full** coverage; only the push was too slow. Full local gate on demand: `PREPUSH_DEFER_SLOW_TIERS=0 git push`.
 
 - **Delegate the gate-run to a deploy-support peer** when one is available (`mail-send` it the HEAD + the changed-file list) — keeps the build/test logs out of the orchestrator's context; it reports COUNTS + PASS/FAIL. Solo → run inline.
 - Read **COUNTS, not exit code** (wrappers pipe; the exit code is the last stage's).
@@ -596,7 +596,7 @@ This skill does NOT:
 ⛔ **A WHOLE-RUN LOG FETCH IS REFUSED WHILE ANY JOB IS STILL RUNNING; A PER-JOB FETCH IS NOT — AND THE REFUSAL LOOKS LIKE AN EMPTY RESULT (measured 2026-09-09).** `gh run view --job <id> --log-failed` on an in-progress run returns exactly one line — *"run <id> is still in progress; logs will be available when it is complete"* — rc=1, **zero stdout bytes**. That is an instrument reading, not a finding, and reading it as *"no failures found"* is the trap. **`gh api repos/:owner/:repo/actions/jobs/<job-id>/logs` returns the COMPLETED job's full log immediately**, while siblings still run: measured rc=0 at 239,842 / 226,895 / 234,641 bytes on three finished shards of a run whose `status` still read `in_progress`. So a red shard is diagnosable the moment IT finishes, not when the slowest unrelated job does — which on this repo's `Tests` workflow is a difference of about an hour. `grep -rn -F 'actions/jobs'` over `.claude/rules/` and this file returned **0** before this line; `gh run` appears here 10 times, so the corpus was reachable and the fact simply was not in it.
 ⛔ **AND A JOB THAT REPORTS `success` CAN CARRY A FAILED TEST — READ THE COUNTS LINE, NOT THE CONCLUSION.** Playwright retries: a spec that fails and passes on retry leaves the job green and prints `N flaky` in its own summary. Measured the same run: `e2e (1)` = **success**, and its log carries a genuine `1 flaky` — the notification-bell keyboard test failed `toBeFocused` on the first attempt and passed on the second. Nothing in the run summary shows it. ⚠️ **Beware the use-vs-mention trap when you go looking:** `grep -acF 'flaky'` over that log reads 5-6 per job, and almost all of those hits are the workflow's own reporting SCRIPT (`const emoji = failed === 0 ? (flaky ? …`). Filter the script lines out, or the counts line is buried in its own source.
 - Bypass the owner gate (it enforces it).
-- Replace `deploy-check` or the `.githooks/pre-push` gate (it pre-runs + relies on it).
+- Replace `scripts/pre-deploy-check.sh` or the `.githooks/pre-push` gate (it pre-runs + relies on it).
 - Handle rollback — `/promote` § 9 owns it for both routes, owner-gated (push is forward-only; a bad deploy → `<your deploy host's rollback>`, or a revert commit — and a revert IS an emergency hotfix: a worktree cut from `origin/main`, steps 0–4 with the named question; never a revert made on `dev` in the shared checkout and pushed, which ships `dev`'s queue with it).
 
 ## Revisit triggers

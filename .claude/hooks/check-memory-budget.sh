@@ -1038,6 +1038,13 @@ fi
 # prunes or holds steady must stay silent even above the band — otherwise the warning is
 # permanently on and stops carrying information (see the header note).
 if [ "$proj_bytes" -ge "$WARN_BYTES" ] && [ "$proj_bytes" -gt "$cur_bytes" ]; then
+  # WARNED row: this warning was bare stderr with no log row, so
+  # "0 blocks" measured the block half only while the index sat in the warn band from 2026-10-10 on. Same
+  # row shape as ARM 2's ratchet WARNED line; the smoke variable routes synthetic fires to the .smoke.log.
+  # Warn-mode stays (a row, never a block); the model channel for this arm is a separate work item.
+  WLOG="memory-budget-block.log"; [ -n "${CLAUDE_HOOK_SMOKE:-}" ] && WLOG="memory-budget-block.smoke.log"
+  mkdir -p "$ROOT/.claude/logs" 2>/dev/null || true
+  { printf '%s WARNED %s %s cur=%s proj=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TOOL" "$FILE_PATH" "$cur_bytes" "$proj_bytes" >> "$ROOT/.claude/logs/$WLOG"; } 2>/dev/null || true
   echo "" >&2
   echo "ℹ️  MEMORY budget: $FILE_PATH would be ~$proj_bytes bytes (warn 18KB; gate 24985 B; harness cliff ~24.4 KiB of chars). Headroom shrinking — keep topical pointers in MEMORY-INDEX.md (cold), not here." >&2
   emit_candidates "$FILE_PATH"

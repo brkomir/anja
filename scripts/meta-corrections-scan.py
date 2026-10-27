@@ -79,6 +79,7 @@ import glob
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -94,7 +95,7 @@ PUSHBACK_REGEX = re.compile(
     # a correction pointing out that the assistant tends to disregard the actual question
     # carried NO matching term while its softer neighbors matched; same term-coverage class as the v0.8 pair.
     r"my point is|you tend to|"
-    # v0.8 IDIOM ADDITIONS. ⛔ CORRECTED at v0.8.1 after a --code verdict measured the original
+    # v0.8 IDIOM ADDITIONS. ⛔ CORRECTED at v0.8.1 after a review measured the original
     # rationale FALSE. It claimed every pre-v0.8 signal was question- or hedge-shaped and that the
     # instrument was therefore blind to a whole CATEGORY (flat declarative refutation). A reviewer
     # ran 13 flat declaratives against the PRE-v0.8 regex: 13/13 ALREADY MATCHED. There was no
@@ -705,10 +706,11 @@ GATE_RATE_FLAT = 0.15      # events/session; |rate Δ| below this = rate didn't 
 # Any QUALITATIVE half (a judgment call) stays named in `what`. EXTEND when a
 # count-revisit defer lands; DELETE the row once the defer is resolved.
 # (2026-06-21 — the umbrella-split deferral.)
-DEFERRED_TRIGGERS = [
-    ('minimum-viable-scope', '2026-06-21', 20,
-     'umbrella-tag split — ALSO needs >=2 sub-modes with DIFFERENT remedies (judgment)'),
-]
+# The umbrella-split row ('minimum-viable-scope', since 2026-06-21, threshold 20) was deleted: the split
+# it gated landed on 2026-07-12 — the registry header's `minimum-viable-scope:*` sub-tag row records it —
+# so the trigger had read "COUNT-TRIGGER MET (160/20) — revisit the defer" at every --analyze for a defer
+# already resolved.
+DEFERRED_TRIGGERS = []
 
 
 def _resolve_since(args):
@@ -1152,6 +1154,93 @@ def _ran_windows(spans, ship, latest, first_entry):
     return (floor, ran_b, ran_a, 'ok')
 
 
+_RULE_NAME_RE = re.compile(r'\bfeedback_[a-z0-9_]+')
+
+
+def _rule_repeats(registry_text, known=()):
+    """PURE: registry markdown -> {rule: [(date, session), …] in date order}, one row per entry
+    that NAMES the saved rule (`feedback_<name>`, with or without `.md`) anywhere in its body.
+    The first row is NOT usually the entry that wrote the rule: on 2026-10-26, 76 of the 103
+    named rules with a file were added to git BEFORE their first naming entry, so
+    `_rule_repeat_rows` counts from the rule file's creation date when it has one. This counts MENTIONS, not proven breaks: the registry has
+    a structured `**Violated existing rule:**` field, but it takes an L# and 4 entries use it,
+    while the rule names sit in free text.
+    `known` = bare rule names (`use_available_tooling`): an entry naming one WITHOUT the
+    `feedback_` prefix counts for `feedback_<name>` too (43 entries across 24 rules did). A truncated name (`feedback_stage_decisions`) still
+    counts as its own row."""
+    bare_res = [(f'feedback_{b}', re.compile(rf'(?<![a-z0-9_])(?:feedback_)?{re.escape(b)}(?![a-z0-9_])'))
+                for b in known]
+    out = {}
+    for block in re.split(r'(?m)^(?=## \d{4}-\d{2}-\d{2} )', registry_text):
+        m = re.match(r'## (\d{4}-\d{2}-\d{2}) (\w+) — ', block)
+        if not m or (_UNTIL and m.group(1) > _UNTIL):
+            continue
+        names = set(_RULE_NAME_RE.findall(block))
+        names.update(rule for rule, rx in bare_res if rx.search(block))
+        for rule in sorted(names):
+            out.setdefault(rule, []).append((m.group(1), m.group(2)))
+    for rows in out.values():
+        rows.sort()
+    return out
+
+
+def _rule_repeat_rows(reps, since=None, created=None):
+    """PURE: `_rule_repeats` output -> [(window, later, sessions, last, rule)], window count first.
+    `later` = the entries dated AFTER `created[rule]` (the day its file was added; a same-day entry
+    may be the one that wrote it, so it is not counted); with no creation date, every entry after
+    the first. The window filters `later` only, never the entry that wrote the rule."""
+    created = created or {}
+    rows = []
+    for rule, ents in reps.items():
+        c = created.get(rule)
+        later = [e for e in ents if e[0] > c] if c else ents[1:]
+        if not later:
+            continue
+        recent = [e for e in later if not since or e[0] >= since]
+        rows.append((len(recent), len(later), len({s for _, s in later}), later[-1][0], rule))
+    rows.sort(key=lambda r: (-r[0], -r[1], r[4]))
+    return rows
+
+
+def _rule_created_dates(repo_dir=_REPO_DIR):
+    """rule -> the date its `.claude/project-memory/<rule>.md` was first added, from ONE git call.
+    The log is newest-first, so the last date written per name is its oldest add. A git failure
+    returns {} and the rows fall back to "after the first entry"."""
+    p = subprocess.run(['git', '-C', repo_dir, 'log', '--diff-filter=A', '--format=%x01%as',
+                        '--name-only', '--', '.claude/project-memory/'], capture_output=True, text=True)
+    created, date = {}, None
+    for line in p.stdout.splitlines() if p.returncode == 0 else []:
+        if line.startswith('\x01'):
+            date = line[1:]
+        elif date and os.path.basename(line).startswith('feedback_') and line.endswith('.md'):
+            created[os.path.basename(line)[:-3]] = date
+    return created
+
+
+def cmd_rule_repeats(registry_path, since=None, top=15, repo_dir=_REPO_DIR):
+    """Saved rules the corrections registry names again after the rule was written —
+    candidates for rules broken while loaded — mentions, not proven breaks (a later entry may be where a
+    new clause was written into the rule). Read by `/meta maintain` (patterns step 7)."""
+    known = sorted(os.path.basename(f)[len('feedback_'):-3] for f in
+                   glob.glob(os.path.join(repo_dir, '.claude', 'project-memory', 'feedback_*.md')))
+    with open(registry_path, encoding='utf-8') as f:
+        reps = _rule_repeats(f.read(), known=known)
+    created = _rule_created_dates(repo_dir)
+    rows = _rule_repeat_rows(reps, since=since, created=created)
+    scope = f'since {since}' if since else 'all-time'
+    print(f'=== Saved rules named again in later corrections ({scope}; mentions, not proven breaks) ===')
+    print(f'{"window":>6} {"later":>5} {"sessions":>8}  {"last":10}  rule')
+    for recent, later, sessions, last, rule in rows[:top]:
+        if since and not recent:
+            continue
+        print(f'{recent:>6} {later:>5} {sessions:>8}  {last}  {rule}')
+    inwin = sum(1 for r in rows if r[0])
+    win = f'; {inwin} in the window, {min(top, inwin)} shown' if since else f'; {min(top, len(rows))} shown'
+    print(f'({len(rows)} rules named again at least once, all-time{win}; counted from the rule file\'s '
+          f'creation date for {sum(1 for r in reps if r in created)} of {len(reps)} named rules, '
+          f'else after the first naming entry; "sessions" is all-time)')
+
+
 def cmd_self_test():
     """Regression guard for detection (v0.7). Asserts the 3 textbook events match
     and neutral approvals don't. Returns a process exit code (0 pass / 1 fail). Run after
@@ -1478,6 +1567,97 @@ def cmd_self_test():
         failures += 0 if _ok else 1
         print(f"  [{'PASS' if _ok else 'FAIL'}] --add-entry refused (bad --violated) on a missing registry -> exit 2, no file or directory created")
 
+    # --rule-repeats: per-entry, per-rule counting.
+    _fx = ("# header naming feedback_header_only\n"
+           "## 2026-06-01 aaaa1111 — wrote it\n**Codified as L#?** yes — feedback_x.md (new)\n"
+           "## 2026-07-01 bbbb2222 — broke it\nbody names feedback_x and feedback_x.md twice\n"
+           "## 2026-08-01 cccc3333 — broke it again\n**Codified as L#?** feedback_x (existing); feedback_y\n")
+    _rr = _rule_repeats(_fx)
+    _saved_until, globals()['_UNTIL'] = _UNTIL, '2026-07-01'
+    _rr_until = _rule_repeats(_fx)
+    globals()['_UNTIL'] = _saved_until
+    for _lbl, _ok in (
+        ("rule-repeats: --until drops entries dated after it, as _parse_entries does",
+         _rr_until.get("feedback_x") == [("2026-06-01", "aaaa1111"), ("2026-07-01", "bbbb2222")]),
+        ("rule-repeats: one row per ENTRY, not per mention (feedback_x named 3x in one entry)",
+         _rr.get("feedback_x") == [("2026-06-01", "aaaa1111"), ("2026-07-01", "bbbb2222"),
+                                   ("2026-08-01", "cccc3333")]),
+        ("rule-repeats: a name above the first entry heading belongs to no entry",
+         "feedback_header_only" not in _rr),
+        ("rule-repeats: a rule named once has no later rows",
+         _rr.get("feedback_y") == [("2026-08-01", "cccc3333")]),
+        ("rule-repeats: a bare rule name (no feedback_ prefix) counts for the rule, a longer name does not",
+         _rule_repeats("## 2026-08-01 aaaa — a\nbroke use_tool again; see use_tools_more\n",
+                       known=["use_tool"]).get("feedback_use_tool") == [("2026-08-01", "aaaa")]
+         and "feedback_use_tools_more" not in _rule_repeats("## 2026-08-01 aaaa — a\nuse_tools_more\n",
+                                                            known=["use_tool"])
+         and _rule_repeats("## 2026-08-01 aaaa — a\nuse_tools_more\n", known=["use_tool"]) == {}
+         # the real prefix pair is model_routing / model_routing_policy: an underscore continuation
+         # and an underscore lead are longer names too
+         and _rule_repeats("## 2026-08-01 aaaa — a\nuse_tool_more and x_use_tool\n", known=["use_tool"]) == {}),
+        ("rule-repeats: entries are date-sorted whatever the file order",
+         _rule_repeats("## 2026-09-01 bbbb — b\nfeedback_z\n## 2026-08-01 aaaa — a\nfeedback_z\n")
+         .get("feedback_z") == [("2026-08-01", "aaaa"), ("2026-09-01", "bbbb")]),
+        # rows: (window, later, sessions, last, rule)
+        ("rule-repeat rows: the first entry is not counted, the second is",
+         _rule_repeat_rows(_rr) == [(2, 2, 2, "2026-08-01", "feedback_x")]),
+        ("rule-repeat rows: --since is inclusive and never counts the first entry",
+         _rule_repeat_rows(_rr, since="2026-06-01") == [(2, 2, 2, "2026-08-01", "feedback_x")]
+         and _rule_repeat_rows(_rr, since="2026-08-01") == [(1, 2, 2, "2026-08-01", "feedback_x")]),
+        ("rule-repeat rows: with a creation date, an entry after it counts and a same-day one does not",
+         _rule_repeat_rows({"feedback_q": [("2026-05-01", "s1"), ("2026-06-01", "s2")]},
+                           created={"feedback_q": "2026-04-01"}) == [(2, 2, 2, "2026-06-01", "feedback_q")]
+         and _rule_repeat_rows({"feedback_q": [("2026-05-01", "s1"), ("2026-06-01", "s2")]},
+                               created={"feedback_q": "2026-05-01"}) == [(1, 1, 1, "2026-06-01", "feedback_q")]),
+        ("rule-repeat rows: sorted by the window count before the all-time count",
+         [r[4] for r in _rule_repeat_rows(
+             {"feedback_a": [("2026-01-01", "a0")] + [("2026-02-0%d" % i, "a%d" % i) for i in range(1, 4)],
+              "feedback_b": [("2026-01-01", "b0"), ("2026-03-01", "b1"), ("2026-03-02", "b2")]},
+             since="2026-03-01")] == ["feedback_b", "feedback_a"]),
+    ):
+        failures += 0 if _ok else 1
+        print(f"  [{'PASS' if _ok else 'FAIL'}] {_lbl}")
+
+    # --rule-repeats wiring: cmd_rule_repeats reads the known names and the creation dates from
+    # repo_dir, and the footer counts what it shows.
+    import io as _io2, contextlib as _ctx2
+    with _tf.TemporaryDirectory() as _rd:
+        _env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+        _env.update(GIT_AUTHOR_DATE='2026-05-01T12:00:00Z', GIT_COMMITTER_DATE='2026-05-01T12:00:00Z',
+                    GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
+        os.makedirs(os.path.join(_rd, '.claude', 'project-memory'))
+        open(os.path.join(_rd, '.claude', 'project-memory', 'feedback_use_tool.md'), 'w').write('x\n')
+        for _g in (['init', '-q'], ['add', '-A'], ['commit', '-q', '-m', 'r']):
+            _sp.run(['git', '-C', _rd] + _g, env=_env, capture_output=True)
+        # deleted and re-added later: the OLDEST add is the creation date
+        for _d, _g in (('2026-05-20', ['rm', '-q', '.claude/project-memory/feedback_use_tool.md']),
+                       ('2026-05-20', ['commit', '-q', '-m', 'd']), ('2026-06-15', None)):
+            if _g is None:
+                os.makedirs(os.path.join(_rd, '.claude', 'project-memory'), exist_ok=True)
+                open(os.path.join(_rd, '.claude', 'project-memory', 'feedback_use_tool.md'), 'w').write('y\n')
+                _gs = (['add', '-A'], ['commit', '-q', '-m', 'a'])
+            else:
+                _gs = (_g,)
+            _env.update(GIT_AUTHOR_DATE=_d + 'T12:00:00Z', GIT_COMMITTER_DATE=_d + 'T12:00:00Z')
+            for _g2 in _gs:
+                _sp.run(['git', '-C', _rd] + _g2, env=_env, capture_output=True)
+        _reg = os.path.join(_rd, 'reg.md')
+        open(_reg, 'w').write("## 2026-06-01 aaaa — a\nfeedback_use_tool and feedback_other\n"
+                              "## 2026-07-01 bbbb — b\nbroke use_tool again; feedback_other\n")
+        _buf = _io2.StringIO()
+        with _ctx2.redirect_stdout(_buf):
+            cmd_rule_repeats(_reg, since='2026-06-01', top=1, repo_dir=_rd)
+        _out = _buf.getvalue()
+        _buf2 = _io2.StringIO()
+        with _ctx2.redirect_stdout(_buf2):
+            cmd_rule_repeats(_reg, top=1, repo_dir=_rd)
+        _out2 = _buf2.getvalue()
+    _ok = ("     2     2        2  2026-07-01  feedback_use_tool\n" in _out and "feedback_other" not in _out
+           and "2 in the window, 1 shown" in _out and "creation date for 1 of 2 named rules" in _out
+           and "(2 rules named again at least once, all-time; 1 shown;" in _out2)
+    failures += 0 if _ok else 1
+    print(f"  [{'PASS' if _ok else 'FAIL'}] rule-repeats wiring: bare names + creation dates read from repo_dir, footer counts what it shows")
+
     print(f"\n{'OK' if failures == 0 else 'FAILED'}: passed with {failures} failure(s)")
     return 1 if failures else 0
 
@@ -1538,6 +1718,8 @@ def main():
                         help='Opt OUT of queued-shape intake (restores the pre-2026-08-12 type==user-only scan).')
     parser.add_argument('--dig', help='Resolve one event: <session-prefix>:<idx> (e.g., <session-id>:2078)')
     parser.add_argument('--analyze', action='store_true', help='Analyze registry frequency + codification rate')
+    parser.add_argument('--rule-repeats', dest='rule_repeats', action='store_true',
+                        help='Saved rules (feedback_*) the registry names again in later entries — mentions, not proven breaks; with --since/--window, sorts by the window count (read by /meta maintain, patterns step 7)')
     parser.add_argument('--prime', action='store_true', help='Compact top-N recurring blindspot patterns for /orient session-start priming (PCT<TAB>COUNT<TAB>TAG)')
     parser.add_argument('--render', action='store_true', help='With --prime: human-readable labeled spotlight (pct + count + counter-action) instead of raw TSV — used by the SessionStart hook + /orient')
     _win = parser.add_mutually_exclusive_group()
@@ -1580,6 +1762,10 @@ def main():
 
     if args.analyze:
         cmd_analyze(args.registry_path, since=since)
+        return
+
+    if args.rule_repeats:
+        cmd_rule_repeats(args.registry_path, since=since)
         return
 
     if args.add_entry:

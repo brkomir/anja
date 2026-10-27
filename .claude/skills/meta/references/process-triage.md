@@ -56,7 +56,7 @@ Briefs carry, non-negotiably:
 
 ## Phase 3 — the cut wave (owner-gated, ALWAYS)
 
-Present candidates via AskUserQuestion with a decision-instrument option (panel-review). If ruled:
+Present candidates as a question round with a decision-instrument option (panel-review) — the AskUserQuestion box only when no sub-agent of this session runs, no mail or monitor event is expected and the owner wrote under ~10 minutes ago (it freezes the whole session until he answers); otherwise plain text with a recommendation, and nothing is cut until he rules (this phase is owner-gated, so silence is no). If ruled:
 
 - Fresh archive writes **byte-verbatim, in the SAME commit** as the band edit (a stale
   prior copy credits nothing), under a dated `§ WAVE-<date>` heading with SOURCE sha.

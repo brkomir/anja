@@ -74,7 +74,7 @@ hand-re-derive this domain's physics into briefs from scratch.
    number is a loss figure).
 3. **Check the codified rejections and the settled order FIRST.** Ranked/relevance-filtered
    injection (rejected 3×), bulk byte-ranked demotion, filtered per-agent bands — read ALL
-   DECISIONS.md hits plus a SUPERSED sweep before presenting any as a neutral option.
+   DECISIONS.md and DECISIONS-ARCHIVE-*.md hits plus a SUPERSED sweep over both before presenting any as a neutral option.
 4. **Split the entry's three functions.** Recognition (TELL/trigger — irreducibly resident or
    event-pushed), action (DIRECTIVE + qualifiers — movable ONLY under a read-on-match contract
    WITH compliance instrumentation; a contract with zero readers is not a contract), evidence

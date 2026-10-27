@@ -28,13 +28,13 @@ Cause-fix for the recurring `.claude/docs/architecture.md` staleness pattern. Sy
    ```bash
    node scripts/architecture-counts.mjs check   # report drifts to stderr + exit 1 if any
    node scripts/architecture-counts.mjs fix     # apply auto-fixes (position-based, ≤5-LOC per fix)
-   node scripts/architecture-counts.mjs list    # JSON of current filesystem state (17 counts)
+   node scripts/architecture-counts.mjs list    # JSON of current filesystem state (22 keys at 2026-10-27 — derive with `list`, never from a number here; this line once read 17)
    node scripts/architecture-counts.mjs conceptual-due [YYYY-MM-DD]  # CUMULATIVE "is a real Tier-2/3 pass due since last-reviewed?" signal (see Step 10 invariant)
    ```
 
    **Detector classes:**
 
-   - **Structural counts (17, exact match):** `skills` / `agents` / `hooks` / `rules` / `commands` / `templates` / `projectMemory` / `externalSkills` / `domainExperts` / `personaSkills` / `metaMemoryLines` / `metaRulesRows` / `maxL` / `sniffTestTriggers` / `activeRecallHotTier` (= the always-loaded Band-U rows) / `activeRecallBandO` (= the hook-delivered orchestrator-only Band-O rows, added by the 2026-07-12 2-band split). Drift = any deviation from filesystem truth.
+   - **Structural counts (exact match; the 16 named here plus `hooksWiredSettings`, `distinctLessons`, `selfAuditChecks`, `sessionManifestModes`, `metaEntryPoints` and `metaSubcommands` in `list`'s 22 keys at 2026-10-27 — this once read "17"):** `skills` / `agents` / `hooks` / `rules` / `commands` / `templates` / `projectMemory` / `externalSkills` / `domainExperts` / `personaSkills` / `metaMemoryLines` / `metaRulesRows` / `maxL` / `sniffTestTriggers` / `activeRecallHotTier` (= the always-loaded Band-U rows) / `activeRecallBandO` (= the hook-delivered orchestrator-only Band-O rows, added by the 2026-07-12 2-band split). Drift = any deviation from filesystem truth.
    - **Narrative claims (7, tolerance-bounded):** lesson count phrasings (`N numbered/distinct lessons in/with/(`, tolerance ±10) / L# range phrasings (`L1 (tag) – LN` or `L1–LN with renumber gaps`, exact) / meta/MEMORY.md size (`MEMORY.md ... ~N lines`, tolerance ±50) / active-recall hot tier (`top-N most-cited`, tolerance ±1) / meta/RULES.md row count (`~N rows` or `N-row catalog`, tolerance ±5). Tolerance > 0 because these claims are inherently approximate; auto-fix only triggers on out-of-band drift.
    - **Listing-vs-count (2, exact):** `Hooks (N files):` and `Rules (N files):` heading-vs-list mismatch. Listing block may span multiple sub-bullets (e.g., hooks split by Claude-lifecycle / Git-pre-push / Orphan enforcement surfaces).
    - **Appendix C coverage (2, surface-only):** L# cited in body but missing from Appendix C table (coverage gap) + L# in Appendix C table but no body citation (orphan row). Both surface as proposals; no auto-fix because adding a row needs curated summary text (Step 3c) and pruning an orphan is owner judgment.
@@ -107,7 +107,7 @@ Cause-fix for the recurring `.claude/docs/architecture.md` staleness pattern. Sy
 
 **Strict mode (`--strict`):** Tier 1 findings → exit non-zero. Use case: a pre-merge CI step or a `/wrap` integration that fails if doc drift accumulates without fix. Not yet wired — when wired, gate behind 5 clean default-mode runs first per the warn-mode-before-block-mode discipline.
 
-**Coordination with `/meta status`:** Check 8 in `/meta status` surfaces the doc's `last-reviewed` age as a YELLOW (30-89 days) / RED (≥90 days) flag. This subcommand is the action when the flag fires.
+**Coordination with `/meta status`:** Check 9 in `/meta status` (`references/process-status.md`; this once read "Check 8") surfaces the doc's `last-reviewed` age as a YELLOW (30-89 days) / RED (≥90 days) flag. This subcommand is the action when the flag fires.
 
 **Anti-scope:**
 - Don't auto-rewrite lecture-body prose. Tier 2/3 surface as proposals; owner judges.

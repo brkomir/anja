@@ -54,7 +54,8 @@
 // non-dispositive until the hub's verdict-first backfill lands.
 //
 // Read-only but for one appended JSONL row per run (.claude/logs/promote-review-coverage-fires.jsonl, end of
-// main): git plumbing and one file read. Without --refuse it exits 0 whatever it finds: read the verdict TOKEN,
+// main; PROMOTE_COVERAGE_LOG_DIR=<dir> lands it there instead, for an audit or a test that must not grow the
+// shared log): git plumbing and one file read. Without --refuse it exits 0 whatever it finds: read the verdict TOKEN,
 // never the exit code — `REVIEW-COVERAGE: CLEAN | UNSENT <n> NOTE-ONLY <k> | NOT-CHECKED`. Exit 2 is an argument it
 // does not know.
 //
@@ -1034,7 +1035,11 @@ function main() {
   // proceed:true is a range the gate refused and the owner passed; exit 4 iff refused && !proceed, or the go carries an entry
   // that is not a `<sha>:<reasons>` or `unmeasured:<items>` entry.
   try {
-    const dir = join(dirname(git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim()), ".claude", "logs");
+    // PROMOTE_COVERAGE_LOG_DIR: an auditor or a fixture run (a panel seat was once told
+    // this script was read-only and declined to run it because every run appends here) points the row
+    // elsewhere. Unset, the row lands in the shared checkout's log as before.
+    const dir = process.env.PROMOTE_COVERAGE_LOG_DIR
+      || join(dirname(git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim()), ".claude", "logs");
     const sid = process.env.CLAUDE_CODE_SESSION_ID || null, n = (k) => res?.[k].length ?? null;
     mkdirSync(dir, { recursive: true });
     appendFileSync(join(dir, "promote-review-coverage-fires.jsonl"), `${JSON.stringify({ ts: Math.floor(Date.now() / 1000), range: res?.range ?? range,

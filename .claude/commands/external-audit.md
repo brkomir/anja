@@ -2,7 +2,7 @@
 
 Audit our workspace / meta system using the external-system expert skills (`.claude/skills/external-*`) as a calibration panel. This copy ships exactly one: `external-fagemx-edda`, its catalog (`.claude/skills/external-fagemx-edda/SKILL.md`) and its agent definition (`.claude/agents/external-fagemx-edda.md`), describing fagemx/edda as read at `46bf30ec` on 2026-10-09; its MEMORY.md and CHANGELOG do not ship. You build the rest of your panel with `/scout` and this command. Each expert brings an outside-system baseline — what THEIR system does differently — and surfaces (a) gaps, (b) over-engineering, (c) strengths in ours worth keeping.
 
-> Renamed from `/expert-audit` (2026-06-17): the salient feature is *external-system* calibration; "expert" carried no signal and collided with `/expert-review` (which is also expert-run). `/expert-audit` still resolves as a deprecated alias.
+> Renamed from `/expert-audit` (2026-06-17): the salient feature is *external-system* calibration; "expert" carried no signal and collided with `/expert-review` (which is also expert-run). The `/expert-audit` alias stub has since been deleted, so the old name no longer resolves.
 
 **Subject:** whatever follows `/external-audit` (e.g., `/external-audit claude-system`, `/external-audit memory-architecture`, `/external-audit hooks`). If no subject, default to "our entire `.claude/` workspace infrastructure."
 

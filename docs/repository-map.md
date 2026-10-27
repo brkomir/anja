@@ -2,34 +2,34 @@
 
 This page is an index to look things up in, not a tour: read the table below, then jump to the directory you are about to open. To set up your own project, read [the start page](start-a-new-project.md). If you open only a few files, open `.claude/settings.json` (what runs, on which event), the hooks section below, `.claude/rules/session-cadence.md` (how a guard is proposed, counted and promoted from warn to block) and `scripts/smoke-test-hooks.sh` (how each guard is tested).
 
-The page covers every directory the copy ships, says what each one holds, and gives one line per file wherever a line helps. Anja grew inside one application, the source project, a photography critique application built and shipped with Anja. That application's own code is not part of the copy. Every count on this page is taken from the committed copy, which lists 429 files.
+The page covers every directory the copy ships, says what each one holds, and gives one line per file wherever a line helps. Anja grew inside one application, the source project, a photography critique application built and shipped with Anja. That application's own code is not part of the copy. Every count on this page is taken from the committed copy, which lists 461 files.
 
 | Directory | Files shipped | What it holds |
 |---|---|---|
 | `.claude/` (top level) | 6 | Harness settings, the ignore file for run-time state, the byte pins for always-loaded files, the pins for moved trigger rows, and the third-party notice and origin record |
 | `.claude/agents/` | 35 | Sub-agent definitions, one per expert, plus the primer every agent reads first |
-| `.claude/skills/` | 130 | 87 skills (expert knowledge and workflow commands), one catalog of an outside agent system, their reference files and an authoring cheatsheet |
-| `.claude/hooks/` | 71 | Harness hooks, the shared libraries they source, and three test fixtures |
+| `.claude/skills/` | 153 | 86 skills (expert knowledge and workflow commands), one catalog of an outside agent system, their reference files and an authoring cheatsheet |
+| `.claude/hooks/` | 73 | Harness hooks, the shared libraries they source, and three test fixtures |
 | `.claude/rules/` | 9 | Rule files: always-loaded or path-scoped, plus two that are parked |
 | `.claude/orchestrator/` | 4 | Rules meant only for the main session, never for a sub-agent |
-| `.claude/commands/` | 5 | Older slash-command files, kept as redirects or short procedures |
+| `.claude/commands/` | 4 | Older slash-command files, kept as redirects or short procedures |
 | `.claude/templates/` | 8 | Fill-in templates for audits, specs, panels and migrations |
 | `.claude/docs/` | 3 | The architecture guide, a short overview, and the current-state record |
 | `.claude/traps/` | 1 | Shell traps, delivered one command at a time |
-| `scripts/` (top level) | 101 | Gates, scanners, test suites, session tooling and generators |
+| `scripts/` (top level) | 109 | Gates, scanners, test suites, session tooling and generators |
 | `scripts/lib/` | 14 | Shared modules that scripts and git hooks source or import |
 | `scripts/probes/` | 5 | One investigation rig, kept with its probes |
 | `scripts/band/` | 4 | The tools from one compression pass over the always-loaded rule corpus |
 | `scripts/fixtures/` | 1 | A test fixture for the hook payload harness |
 | `.githooks/` | 2 | How the project's git hooks are wired, and the pre-commit hook |
 
-The table's rows add up to 399 files. It does not count the root files and what sits under `docs/` (the pages, the starter registers, the diagrams and the logo), 30 files that make up the rest of the 429. They are listed at the end.
+The table's rows add up to 431 files. It does not count the root files and what sits under `docs/` (the pages, the starter registers, the diagrams and the logo), 30 files that make up the rest of the 461. They are listed at the end.
 
 ## `.claude/` (top-level files)
 
 There are six files at this level.
 
-- `settings.json`: the harness settings. It holds environment switches, worktree behaviour, permissions, per-skill overrides, the hook wiring and the status line. The wiring runs 56 of the 63 shipped hook scripts through 109 hook commands on nine events; the hooks section below names the seven it does not wire, two of which other hooks call. One of its environment switches turns the per-turn orchestrator rule injection off.
+- `settings.json`: the harness settings. It holds environment switches, worktree behaviour, permissions, per-skill overrides, the hook wiring and the status line. The wiring runs 58 of the 65 shipped hook scripts through 112 hook commands on nine events; the hooks section below names the seven it does not wire, two of which other hooks call. One of its environment switches turns the per-turn orchestrator rule injection off.
 - `.gitignore`: keeps the run-time state, the logs, helper worktrees, the local settings file and the memory roll's lock and staging files out of git.
 - `band-pins.json`: a byte size for each always-loaded file. `hooks/check-memory-budget.sh` reads these pins and warns, without blocking, when an edit grows a file past its pin.
 - `band-trigger-relocation-pins.json`: a hash for each trigger row whose move out of an always-loaded rules file into an orchestrator file was approved. `scripts/band-directive-preservation.mjs` counts a moved trigger row as kept only when its hash is listed here, and only that script's pin mode writes the file.
@@ -47,7 +47,7 @@ There are 35 files: 34 agent definitions (33 specialists and one that models an 
 
 ## `.claude/skills/`
 
-There are 130 files: 87 skills, each with a `SKILL.md`, plus one catalog of an outside system (`external-fagemx-edda/SKILL.md`), 41 reference files and one authoring cheatsheet. The groups below follow each skill's own `description:` line.
+There are 153 files: 86 skills, each with a `SKILL.md`, plus one catalog of an outside system (`external-fagemx-edda/SKILL.md`), 65 reference files and one authoring cheatsheet. The groups below follow each skill's own `description:` line.
 
 **Expert knowledge (33 skills)**, each paired with an agent of the same name:
 
@@ -59,7 +59,7 @@ There are 130 files: 87 skills, each with a `SKILL.md`, plus one catalog of an o
 | Conversion (adapted from an upstream MIT library) | haines-churn-prevention, haines-onboarding-cro, haines-page-cro, haines-paywall-upgrade-cro, haines-signup-flow-cro |
 | Operations and legal | launch-ops-expert, ops-monitor, qa-expert, legal-advisor |
 
-**Workflow commands (54 skills)**, invoked by name:
+**Workflow commands (53 skills)**, invoked by name:
 
 | Purpose | Skills |
 |---|---|
@@ -67,19 +67,19 @@ There are 130 files: 87 skills, each with a `SKILL.md`, plus one catalog of an o
 | Coordination between sessions | mail (handoffs between parallel sessions), review-hub (turn one session into the code-review hub for its peers), review-queue (read-only status of the review hub and what is waiting on it), peers (this session and the parallel sessions, with what each is working on), board (the fleet board: one read-only card per open session, derived on each render; the short form of `peers --board`), whoami (this session's full id), channel (open, join and drive a dedicated channel shared by several sessions), fleet-inquiry (one lead session investigates a question, asking peers only for scoped evidence) |
 | Running experts | expert-review (multi-expert consultation), panel (another name for expert-review), agent-work (one to five specialists making code changes in parallel), expert-system-bootstrap (method for setting up the expert and memory system in a new project), limit-recovery (take over the work of helper agents that died at a usage limit: resume each one, wait for its model's reset, or seat a fresh agent over a digest of its work) |
 | Audit and quality | audit-check (verify an audit before marking it complete), test-gap (what a file or feature has tested and untested), sniff-test (self-audit of a draft before sending it), sanity-check (a fresh reader that tries to refute one session's whole body of work before it is called done), surfaces, ops, launch and features (status readouts over registers the project keeps), fix (plan a targeted code fix and run the tests it needs), flows (status of the user-flow audits and what is next in that queue) |
-| Release | deploy-check (verify types, tests, migrations, environment settings and known blockers before a production push), push (push the working branch so the staging build rebuilds; with `--emergency`, the direct push of a hotfix to production, only on your yes), promote (ship the working branch to production by pull request, merged only on your explicit word, then watch the deploy) |
+| Release | push (push the working branch so the staging build rebuilds; with `--emergency`, the direct push of a hotfix to production, only on your yes), promote (ship the working branch to production by pull request, merged only on your explicit word, then watch the deploy) |
 | Planning | ideas (capture, refine and promote product ideas in an ideas register), triggers (deferred tasks whose revisit condition now holds), backlog (show and maintain the ranked queue of features and improvements) |
-| System upkeep | meta (health and evolution of the expert and memory system), scout (survey of outside agent tooling, with each candidate checked before it is reported), instinct-sweep (sweep runtime event logs for recurring patterns to propose as lessons), observations (a narrative read of where the system keeps tripping up and what to fix next), me (show and update what the system has recorded about your working preferences) |
+| System upkeep | meta (health and evolution of the expert and memory system), scout (survey of outside agent tooling, with each candidate checked before it is reported), instinct-sweep (sweep runtime event logs for recurring patterns to propose as lessons), observations (a stub that redirects to `/meta observations`, the narrative read of where the system keeps tripping up and what to fix next), me (show and update what the system has recorded about your working preferences) |
 | Output | report (one self-contained HTML page for one topic) |
 | Finding a command | help (which command does what, by topic) |
 
 **Catalog of an outside system (1)**, paired with an agent of the same name: external-fagemx-edda, a reading of fagemx/edda at `46bf30ec` on 2026-10-09, shipped as a worked example of what `/scout` and `/external-audit` produce and not maintained in this copy.
 
-Reference files ship with these skills: expert-review (9: panel sizing, synthesis, code-review slice mode, drift mode, claim support, the department directory, hand-off rules, process notes and the expert prompt template), wrap (7: step bodies read only when their trigger fires, the history of its modes, and notes and evidence for steps 0, 1, 5e, 7 and the closing steps), meta (9: the procedures for lesson extraction, the adoption-queue readout, the status dashboard, maintenance, distilling memory, triaging a rules file, the architecture audit and adding a skill, plus report formats), four of the five haines-* conversion skills (5 upstream playbooks), saas-launch-marketing (2), promote (1: the retired deploy command's text, which its post-deploy step reads), and one each for engagement-psychologist, prompt-engineer, review-hub, saas-economist, saas-engineer, security-expert, uncle-bob and ux-design-pro. `AUTHORING.md`, at the top of the directory, is a one-screen cheatsheet for writing a skill; it explains the conventions that `scripts/skill-lint.mjs` enforces.
+Reference files ship with these skills: expert-review (9: panel sizing, synthesis, code-review slice mode, drift mode, claim support, the department directory, hand-off rules, process notes and the expert prompt template), wrap (12: the full text of its steps in five parts, step bodies read only when their trigger fires, the history of its modes, and notes and evidence for steps 0, 1, 5e, 7 and the closing steps), meta (17: the procedures for lesson extraction, the adoption-queue readout, the status dashboard, maintenance, distilling memory, triaging a rules file, the memory audit, the architecture audit, adding a skill, coherence, corrections, observations, patterns, the self-audit, the QA-plan audit and telemetry, plus report formats), review-hub (6: entry points, disciplines, the serve history, pause and limits, hand-over and retirement, and the superseded takeover procedure), summary (4: the plan table and output shape, the detail behind the readout, the tracker-row predicates and the unreviewed-commits check), deep-pass (2: the detail behind the pass and the checkpoint derivation), four of the five haines-* conversion skills (5 upstream playbooks), saas-launch-marketing (2), promote (1: the retired deploy command's text, which its post-deploy step reads), and one each for engagement-psychologist, prompt-engineer, saas-economist, saas-engineer, security-expert, uncle-bob and ux-design-pro. `AUTHORING.md`, at the top of the directory, is a one-screen cheatsheet for writing a skill; it explains the conventions that `scripts/skill-lint.mjs` enforces.
 
 ## `.claude/hooks/`
 
-There are 71 files: 63 hook scripts, 5 shared libraries and 3 fixtures. Each line below comes from the script's header comment. "Warn" means the hook never blocks. "Block" means it can refuse the tool call. The shipped settings wire 56 of the scripts. Two are not wired on their own because another hook calls them: `auto-precompact-trigger.py` calls `fleet_verb.py`, and `compact-save.sh` calls `precompact-save-guard.py`. Five ship unwired: `agent-dispatch-memory-guard.sh`, `agent-memory-brief-warn.sh` and `grep-blowup-warn.sh` are switched off on purpose (the start page says when to wire each), and `band-governor-framing-warn.sh` and `migration-commit-msg-warn.sh` ran from the source project's `pre-push` git hook, which the copy does not ship. Each line names the event the script runs on.
+There are 73 files: 65 hook scripts, 5 shared libraries and 3 fixtures. Each line below comes from the script's header comment. "Warn" means the hook never blocks. "Block" means it can refuse the tool call. The shipped settings wire 58 of the scripts. Two are not wired on their own because another hook calls them: `auto-precompact-trigger.py` calls `fleet_verb.py`, and `compact-save.sh` calls `precompact-save-guard.py`. Five ship unwired: `agent-dispatch-memory-guard.sh`, `agent-memory-brief-warn.sh` and `grep-blowup-warn.sh` are switched off on purpose (the start page says when to wire each), and `band-governor-framing-warn.sh` and `migration-commit-msg-warn.sh` ran from the source project's `pre-push` git hook, which the copy does not ship. Each line names the event the script runs on.
 
 - `agent-diff-reporter.sh`: after a sub-agent call. Prints the working tree's git status and diff summary when a sub-agent returns, so the main session sees edits an agent made even when its report says it changed nothing. It stays silent when nothing changed.
 - `agent-dispatch-memory-guard.sh`: before a sub-agent dispatch. Appends the machine's swap, compressor size and largest processes to a log on every dispatch, and blocks the dispatch when swap plus compressor pass a set threshold, asking for the work to run serially instead.
@@ -102,6 +102,7 @@ There are 71 files: 63 hook scripts, 5 shared libraries and 3 fixtures. Each lin
 - `commit-pathspec-warn.sh`: before a shell call. Warns on a `git commit` with no pathspec while two or more files are staged, because such a commit takes whatever peer sessions staged in the shared index, and points to `scripts/safe-commit.sh` instead.
 - `commit-review-warn.sh`: after a shell call. After a commit that touches `src/`, reminds the main session to get a code review of the unpushed commits before it reports the work done or discusses a push.
 - `compact-save.sh`: before a context compaction. Writes a checkpoint of the branch, HEAD, working-tree counts and recent commits, which `session-start.sh` replays afterwards, and leaves the pending marker that `post-compact-pending-check.sh` reads.
+- `decisions-archive-zero-hit.py`: after a shell or search call, warn mode. When a search named the decisions log alone and found nothing, adds one line saying the older entries live in the dated archive beside it.
 - `defer-loc-check-bash.sh`: after a shell call. Extracts what a shell command writes to your own task list and hands it to `defer-loc-check.sh`, so a deferral written by a heredoc or a redirect is checked too.
 - `defer-loc-check.sh`: after an edit or write. Warns when a line newly added to your own task list defers work in vague terms without a lines-of-code estimate.
 - `delegate-code-review-warn.sh`: before a sub-agent dispatch. Warns when a dispatch looks like a code review while a peer session is live, so the review can go to the review hub by mail instead of running inline.
@@ -139,6 +140,7 @@ There are 71 files: 63 hook scripts, 5 shared libraries and 3 fixtures. Each lin
 - `standby-resume-check.sh`: on prompt submit. While `/standby` has parked the session, injects the resume steps on every prompt until `/standby resume` clears the marker.
 - `subagent-cache-window-inject.sh`: when a sub-agent starts. Adds one paragraph to the new agent's context, before its first tool call, about its five-minute prompt cache: a foreground call or a wait that outlasts the window makes the agent's next call rewrite its whole context. Advisory text only; it never blocks.
 - `subagent-resume-guard.py`: before a message to a sub-agent. Blocks a message to one of this session's helper agents that has been idle for more than four minutes, printing what re-reading its context will cost, unless the message carries `RESUME-OK`. A helper that is running or was active recently, and any send it cannot price, pass.
+- `this-turn-claim-warn.py`: at the end of a turn and on prompt submit. Flags a plain-English reply that says it checked something this turn when no tool ran before it; the shipped settings run it in block mode.
 - `trigger-index-match.sh`: on prompt submit. Matches the prompt against trigger phrases and surfaces the matching memory entries before the answer is composed.
 - `validate-no-secrets.sh`: after a shell call. Scans every staged file for secret patterns and prints a warning. It reads the staged content rather than the working tree, so a secret that was staged and then edited out of the file is still caught.
 - `warn-large-tracker-read.sh`: before a file read. Warns on a full read of a large tracker, and blocks an unbounded read of a large skill memory file.
@@ -178,10 +180,9 @@ There are 4 files. They hold rules that only the main session can act on, kept o
 
 ## `.claude/commands/`
 
-There are 5 files.
+There are 4 files.
 
 - `expert-review.md`: a redirect to the expert-review skill.
-- `expert-audit.md`: a deprecated alias that runs `external-audit.md` with the same subject.
 - `external-audit.md`: a calibration panel that audits the agent system against experts who each model an outside agent system, to find gaps, over-engineering and strengths worth keeping, and to queue the patterns worth adopting. One of those experts, `external-fagemx-edda`, ships as a dated example; build the rest of your panel with `/scout` for the systems your subject is about.
 - `status.md`: a quick project status procedure covering git status, uncommitted work and recent commits.
 - `verify.md`: a verification loop to run before a commit: type check, lint, a security scan, a diff review, and the changed-scope end-to-end tests when the diff touches the interface or its tests, then a pass/fail report.
@@ -206,7 +207,7 @@ There is 1 file.
 
 ## `scripts/`
 
-There are 101 files at the top level. Each line below comes from the script's header comment or docstring.
+There are 109 files at the top level. Each line below comes from the script's header comment or docstring.
 
 **Commit and shared-worktree safety**
 - `safe-commit.sh`: stages, gates and commits on a shared worktree. It refuses and never repairs.
@@ -253,6 +254,8 @@ There are 101 files at the top level. Each line below comes from the script's he
 - `smoke-payload-matrix.sh`: drives the block-mode security hooks with an adversarial input corpus, to show which inputs they actually catch.
 - `smoke-test-session-mail.sh`: the test suite for the session-mail engine.
 - `keep-warm-gate-test.py`: behavioural tests for two keep-warm hooks, each run as a subprocess against a throwaway state directory and a synthetic transcript. The smoke suite calls it.
+- `standby-resume-pause-test.py`: behavioural arms for the resume-in-words net in `standby-resume-check.sh`, run under bash 3.2 against a throwaway state directory. The smoke suite calls it.
+- `this-turn-claim-warn-test.py`: behavioural arms for `this-turn-claim-warn.py`, run against the real hook with throwaway state and synthetic transcripts. The smoke suite calls it.
 - `auto-precompact-trigger-test.py`: behavioural tests for `auto-precompact-trigger.py`, run against the real hook file in a subprocess, never a copy of its logic, with a throwaway state directory and synthetic transcripts. The smoke suite calls it.
 - `grep-blowup-repro.sh`: reproduces the grep blow-up hook's shape check against the command in `grep-blowup-fixture.txt`, taking its patterns from the hook itself rather than a retyped copy.
 - `grep-blowup-design-compare.sh`: compares two candidate fixes for a false positive in that check against the labelled rows of `grep-blowup-cases.txt`. A design passes only if it matches the expected verdict on every row.
@@ -272,6 +275,7 @@ There are 101 files at the top level. Each line below comes from the script's he
 - `queued-directive-residue-scan.py`: finds user messages that were queued but never reached a turn.
 - `orphaned-prompt-scan.py`: finds user messages that arrived as ordinary typed records and never got an answer, which the queue scan above cannot see. It prints a worklist, not a count.
 - `meta-corrections-scan.py`: finds the moments in session transcripts where you corrected the assistant.
+- `meta-maintain-filed-rows.py`: read-only; lists the open tracker rows filed for a `/meta maintain` run, so the run reads them instead of a prose trigger.
 - `calibration-score.mjs`: scores over-caution and under-caution together from your own corrections registry and audit logs, weighting a confident wrong claim more heavily. Report-only; its header forbids feeding the score into any agent prompt.
 - `extract-closer-baseline.py`: snapshots the closing summaries sessions wrote to you, from the rolling transcript window, before a legibility fix ships, so the fix has a baseline. It does not grade them; a fresh-context agent does. Its self-test needs your own session transcripts, under the `<project-key>` path you fill in.
 - `readonly-brief-compliance.py`: checks after the fact, from their own transcripts, whether sub-agents dispatched with a read-only brief wrote to the repository.
@@ -287,10 +291,15 @@ There are 101 files at the top level. Each line below comes from the script's he
 - `hub-usage-watch.py`: the usage watch behind `/review-hub --pause --when usage>=N`. The review hub arms it as a monitor; it reads the status line's state file, prints one line when the five-hour usage share reaches the threshold, and, in resume mode, one line once that limit has reset. Read-only.
 - `hub-owner-rulings-scan.py`: collects your messages from every session's transcript, so a ruling typed into a peer session reaches the hub's queue. It prints a worklist to read, never a verdict.
 - `summary-plan-sync.mjs`: rewrites the derived-state block of the session working plan, and nothing else in it.
+- `plan-roll.mjs`: moves a working plan's oldest dated blocks, word for word, into part files once the plan passes a size cap, so the live plan stays readable in one call; `summary-plan-sync.mjs` imports it.
 - `summary-owner-predicate-check.py`: a regression test for the rule that decides which open tracker rows belong to a session.
+- `summary-unreviewed.py`: for `/summary` step 7, lists what this session committed that no reviewer has been sent, from the transcript's commit lines, the mail store and git.
+- `summary-unreviewed-test.py`: behavioural arms for `summary-unreviewed.py`, run against the real script over a throwaway repository, mail folder and synthetic transcripts. The smoke suite calls it.
 - `wrap-reconcile.mjs`: works out from the transcript and git whether the end-of-session wrap actually finished.
 - `git-story-closure.mjs`: at wrap time, classifies the git state (uncommitted, unpushed, an unrecorded migration) from ground truth, so the wrap summary says which loose ends were chosen. Warn-mode; it never blocks the wrap.
 - `wrap-preflight.py`: measures out-of-memory risk before a wrap deep-pass spawns agents (transcript size, slicing, free memory, resident sessions) and prints GO, CAUTION or ABORT. Read-only.
+- `wrap-memory-update-persist.py`: for `/wrap` step 4a, finds the memory-update blocks this session's helpers handed back, reports which ones no expert memory carries, and with `--apply` appends each to its expert's current shard.
+- `deep-pass-wave-budget.py`: how many deep-pass slices the next wave may dispatch, read off the five-hour session limit; `/deep-pass` runs it before every wave.
 - `memguard-recalibrate.py`: recalibrates the agent-dispatch memory guard, its threshold in the settings and its deny text in the hook. It writes nothing until every check on both files has passed; `--check` previews.
 - `statusline.py`: a harness status line showing the prompt-cache countdown, context fill, plan usage and sub-agent count. Its Fable weekly row needs a lookup that reads your Claude Code login token, so it is off unless you turn it on (the start page says how).
 - `limit-recovery.py`: finds this session's sub-agents that died at an API usage limit, decides for each whether to resume it, wait for its model's reset or seat a fresh agent over its transcript, and writes the digest a fresh agent takes over from.

@@ -54,7 +54,13 @@ question authorizes a direct push to `main`.
 2. **Never `--auto`.** Auto-merge completes later and unattended, so the owner's word would attach to whatever
    `dev` holds at the next green; every seat pushes with the owner's credentials, so GitHub never disarms it.
 3. **A session never passes `--admin`.** It waives every requirement. If a merge truly needs the
-   bypass, the owner merges it on GitHub.
+   bypass, send step 5's message for `H` (its re-check and every line it carries), name what the bypass
+   waives — each requirement step 0's protection line printed (today the required `ci-gate (main)` check
+   and the strict up-to-date rule) and every check on `H` that is not `pass` — and end it with the one
+   terminal command for the owner to run instead of the question, pinned to that head:
+   `! gh pr merge <n> --merge --admin --match-head-commit <H>` (both filled in, `H` the full sha). Never
+   send the owner to GitHub (the promote is controlled from the terminal). Once the owner has run it, continue at step 6's
+   `M=` read; a head-mismatch refusal means `dev` moved: back to step 1.
 4. **Push by LITERAL branch name, never a variable.** `git push origin dev`, never `git push origin
    "$SRC"`.
 5. **A merge commit, never squash or rebase-and-merge** (the repo now allows only merge commits). The
@@ -95,7 +101,7 @@ question authorizes a direct push to `main`.
   `git show origin/main:.github/workflows/test.yml | grep -c ci-gate`. While it reads 0, a PR from such
   a branch can never report the required `ci-gate (main)` check (a pull-request run uses the workflow at
   the PR's merge ref, which is `main`'s file) and sits BLOCKED; the owner merges it past the check
-  or calls the emergency override. **The source check** — the branch was cut from `main` and
+  with iron rule 3's terminal command, or calls the emergency override. **The source check** — the branch was cut from `main` and
   never merged `dev`: no commit in `origin/main..<branch>` is on `origin/dev`, and there are no merges:
   `ODEV=$(git rev-parse --verify -q refs/remotes/origin/dev); [ "$(git rev-list --count origin/main..<branch>
   ${ODEV:+^$ODEV} ^refs/heads/dev)" = "$(git rev-list --count origin/main..<branch>)" ] && [ -z "$(git log

@@ -2,7 +2,7 @@
 
 ## /panel alias — not a deprecation, and why it is a skill stub — from `SKILL.md` § Usage (tail of the paragraph, split at a sentence boundary)
 
-⛔ **Not a deprecation in either direction — both names stay and neither is preferred**, unlike `.claude/commands/expert-audit.md`, which is a wound-down rename. It is a SKILL stub rather than a `.claude/commands/` file on purpose: that directory is an enumerated set of seven, named literally in `.claude/orchestrator/conventions.md` and asserted as `commands: 7` by `scripts/architecture-counts.mjs`, so an eighth file there would silently falsify both; the skills count is derived and moved 103 → 104 on its own.
+⛔ **Not a deprecation in either direction — both names stay and neither is preferred**, unlike `.claude/commands/expert-audit.md`, a wound-down rename since deleted. It is a SKILL stub rather than a `.claude/commands/` file on purpose: that directory is an enumerated set of six, named literally in `.claude/orchestrator/conventions.md` and asserted as `commands: 6` by `scripts/architecture-counts.mjs`, so a seventh file there would silently falsify both; the skills count is derived and moved 103 → 104 on its own.
 
 ## MEMORY-read line — the retired byte figure, and when to retire the exception — from `SKILL.md` § Invocation mechanism
 
@@ -41,3 +41,16 @@ Evidence: a design panel (2026-08-02) — the brief asserted the v2.14/v2.15 com
 ## Expert Prompt Quality — why hand lenses the grep RESULTS, and its cost — from `SKILL.md` § Expert Prompt Quality (tail of the paragraph, split at a sentence boundary)
 
 **And re-stating the obligation demonstrably does not work:** Band-U is re-sent on every sub-agent dispatch and already carries the codified-policy verification gate row, so every lens holds the duty and it still does not fire — measured 2026-08-28, **2 of 4 lenses in one lean panel recommended already-settled things** (an `fr` register arm whose zero yield was recorded in a CLOSED row, and an hreflang change a standing decision had already barred). That is possession≠application (active-recall before write), not a coverage gap, which is exactly why the fix is to hand them the ANSWER rather than the instruction. **Cost: one grep. Do it once, paste the hits into each brief.**
+
+## Step 5 — the model-routing correction and the measured incident — from `SKILL.md` § Process, step 5 (mid-paragraph, moved to bring the spec back under its per-file size line)
+
+⚠️ **This line said the opposite until 2026-08-24**, routing `--code`/breaker panels to Fable and citing an earlier confirmation; that clause is **DEAD for review panels**, and it is what produced the measured incident — seven Fable lenses in one session, all inheriting max effort, dispatched five and six at a time, which spent the Fable allowance fast enough to block other work.
+
+## Step 2b(c) — the checker's evidence — from `SKILL.md` § Process, step 2b(c) (two spans, moved to keep the spec under its per-file size line, counted in UTF-16 units)
+
+- Why a `ran:` premise is checked for its command and its framing, never re-derived: (across two rounds of panels, 34/40 and 40/42 checker pairs were numeric; the first round's seats then refuted 3 non-numeric premises).
+- Why the missing-consideration question exists: a panel passed the premise check, then flipped on a clause of the product's terms that no seat had weighed.
+
+## Step 1b — the peer-context block's founding evidence — from `SKILL.md` § Process, step 1b (tail of the paragraph, split at a sentence boundary)
+
+Evidence: real-time collision detection demonstrated during the very session that shipped this script — peer session was actively editing the same tracker and memory files the orchestrator was about to edit; surfaced + coordinated rather than clobbered.

@@ -25,7 +25,8 @@
  *         node scripts/summary-plan-sync.mjs --self-test
  *   --check   report only, never write. Exit 0 = current, 3 = would change.
  *   --help    print this and exit 0. Never writes.
- *   default   sync. Prints one verdict token: CURRENT | UPDATED | NO-PLAN.
+ *   default   sync. Prints one verdict token: CURRENT | UPDATED | NO-PLAN, or REFUSED (exit 1) when
+ *             the plan changed while the sync ran.
  *
  * An UNRECOGNISED argument is REJECTED (exit 2), never ignored. Until
  * 2026-08-31 only --self-test and --check were ever tested, so every other
@@ -49,6 +50,8 @@ import { isMain as isMainModule } from "./lib/is-main.mjs";
 // my six real cases it returns true for the three missed dispositions and false for an ack,
 // a request and an INTERIM — the last being where a hand-rolled retry measurably failed.
 import { answersByClass } from "./review-request-closure-scan.mjs";
+// Rolls a plan past 200,000 bytes into `-partN.md` files at this sync (scripts/plan-roll.mjs header).
+import { partNumbersOnDisk, rollText, rollWords } from "./plan-roll.mjs";
 
 export const BEGIN = "<!-- SUMMARY-SYNC:BEGIN — derived by /summary. Hand edits INSIDE this fence are overwritten; everything outside it is yours. -->";
 export const END = "<!-- SUMMARY-SYNC:END -->";
@@ -429,7 +432,7 @@ export function spliceFence(planText, block) {
 export function findPlan(sid, cwd = ".") {
   const dir = path.join(cwd, "plans");
   if (!fs.existsSync(dir)) return null;
-  const hits = fs.readdirSync(dir).filter((f) => f.startsWith(`session-${sid}-`) && f.endsWith(".md"));
+  const hits = fs.readdirSync(dir).filter((f) => f.startsWith(`session-${sid}-`) && f.endsWith(".md") && !/-part\d+\.md$/.test(f));
   if (!hits.length) return null;
   hits.sort();
   return path.join(dir, hits[hits.length - 1]);
@@ -1123,7 +1126,7 @@ function main() {
     console.log("       node scripts/summary-plan-sync.mjs --self-test");
     console.log("  --check   report only, never write. Exit 0 = current, 3 = would change.");
     console.log("  --help    print this and exit 0. Never writes.");
-    console.log("  default   sync. Prints one verdict token: CURRENT | UPDATED | NO-PLAN.");
+    console.log("  default   sync. Prints one verdict token: CURRENT | UPDATED | NO-PLAN, or REFUSED (exit 1) when the plan changed while the sync ran.");
     process.exit(0);
   }
   const bad = unknownArg(argv);
@@ -1165,12 +1168,40 @@ function main() {
     console.error("  (Only FUTURE times are caught; a heading typed behind the clock is not.)");
   }
   const block = deriveBlock(fs.readFileSync(todoPath, "utf8"), sid, gatherReviewRows(sid, parseFenceRows(before)));
-  const after = spliceFence(before, block);
+  const spliced = spliceFence(before, block);
+  // A plan past 200,000 bytes moves its oldest dated blocks to part files here; the parts are written
+  // first (rollText), so a failure between the two writes leaves a duplicate, never a loss.
+  const check = argv.includes("--check");
+  // A second sync of this plan that wrote between our read and here would be undone by our write, and a roll
+  // from the stale read would leave the other sync's part file pointed at by nothing. Refuse instead.
+  if (!check && fs.readFileSync(planPath, "utf8") !== before) {
+    console.log(`PLAN-SYNC: REFUSED ${planPath} — the plan changed while this sync ran; run it again`);
+    process.exit(1);
+  }
+  const roll = rollText(spliced, planPath, { write: !check });
+  const after = roll.status === "rolled" ? roll.live : spliced;
+  const rolled = rollWords(roll, { check });
+  // On every run, not only the one that rolls: a part file left untracked is how a plan commit ends up
+  // holding stubs whose text is in no commit.
+  const partsNote = untrackedPartsNote(untrackedParts(planPath));
 
-  if (after === before) { console.log(`PLAN-SYNC: CURRENT ${planPath}${clock}`); process.exit(0); }
-  if (argv.includes("--check")) { console.log(`PLAN-SYNC: WOULD-UPDATE ${planPath}${clock}`); process.exit(3); }
+  if (after === before) { console.log(`PLAN-SYNC: CURRENT ${planPath}${clock}${rolled}${partsNote}`); process.exit(0); }
+  if (check) { console.log(`PLAN-SYNC: WOULD-UPDATE ${planPath}${clock}${rolled}${partsNote}`); process.exit(3); }
   fs.writeFileSync(planPath, after);
-  console.log(`PLAN-SYNC: UPDATED ${planPath}${clock}`);
+  console.log(`PLAN-SYNC: UPDATED ${planPath}${clock}${rolled}${partsNote}`);
+}
+
+/** The plan's `-partN.md` files on disk that HEAD does not hold (a staged part counts as missing). The check runs in the plan's own
+ *  directory, so it asks the repository the plan lives in, whatever the cwd. */
+export function untrackedParts(planPath) {
+  const dir = path.dirname(path.resolve(planPath));
+  return partNumbersOnDisk(planPath).sort((a, b) => a - b)
+    .map((n) => planPath.replace(/\.md$/, `-part${n}.md`))
+    .filter((p) => !spawnSync("git", ["ls-tree", "--name-only", "HEAD", "--", path.resolve(p)], { cwd: dir, encoding: "utf8" }).stdout?.trim());
+}
+
+export function untrackedPartsNote(paths) {
+  return paths.length ? ` — part file(s) NOT TRACKED: ${paths.join(", ")}; commit them with the plan` : "";
 }
 
 // Symlink-safe: `pathToFileURL(argv[1])` keeps the typed spelling while `import.meta.url` is

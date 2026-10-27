@@ -18,7 +18,9 @@
 #      incident happens, the investigation reads a log instead of guessing.
 #   2. THRASH GATE (deny): if swap + compressor exceed the threshold, DENY the
 #      dispatch with a reason telling the orchestrator to serialize instead.
-#      THRESHOLD 24 GB, raised from 18. The posture is
+#      THRESHOLD 30 GB (applied through
+#      scripts/memguard-recalibrate.py, settings.json env FF_AGENT_MEMGUARD_THRESHOLD_GB);
+#      24 GB until then, raised from 18. The posture was
 #      now explicitly CRASH-CLASS-ONLY: the guard exists to stop the OOM regime,
 #      not to throttle routine dispatch.
 #
@@ -29,7 +31,7 @@
 #      At the raise 24 had never fired in the observed window, and the intent
 #      was that below the crash class this guard would be inert.
 #
-#      â THAT IS NO LONGER TRUE, AND THIS HEADER ASSERTED IT UNTIL 2026-09-20.
+#      ⛔ THAT IS NO LONGER TRUE, AND THIS HEADER ASSERTED IT UNTIL 2026-09-20.
 #      Re-derived from THIS log with the header's own prescribed filter (drop
 #      synthetic:true, drop agent names prefixed "smoke"): 8,712 real records,
 #      **134 denies at >=24 GB across 28 distinct days**, first 2026-07-30T20:51Z,
@@ -39,7 +41,7 @@
 #      threshold argument that quotes "inert by design" is quoting a dated reading
 #      as a current property. Re-derive before citing; do not restate 134 either.
 #
-#      â  AND A FIRING IS NOT BY ITSELF EVIDENCE OF REAL PRESSURE: swap+compressor
+#      ⚠️ AND A FIRING IS NOT BY ITSELF EVIDENCE OF REAL PRESSURE: swap+compressor
 #      is a LAGGING pair. Measured at the 2026-09-20 19:53Z deny -- 24.72 GB against
 #      `memory_pressure -Q` reading 56% free with the largest process at 1.21 GB.
 #      Check live pressure before shrinking a wave or asking the owner to close apps.
@@ -131,7 +133,7 @@ DESC=$(printf '%s' "$INPUT" | grep -oE '"description"[[:space:]]*:[[:space:]]*"[
 THRESHOLD_GB="${FF_AGENT_MEMGUARD_THRESHOLD_GB:-24}"
 # An unvalidated threshold makes awk's t+0 read 0 on any
 # typo/empty value -> DENY at normal pressure = fail-CLOSED, the opposite of this guard's design.
-case "$THRESHOLD_GB" in ''|*[!0-9.]*) THRESHOLD_GB=24 ;; esac
+case "$THRESHOLD_GB" in ''|.|*.*.*|*[!0-9.]*) THRESHOLD_GB=24 ;; esac
 PARSE_ERROR=false
 
 # The FAKE override gets the same validation THRESHOLD got above —
@@ -203,7 +205,7 @@ if [ "$OVER" = "1" ]; then
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Memory guard: system is thrashing (swap ${SWAP_GB} GB + compressor ${COMP_GB} GB = ${PRESSURE_GB} GB > ${THRESHOLD_GB} GB; measured p50 ~9.0 / p95 ~17.2 / max ~20.7 GB over 611 stamped-real samples). At 24 GB this guard is crash-class-only, so a fire here means genuinely anomalous pressure, not routine load — an agent fan-out at this level is how the /wrap deep-pass took the machine to 115 GB twice. Do NOT dispatch more agents now: run this work SERIALLY (one agent, wait, next), or wait for pressure to fall. Flight record: .claude/logs/agent-dispatch-memory.jsonl. Escape (owner-authorized only): SKIP_AGENT_MEMORY_GUARD=1."
+    "permissionDecisionReason": "Memory guard: swap ${SWAP_GB} GB + compressor ${COMP_GB} GB = ${PRESSURE_GB} GB > ${THRESHOLD_GB} GB. Re-derived over the flight record since 2026-09-01: 16723 real samples, p50 16.1 / p95 21.9 / p99 24.7 / max 41.6 GB. The max MOVES - it rose 27.3 to 28.9 inside two hours on 2026-09-19 as one session's own lens fan-out pushed it - so read it as a floor, never a bound. WARNING - THIS SUM IS NOT A RAM-SCARCITY MEASURE: swap is disk, the compressor is RAM, and the sum has exceeded this machine's physical memory. A high compressor reading means the kernel is SUCCEEDING at squeezing idle apps, so check free pages with vm_stat and look at the largest process before treating this as real. The 115 GB incidents once cited here were traced 2026-08-01 to runaway ugrep, not agent fan-out, and are guarded at that command. Do NOT dispatch more agents now: run this work SERIALLY (one agent, wait, next), or wait for pressure to fall. Flight record: .claude/logs/agent-dispatch-memory.jsonl. Escape (owner-authorized only): SKIP_AGENT_MEMORY_GUARD=1."
   }
 }
 EOF

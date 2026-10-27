@@ -17,7 +17,7 @@
 └── references/    ← optional. ONLY when SKILL.md exceeds 500 lines (progressive disclosure).
 ```
 
-Orchestration skills (`/meta`, `/orient`, `/wrap`, `/fix`, `/verify`, `/status`, `/flows`, `/features`, `/deploy-check`, `/launch-check`, `/hanging-work`, `/session-memory`, `/audit-check`, `/expert-review`, `/agent-work`, `/expert-system-bootstrap`, `/test-gap`) intentionally have NO agent file and NO MEMORY.md — they operate in the main conversation with full session context.
+Orchestration skills (`/meta`, `/orient`, `/wrap`, `/fix`, `/verify`, `/status`, `/flows`, `/features`, `/hanging-work`, `/session-memory`, `/audit-check`, `/expert-review`, `/agent-work`, `/expert-system-bootstrap`, `/test-gap`) intentionally have NO agent file and NO MEMORY.md — they operate in the main conversation with full session context.
 
 ---
 
@@ -200,6 +200,7 @@ node scripts/generate-expert-agents.mjs
    
    See `.claude/skills/<slug>/references/implementation-plan.md` for the full plan. Read on-demand during implementation rather than loading into every session.
    ```
+4. ⛔ **Move only history, rationale and worked examples — every step the command EXECUTES stays in SKILL.md**. A "read it" pointer is opened about as often as never: this project's one earlier split saw its side file opened 1 time in 251 runs, so a step moved behind a pointer is a step the run skips. Test each span before moving it: does the invoked entry point run it? Then it stays.
 
 **First canary:** one expert skill decomposed from 908 → 224 lines in v2.6.7. Implementation Plan extracted to `references/implementation-plan.md`.
 
@@ -219,7 +220,7 @@ The `Source of conventions` line at top names alirezarezvani's 10-pattern SKILL-
 | 6 | **Actions have owners + deadlines** | REJECT | N/A at skill-spec level — applies to project artifacts (audit findings). Not relevant for skill authoring discipline. |
 | 7 | **Output Artifacts table** (each skill declares what it produces) | REJECT | Optional per skill. Most of ours are inline-output; adding a mandatory table would be ceremony without payoff. |
 | 8 | **Related Skills disambiguation** (description names sibling skills + when to pick alternatives) | **ADOPT** | Section 7 — mandatory when scope overlaps a sibling. Examples: `saas-architect` vs `saas-engineer`, `haines-paywall-upgrade-cro` vs `haines-page-cro`. |
-| 9 | **Mode-aware** (one skill with N modes via subcommand or flag, rather than N sibling skills) | **ALREADY HERE** | `/meta` (14 subcommands; several before the standard was read), `/me` (default/check/learn/learn-session), `/audit-check` (13 checks; default and `--v3-drift` modes). Generalize when ≥3 closely-related procedures share state. |
+| 9 | **Mode-aware** (one skill with N modes via subcommand or flag, rather than N sibling skills) | **ALREADY HERE** | `/meta` (15 subcommands; several before the standard was read), `/me` (default/check/learn/learn-session), `/audit-check` (13 checks; default and `--v3-drift` modes). Generalize when ≥3 closely-related procedures share state. |
 | 10 | **3-tier content hierarchy** (references/ → SKILL.md → scripts/ → assets/) | REJECT | Redundant with wshobson's progressive-disclosure pattern (Section 9 here — extract to `references/` at >500 LOC). |
 
 **Net: 3 adopted (Confidence Tagging, since retired; Bottom Line First; Related Skills disambiguation) + 2 already conventions here (Proactive Triggers, Mode-aware) + 1 partial (What+Why+How).** Reject count: 4 (Context-First, Actions-with-owners, Output-Artifacts-table, 3-tier hierarchy).

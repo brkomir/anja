@@ -195,7 +195,12 @@ work yet.
 The contract, when there is one, written into section 7:
 
 - **The parent's 8-hex session id**, and the checkpoints at which the child
-  mails it — typically: *premise died*, *blocking answer known*, *done*.
+  mails it — typically: *premise died*, *blocking answer known*, *landed on a
+  shared branch* (the child's work is on `dev` or another branch other sessions
+  release from, so any session's next release now ships it: say what it carries
+  and what must happen before that release), *done*. The landing checkpoint exists because a
+  child's change once sat on `dev` about 4 hours before its parent heard, and
+  only because someone asked.
 - **The mechanism.** The child sends with
   `python3 scripts/session-manifest.py mail-send --to <parent-sid8> --signal <token>`;
   the parent, if it wants to wait, arms

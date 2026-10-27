@@ -154,30 +154,49 @@ function countSelfAuditChecks() {
   // let a stale "(11)" (after Check 12 shipped) make the header + this count + architecture.md
   // ALL agree on the wrong number — a detector that reads its own target is a mirror, not a
   // check. The header's own correctness is /meta self-audit Check 1's job (embedded-number drift).
+  // The section's BODY moved, with the copy's edits, to references/process-self-audit.md on 2026-10-26; SKILL.md keeps
+  // the heading plus a 2-line stub, so slicing SKILL.md between the Self Audit
+  // and Status headings reads 0 there now (measured at the move: HEAD 14 -> tree 0 -> reference 14). The
+  // reference holds that one section whole, so the whole file is the slice.
   try {
-    const path = ".claude/skills/meta/SKILL.md";
+    const path = ".claude/skills/meta/references/process-self-audit.md";
     if (!existsSync(path)) return 0;
     const txt = readFileSync(path, "utf-8");
-    const start = txt.indexOf("## Process — Self Audit");
-    const end = txt.indexOf("## Process — Status");
-    if (start === -1 || end === -1 || end <= start) return 0;
-    return (txt.slice(start, end).match(/^\d+\.\s+\*\*/gm) || []).length; // \s+ = whitespace-tolerant (a future "10.  **" / tab won't mis-count)
+    return (txt.match(/^\d+\.\s+\*\*/gm) || []).length; // \s+ = whitespace-tolerant (a future "10.  **" / tab won't mis-count)
   } catch {
     return 0;
   }
 }
 
 function countMetaEntryPoints() {
-  // Source of truth: meta/SKILL.md "### Primary entry points (N — memorize these)".
-  // Counts the bare `/meta` full-review entry PLUS every subcommand.
+  // Source of truth: the bullets under meta/SKILL.md "### Primary entry points (N — memorize these)"
+  // that start "- `/meta" — the bare `/meta` full-review entry PLUS every subcommand. Until 2026-10-27
+  // this parsed N out of the heading itself, so the heading could never drift against its own list
+  // (it read 15 over 16 bullets after `/meta observations` landed 2026-10-26).
+  // The heading's own N is checked against this count in `check` (headingDrifts, report-only; the one reader is parseMetaEntryPoints).
   try {
     const path = ".claude/skills/meta/SKILL.md";
     if (!existsSync(path)) return 0;
-    const m = readFileSync(path, "utf-8").match(/Primary entry points\s+\((\d+)/);
-    return m ? parseInt(m[1], 10) : 0;
+    return parseMetaEntryPoints(readFileSync(path, "utf-8")).bullets;
   } catch {
     return 0;
   }
+}
+
+// Pure: meta/SKILL.md text in -> the `- \`/meta` bullets under "### Primary entry points" and the N its
+// heading restates (digit or number-word; NaN when it spells none). ONE reader of that section for the
+// counter AND the heading check in `check`, so the two cannot anchor on different lines. Arms E1-E6.
+function parseMetaEntryPoints(text) {
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => /^### Primary entry points/.test(l));
+  if (start < 0) return { bullets: 0, headingN: NaN };
+  const hm = lines[start].match(/^### Primary entry points\s+\(([A-Za-z]+|\d+)/);
+  let bullets = 0;
+  for (const l of lines.slice(start + 1)) {
+    if (/^#{1,3} /.test(l)) break;
+    if (/^- `\/meta/.test(l)) bullets++;
+  }
+  return { bullets, headingN: hm ? parseCount(hm[1]) : NaN };
 }
 
 function countDistinctLessons() {
@@ -542,7 +561,7 @@ const PATTERNS = [
   // (`**286 numbered lessons** in` is a common Preface-bullet shape).
   // Follow-up token set includes `,` (no \b — comma is non-word): the doc's own
   // Preface shape is "~N distinct lessons, L1–L<max> with renumber gaps", which the
-  // in|(|with set missed TWICE (2026-07-16 + 2026-07-19) while skill-lint caught it.
+  // in|(|with set missed TWICE (2026-07-16 + 2026-07-19) while the lint caught it.
   [/~?(\d+)\s+numbered\s+lessons?\*{0,2}\s*(?:(?:in|with)\b|\(|,)/gi, "distinctLessons", "N numbered lessons (count claim)", { tolerance: 10 }],
   [/~?(\d+)\s+distinct\s+(?:numbered\s+)?lessons?\*{0,2}\s*(?:(?:in|with)\b|\(|,)/gi, "distinctLessons", "N distinct lessons (count claim)", { tolerance: 10 }],
   [/~?(\d+)\s+distinct\s+entries\b/gi, "distinctLessons", "N distinct entries (lessons)", { tolerance: 10 }],
@@ -629,6 +648,10 @@ const COMPARISON_BANNER_PATTERNS = [
 // present ⇒ probable anchor drift → warn, never auto-write the 0 into the docs.
 const REGEX_DERIVED = {
   sniffTestTriggers: ".claude/skills/sniff-test/SKILL.md",
+  // Names SKILL.md on purpose although the count reads references/process-self-audit.md (moved 2026-10-26):
+  // the Self Audit heading stays in SKILL.md, so a 0 while SKILL.md exists is suspect whether the reference's
+  // anchor drifted or the reference itself is missing. Pointing this at the reference makes a missing reference
+  // read as a genuine 0 and lets `fix` write it into the docs (measured).
   selfAuditChecks: ".claude/skills/meta/SKILL.md",
   sessionManifestModes: "scripts/session-manifest.py", // grep-derived; a registration-style change would zero it
   metaEntryPoints: ".claude/skills/meta/SKILL.md",
@@ -1352,6 +1375,19 @@ function runSelfTest() {
     [],
   );
 
+  // E1-E6 — parseMetaEntryPoints, the one reader behind metaEntryPoints AND the heading check (2026-10-27).
+  // Hand-written fixtures; E2/E3 are the drift each way, E4 the non-command bullet the real list carries.
+  const EP = (n, bullets, tail = "### `/meta review` modes\n- `/meta later` — not in the list\n") =>
+    `## Usage\n\n### Primary entry points (${n} — memorize these)\n\n${bullets.map((b) => `- \`/meta${b}\` — x`).join("\n")}\n\n${tail}`;
+  eq("E1 entry points: heading and bullets agree", parseMetaEntryPoints(EP(3, ["", " a", " b"])), { bullets: 3, headingN: 3 });
+  eq("E2 entry points: a bullet removed reads 2 under a heading of 3", parseMetaEntryPoints(EP(3, ["", " a"])), { bullets: 2, headingN: 3 });
+  eq("E3 entry points: the heading's number is read, not the list's", parseMetaEntryPoints(EP(4, ["", " a", " b"])).headingN, 4);
+  eq("E4 entry points: a bullet that is not a `/meta` command is not counted",
+    parseMetaEntryPoints(EP(2, ["", " a"]).replace("\n\n###", "\n- Lesson retirement — no command\n\n###")).bullets, 2);
+  eq("E5 entry points: an H2 ends the list too (no later `/meta` bullet leaks in)",
+    parseMetaEntryPoints(EP(2, ["", " a"], "## Memory\n- `/meta later` — x\n")).bullets, 2);
+  eq("E6 entry points: a number-word heading is read", parseMetaEntryPoints(EP("three", ["", " a", " b"])).headingN, 3);
+
   const passed = results.filter((r) => r.pass).length;
   const failed = results.length - passed;
   for (const r of results) {
@@ -1512,6 +1548,18 @@ const coverageFindings = checkAppendixCoverage(docText, counts);
 const comparisonText = existsSync(COMPARISON_PATH) ? readFileSync(COMPARISON_PATH, "utf-8") : null;
 const bannerDrifts = comparisonText ? findDrifts(comparisonText, counts, COMPARISON_BANNER_PATTERNS) : [];
 
+// meta/SKILL.md's own "### Primary entry points (N — memorize these)" heading restates the count
+// its bullets define. Until 2026-10-27 countMetaEntryPoints() READ N from this heading, so the heading
+// could never drift against the list it headed (15 over 16 bullets for a day). Report-only: the fix
+// is a one-digit hand edit of the heading, never a write from here.
+const META_SKILL_PATH = join(REPO_ROOT, ".claude/skills/meta/SKILL.md");
+const metaHeadingN = existsSync(META_SKILL_PATH)
+  ? parseMetaEntryPoints(readFileSync(META_SKILL_PATH, "utf-8")).headingN
+  : NaN;
+const headingDrifts = Number.isFinite(metaHeadingN) && metaHeadingN !== counts.metaEntryPoints
+  ? [`meta/SKILL.md heading "Primary entry points (${metaHeadingN} — …)" — claimed ${metaHeadingN}, bullets ${counts.metaEntryPoints} — hand-edit the heading's number`]
+  : [];
+
 // Narrative-anchor rot (see NARRATIVE_EXPECTED_KEYS): report-only, never auto-fixable —
 // the remedy is re-anchoring the matcher (or retiring the expectation), a human edit.
 const anchorRot = findAnchorRot(docText);
@@ -1544,8 +1592,9 @@ if (cmd === "check") {
     listing_finding_count: listingFindings.length,
     coverage_finding_count: coverageFindings.length,
     anchor_rot_count: anchorRot.length,
+    heading_drift_count: headingDrifts.length,
   });
-  if (drifts.length === 0 && bannerDrifts.length === 0 && listingFindings.length === 0 && coverageFindings.length === 0 && anchorRot.length === 0) {
+  if (drifts.length === 0 && bannerDrifts.length === 0 && headingDrifts.length === 0 && listingFindings.length === 0 && coverageFindings.length === 0 && anchorRot.length === 0) {
     console.log("✅ architecture.md + COMPARISON banner clean — no drift, no listing gaps, Appendix C coverage exact, narrative anchors live");
     process.exit(0);
   }
@@ -1569,6 +1618,12 @@ if (cmd === "check") {
       const tol = d.tolerance > 0 ? ` [tolerance ±${d.tolerance}]` : "";
       console.error(`  Line ${d.line}: ${d.label} — claimed ${d.claimed}, actual ${d.actual}${tol}${suspectNote(d)}`);
     }
+    console.error("");
+  }
+  if (headingDrifts.length > 0) {
+    // `NAME (N):` is the header shape skill-lint's ARCH_ANY_HEADER / ARCH_SECTIONS parse; a suffix after it hides the section.
+    console.error(`META ENTRY-POINT HEADING DRIFT (${headingDrifts.length}):`);
+    for (const h of headingDrifts) console.error(`  ${h}`);
     console.error("");
   }
   if (listingFindings.length > 0) {
@@ -1620,7 +1675,8 @@ if (cmd === "fix") {
     });
     console.log(suspectCount > 0
       ? `⚠️ nothing auto-fixed — ${suspectCount} suspect-zero drift(s) withheld`
-      : "✅ No drifts to fix");
+      : headingDrifts.length > 0 ? "⚠️  nothing auto-fixable — the heading drift below is a hand edit" : "✅ No drifts to fix");
+    for (const h of headingDrifts) console.log(`  ${h}`);
     if (listingFindings.length > 0) {
       console.log("⚠️  Listing drifts remain (surface as proposals; not auto-fixable):");
       for (const f of listingFindings) {
@@ -1669,6 +1725,7 @@ if (cmd === "fix") {
     console.log("Mutated files — now DIRTY in the working tree; STAGE them (an unstaged sentinel write is an orphan for the next session):");
     for (const p of mutatedPaths) console.log(`  ${relative(REPO_ROOT, p)}`);
   }
+  for (const h of headingDrifts) console.log(`⚠️  not auto-fixed: ${h}`);
   if (listingFindings.length > 0) {
     console.log(`⚠️  ${listingFindings.length} listing drifts remain (surface as proposals)`);
   }

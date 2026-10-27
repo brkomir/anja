@@ -20,7 +20,7 @@ The per-member triggers below are each member's ORGANIC trigger (unchanged — t
 | # | Member | DUE when | How to check (fast) |
 |---|---|---|---|
 | 1 | `status` | always — it IS the snapshot (cheap, read-only) | — |
-| 2 | `corrections --scan` (recent sessions) | always — capture layer; near-zero cost when no candidates | run `scripts/meta-corrections-scan.py` |
+| 2 | `corrections --scan` (recent sessions) | always — capture layer; near-zero cost when no candidates | run `scripts/meta-corrections-scan.py`; the `--rule-repeats` read runs in member 9 (patterns step 7) |
 | 3 | `memory-audit` | `check-memory-size.sh` WARN fired, OR project index past `WARN_BYTES` (`check-memory-budget.sh`), OR ~10 sessions since last | hook output / `wc -c` project MEMORY.md / CHANGELOG grep |
 | 4 | `router-staleness` | always — read-only, ~200 ms over the whole fleet | **BOTH tiers, and they are different tools.** `node scripts/memory-tier-split.mjs --scan-routers` (exit 1 = something needs attention; verdicts `current` / `STALE` / `ROLL-DUE` / `BROKEN`) covers the MEMORY families ONLY. Then `node scripts/rules-tier-split.mjs --check` for the RULES two-tier (`meta/RULES.md` + `RULES-SHARD-*.md`, split 2026-09-04), which the first command cannot see by construction — ⛔ running only the first and reporting the member clean is the measured failure (2026-09-09): its `needs-attention=0` is indistinguishable from coverage it does not have. The scanner now prints a `coverage:` line saying so; report BOTH verdicts. |
 | 5 | `self-audit` | ≥5 sessions since last, OR major meta-spec edit since, OR `active-recall.md`/`behavioral-anti-patterns.md` edited since (Check 11 = the `rules-trigger-firerate.mjs` deadness extract re-measures the moved rules) | CHANGELOG grep `self-audit` + `git log --since=<date> -- .claude/rules/active-recall.md .claude/rules/behavioral-anti-patterns.md` |
@@ -34,7 +34,7 @@ The per-member triggers below are each member's ORGANIC trigger (unchanged — t
 
 ## Execution rules
 
-1. **Context read (replaces the retired due-check gate).** Gather the cheap grounding facts — last-run dates (CHANGELOG), churn since (expert-MEMORY / SKILL.md / meta-commit counts), sizes (project index, meta MEMORY) — and emit them as a short preamble. They SHAPE member briefs (e.g. the patterns window, delegation sizing) but gate nothing. `--dry-run` stops here.
+1. **Context read (replaces the retired due-check gate).** Gather the cheap grounding facts — last-run dates (CHANGELOG), churn since (expert-MEMORY / SKILL.md / meta-commit counts), sizes (project index, meta MEMORY) — and emit them as a short preamble. They SHAPE member briefs (e.g. the patterns window, delegation sizing) but gate nothing. **Then read the rows filed for this run: `python3 scripts/meta-maintain-filed-rows.py`** lists every open `todo.txt` row whose trigger names `/meta maintain` (16 such rows waited when this step was added, because neither this runner nor `defer-trigger-scan.py`, which evaluates only `meta:` `trigger-type:` kinds, reads a prose `trigger:` line naming `/meta maintain`; two of the 16 carry `/meta maintain` as a `meta:` block's own trigger: one as `trigger-type: manual`, which that scanner lists only under `--include-manual`; one as `trigger-type: internal`, an unknown kind it counts and never lists). Each row is handed to its member, whose outcome is an auto-fix, an approval-table row, or a close in the one `meta(maintain):` commit, all under that member's own thresholds; or it is listed as left, with its reason. The list misses some rows (a wrapped trigger, an `owner:`-labelled field, a checkbox-less item absorbed into the row above, a trigger naming one member without "maintain", a triage note naming the run instead of a trigger); the script's docstring lists them. `--dry-run` stops here.
 2. **Run all members (or the `--only` subset) in canonical order.** Each member executes per its OWN Process spec — maintain adds no new behavior to members.
 3. **Auto-fix rules stay per-member.** Each member's inline auto-fix allowance (≤5-line mechanical edits etc.) applies as codified in that member's spec. Maintain neither widens nor narrows them.
 4. **Approval batching.** Everything above a member's auto-fix threshold does NOT pause the sequence — collect into ONE consolidated approval table at the end, grouped by member (corrections triage rows included). Exception: a member surfaces something that materially changes a LATER member's input (rare) → surface immediately.
@@ -50,6 +50,7 @@ The per-member triggers below are each member's ORGANIC trigger (unchanged — t
 
 ### Context read
 Last maintain: YYYY-MM-DD (Nd) · churn since: K expert MEMORYs / M SKILL.md / J meta-commits · sizes: project index N lines/KB, meta MEMORY N lines · notable: <anything shaping a member brief>
+Filed for this run: N open rows (meta-maintain-filed-rows.py) · each → member, or left with its reason
 
 ### Run results (one block per executed member, that member's own output format, compressed)
 
