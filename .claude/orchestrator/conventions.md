@@ -48,7 +48,7 @@ When a slash command's SKILL.md spec says "Run `/meta learn`" / "Run `/session-m
 
 **Trigger:** a slash command whose argument string, trimmed, is **exactly** one of `help` / `--help` / `-h` / `?` (e.g. `/meta help`, `/fix --help`, `/agent-work -h`). Do **NOT** run that command's Process. Instead:
 
-1. Read the target spec — `.claude/skills/<name>/SKILL.md`, or the command file for the six `.claude/commands/*.md` commands (`eval-critique`, `external-audit`, `expert-review`, `launch-check`, `status`, `verify`; the `expert-audit` alias stub has since been deleted) — four in this copy: `eval-critique` and `launch-check` are not in it.
+1. Read the target spec — `.claude/skills/<name>/SKILL.md`, or the command file for the four `.claude/commands/*.md` commands this copy ships (`external-audit`, `expert-review`, `status`, `verify`; the source tree has two more, `eval-critique` and `launch-check`, and its `expert-audit` alias stub has since been deleted).
 2. Emit its **Usage / entry-points section** inline, compact: every subcommand + one-line purpose + every flag. The spec is the single source of truth — do **not** keep a duplicated copy anywhere; read it fresh each time so it cannot drift.
 3. End with a one-line pointer: ``run `/<cmd> <subcommand>` to execute``.
 

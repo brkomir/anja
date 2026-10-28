@@ -4,7 +4,7 @@
 
 **One developer. An entire engineering team, on Claude Code.**
 
-Anja is an engineering organization built on Claude Code: a lead session you talk to, 33 specialists it brings in, reviewers who did not write the changes they review, memory that outlives a conversation, and guards that refuse or warn at the moment of a costly action.
+Anja is an engineering organization built on Claude Code: a lead session you talk to, 33 specialists it brings in and 1 that models an outside project, reviewers who did not write the changes they review, memory that outlives a conversation, and guards that refuse or warn at the moment of a costly action.
 
 I built Anja because one person working with coding agents on the same codebase, month after month, needs more than a good prompt. Work must survive sessions and context compactions. Corrections must become lasting knowledge. Independent review must challenge completed work. And consequential actions must remain under human control.
 
@@ -82,7 +82,7 @@ One example from this repository's own history. Several sessions commit to one b
 
 **Commands run the work.** 53 commands cover the session rhythm (`/orient`, `/summary`, `/wrap`), review (`/expert-review`, `/review-hub`), hand-offs (`/mail`, `/spinoff`), recovery (`/post-compact`, `/circuit-break`) and the system's own upkeep (`/meta`). `/help` maps a task to its command.
 
-**33 specialists bring the depth.** Security, accessibility, performance, QA, architecture, code design, UX design, UX copy, prompt engineering, context and memory architecture, pricing, SEO, launch, legal and more. Each has its own knowledge file and builds a memory as you use it; the copy ships the knowledge, and the memories are yours. Specialists hand their work back to the lead session, which commits it; their primer tells them not to commit, and the lead session writes their memory for them, since [a hook](.claude/hooks/block-subagent-memory-write.sh) refuses a specialist's direct edit of a memory file.
+**33 specialists bring the depth, and 1 more models an outside project.** Security, accessibility, performance, QA, architecture, code design, UX design, UX copy, prompt engineering, context and memory architecture, pricing, SEO, launch, legal and more; the outside-project one is the worked example of an external expert. Each has its own knowledge file and builds a memory as you use it; the copy ships the knowledge, and the memories are yours. Specialists hand their work back to the lead session, which commits it; their primer tells them not to commit, and the lead session writes their memory for them, since [a hook](.claude/hooks/block-subagent-memory-write.sh) refuses a specialist's direct edit of a memory file.
 
 **Several sessions, one branch.** Run more than one session and they share one branch in one checkout. [The commit tool](scripts/safe-commit.sh) stages exactly the paths you name and refuses if anything else is staged. [`session-manifest.py check-overlap`](scripts/session-manifest.py) refuses a change to code another session is already editing. Work that would leave files dirty for the others moves to its own branch in its own worktree and merges back when it is done. Sessions mail each other: a mail waits for a session that is not running, can go to every session at once, and stays on record. Claude Code's agent teams split one task among teammates under one lead; Anja is the structure around every session you run.
 
@@ -103,7 +103,7 @@ The copy's own smoke suite, run in a fresh repository holding only this copy, pa
 
 461 files:
 
-- **[`.claude/agents/`](.claude/agents/)**: 33 specialist definitions and [the primer](.claude/agents/_agent-primer.md) each one reads first.
+- **[`.claude/agents/`](.claude/agents/)**: 34 agent definitions (33 specialists and 1 that models an outside project) and [the primer](.claude/agents/_agent-primer.md) each one reads first.
 - **[`.claude/skills/`](.claude/skills/)**: the 53 commands and each specialist's knowledge file.
 - **[`.claude/commands/`](.claude/commands/)**: 4 older command files (`/status`, `/verify`, `/external-audit` and one alias).
 - **[`.claude/hooks/`](.claude/hooks/)**: 65 hook scripts that refuse, warn, log or inject on the harness's events. [The settings file](.claude/settings.json) wires 58 of them, and 2 more run when another hook calls them.
