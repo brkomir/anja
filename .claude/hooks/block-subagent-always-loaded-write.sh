@@ -43,10 +43,15 @@
 #   like Edit, and MAY carry per-edit `file_path` values in its `edits[]` array — both are
 #   extracted below, so neither shape can slip past.
 #
-# Bypass (for legitimate ORCHESTRATOR rule edits — folding a lesson, a codification, a sweep):
-#   touch /tmp/claude-always-loaded-allow.$CLAUDE_CODE_SESSION_ID    # before the batch (the full id)
-#   rm -f /tmp/claude-always-loaded-allow.$CLAUDE_CODE_SESSION_ID    # after
-#   If the auto-mode classifier DENIES the touch, do NOT create the marker another way (Write, Edit, any other command) -- that routes around a safety control. Ask the owner to run the touch with the literal id; the deny prints it.
+# Bypass (for legitimate ORCHESTRATOR rule edits — folding a lesson, a codification, a sweep). The OWNER opens the
+# door; a session never creates it, with touch, Write, Edit or any other command (since 2026-10-25):
+#   ! touch /tmp/claude-always-loaded-allow.<full session id>     # the owner, before the batch; the deny prints the line
+#   rm -f /tmp/claude-always-loaded-allow.$CLAUDE_CODE_SESSION_ID  # the session, after the COMMIT, not the edit (2026-10-28):
+#   scripts/safe-commit.sh, scripts/private-index-commit.sh and .githooks/prepare-commit-msg (git's own commit path)
+#   refuse a commit carrying one of these files while the door is closed (scripts/always-loaded-commit-gate.sh asks
+#   THIS hook, so the set and the 15-min window are one definition), because this hook never sees a shell write
+#   such as `git apply`.
+#   A session that creates the marker itself routes around a safety control, whatever the auto-mode classifier allows.
 #   The marker is PER SESSION since 2026-10-25: it opens the guard for the session whose payload session_id it names, and only until its mtime is 15 min old (FF_ALWAYS_LOADED_ALLOW_TTL_SEC, default 900; 0 = no expiry). The bare /tmp/claude-always-loaded-allow opens nothing.
 #   The marker is a DELIBERATE ACT, which is the whole point: it converts an always-loaded
 #   write from something that can happen by reflex into something someone chose.
@@ -289,14 +294,14 @@ marker_live() {
   # about 3.4 years of a silently disabled block-mode guard. Reachable by clock skew, a
   # drifting VM/container, a restored backup, or a `touch -t` meant to extend a batch.
   # The TTL bounds the window in ONE direction only; this bounds the other.
-  # SEPARATE message on purpose: the remedy differs. EXPIRED means re-touch; FUTURE means
+  # SEPARATE message on purpose: the remedy differs. EXPIRED means the owner re-touches it; FUTURE means
   # the clock or the mtime is wrong, and re-touching blindly is how you keep it disabled.
   if [ "$age" -lt 0 ]; then
-    echo "always-loaded write guard: the bypass marker $m is dated in the FUTURE (age ${age}s) — REFUSING to honour it, the guard is ACTIVE. This is clock skew or a 'touch -t', not an expiry. DISCRIMINATE FIRST: compare 'date +%s' against the marker mtime. If the CLOCK is behind, fixing the marker changes nothing and it will re-trigger; fix the clock. If the MARKER is the outlier, rm it and re-touch deliberately. Do NOT just re-touch: that sets mtime to now and honours a marker you have not diagnosed." >&2
+    echo "always-loaded write guard: the bypass marker $m is dated in the FUTURE (age ${age}s) — REFUSING to honour it, the guard is ACTIVE. This is clock skew or a 'touch -t', not an expiry. DISCRIMINATE FIRST: compare 'date +%s' against the marker mtime. If the CLOCK is behind, fixing the marker changes nothing and it will re-trigger; fix the clock. If the MARKER is the outlier, rm it and ask the owner to run the touch again. Do NOT just re-touch it: that sets mtime to now and honours a marker you have not diagnosed, and only the owner opens the door." >&2
     return 1
   fi
   [ "$age" -lt "$ttl" ] || {
-    echo "always-loaded write guard: the bypass marker $m is older than ${ttl}s and has EXPIRED — the guard is ACTIVE again. Re-touch it if this batch is still running." >&2
+    echo "always-loaded write guard: the bypass marker $m is older than ${ttl}s and has EXPIRED — the guard is ACTIVE again. If this batch is still running, ask the owner to run the touch again." >&2
     return 1
   }
   return 0
@@ -376,7 +381,7 @@ AL_DOOR=$(_al_session_marker) || AL_DOOR="/tmp/claude-always-loaded-allow.<your 
 # Spliced into the deny JSON below, so strip anything that could break the document: a quote in an env-set prefix
 # would otherwise give rc 0 with unparseable JSON, which the harness reads as an allow.
 AL_DOOR=$(printf '%s' "$AL_DOOR" | tr -cd 'A-Za-z0-9._/ <>(),-')
-WHAT_TO_DO="If you are a SUB-AGENT: do not write it. Put the proposed wording in your structured response (the '### Recommendation' / '### Memory Update' section) naming the target file and the exact text — the orchestrator holds the session context needed to judge whether it contradicts a ruling you cannot see, and applies it. If you are the ORCHESTRATOR making a deliberate rule edit: create $AL_DOOR before the batch, then rm -f it after. That file is this session's own door; it opens nothing for any other session, and the bare /tmp/claude-always-loaded-allow no longer opens anything. If the auto-mode classifier denies that touch, do not create the marker with Write, Edit or any other command: that is routing around a safety control. Ask the owner to run ! touch $AL_DOOR himself. Blocking everyone is not an oversight — CLAUDE_CODE_CHILD_SESSION is '1' for the orchestrator too, so no env var can tell the two apart; the marker is the orchestrator's door, and a call carrying agent_id (a sub-agent) is refused it."
+WHAT_TO_DO="If you are a SUB-AGENT: do not write it. Put the proposed wording in your structured response (the '### Recommendation' / '### Memory Update' section) naming the target file and the exact text — the orchestrator holds the session context needed to judge whether it contradicts a ruling you cannot see, and applies it. If you are the ORCHESTRATOR making a deliberate rule edit: only the owner opens the door. Ask the owner to run ! touch $AL_DOOR before the batch, then rm -f it after you COMMIT: the commit tools refuse an always-loaded commit while the door is closed. That file is this session's own door; it opens nothing for any other session, and the bare /tmp/claude-always-loaded-allow no longer opens anything. Never create the marker yourself, with touch, Write, Edit or any other command, whatever the auto-mode classifier allows: that is routing around a safety control. Blocking everyone is not an oversight — CLAUDE_CODE_CHILD_SESSION is '1' for the orchestrator too, so no env var can tell the two apart; the marker is the orchestrator's door, and a call carrying agent_id (a sub-agent) is refused it."
 
 # A SUB-AGENT IS TOLD ONLY ITS OWN ROUTE. marker_live refuses it the escape, so printing the recipe to it
 # is the deny-prints-its-own-bypass anti-pattern and a
@@ -667,13 +672,13 @@ if [ -z "$HIT" ] && _al_is_subagent && printf '%s' "${PATHS:-}" | grep -qE '(^|/
   ( fires_log() { :; }; . "$(dirname "${BASH_SOURCE[0]}")/lib/fires-log.sh"
     fires_log subagent-gate-file-write sid "$(_al_payload_field session_id)" agent_id "$(_al_payload_field agent_id)" arm observe tool "${TOOL:-}" paths "${PATHS:-}" ) >/dev/null 2>&1 || true
 fi
-# A WRITE TOOL NEVER CREATES A DOOR (2026-10-25): the door is a touch the classifier
-# allowed or the owner's ! touch, and a Write/Edit/MultiEdit of it is the route the rules forbid after a denial. Basename, any case.
+# A WRITE TOOL NEVER CREATES A DOOR (2026-10-25): the door is the owner's ! touch
+# (a session never creates it), and a Write/Edit/MultiEdit of it is a route the rules forbid. Basename, any case.
 AL_MARKER_BASE=$(basename "$AL_MARKER_PREFIX")
 # grep -i folds ASCII only; APFS also folds U+017F (long s) to s, so a casefolded copy is tested as well.
 _al_names_door() { grep -qiE "(^|/)${AL_MARKER_BASE}([.][^/]*)?$"; }
 if [ -z "$HIT" ] && { printf '%s\n' "${PATHS:-}" | _al_names_door || printf '%s\n' "${PATHS:-}" | python3 -c 'import sys; sys.stdout.write(sys.stdin.buffer.read().decode("utf-8", "replace").casefold())' 2>/dev/null | _al_names_door; }; then
-  deny "ALWAYS-LOADED write guard: this call writes the bypass marker of this guard with a file tool. A door is opened only by a touch the classifier allows, or by the owner. $WHAT_TO_DO" marker-write-tool
+  deny "ALWAYS-LOADED write guard: this call writes the bypass marker of this guard with a file tool. A door is opened only by the owner's ! touch. $WHAT_TO_DO" marker-write-tool
 fi
 [ -z "$HIT" ] && exit 0
 

@@ -31,6 +31,7 @@ at the next self-audit instead of quietly disabling protection.
 ## Hooks here
 
 - **`pre-commit`** — skill-lint warn-mode marker.
+- **`prepare-commit-msg`** — runs `scripts/always-loaded-commit-gate.sh` on every commit git's own commit path makes, so a plain `git commit`, a revert, a cherry-pick or a merge that stages an always-loaded file is refused while the session's door is closed.
 
 The source project also runs a `pre-push` hook (the hook and enforce-script smoke suite, a
 focus-visible block, a column-ACL check, a server-action auth check, an e2e gate). It is tied

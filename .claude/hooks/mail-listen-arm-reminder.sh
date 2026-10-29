@@ -29,10 +29,13 @@ set -u
 # without this the directive re-injects every turn with only in-text advisory relief
 # (2026-07-02).
 [[ "${SKIP_MAIL_LISTEN_ARM_REMINDER:-0}" == "1" ]] && exit 0  # =1 only — a stray =0/=no must NOT bypass
+# An unattended run (claude -p, the SDK: CLAUDE_CODE_SESSION_ATTENDED=0) never arms the listener: one that does
+# never exits, since the listener's expiry wakes it and it re-arms (session-start.sh's UNATTENDED block, 2026-10-28).
+[[ "${CLAUDE_CODE_SESSION_ATTENDED:-}" == "0" && "${CLAUDE_CODE_SESSION_KIND:-}" != "bg" ]] && exit 0  # a bg (daemon) session keeps arming: session-start.sh
 
 INPUT="$(cat 2>/dev/null || true)"
 # A keep-warm ping turn (prompt starts '[keep-warm]', .claude/hooks/keep-warm-gate.py) is a harness timer,
-# not the owner: inject nothing, so the ping stays one cheap read (keep-warm panel 2026-10-06).
+# not the owner: inject nothing, so the ping stays one cheap read.
 printf '%s' "$INPUT" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"[[:space:]]*\[keep-warm\]' && exit 0
 
 if command -v jq >/dev/null 2>&1; then

@@ -77,6 +77,12 @@ unset _skip_var
 # Same reason, one variable: a session launched by scripts/claude-main.sh exports CLAUDE_RESIDENT_DOCTRINE_COMMIT to
 # every child, and the "without the launcher" arm below read it and went RED (found in review).
 unset CLAUDE_RESIDENT_DOCTRINE_COMMIT
+# And one more: Claude Code sets CLAUDE_CODE_SESSION_ATTENDED=0 for a headless run (claude -p), and session-start.sh
+# and both arm reminders then direct neither the mail listener nor keep-warm. A suite started from such a run would
+# read every arm-directive arm red. The unattended section sets it inline.
+unset CLAUDE_CODE_SESSION_ATTENDED
+# A daemon background session exports CLAUDE_CODE_SESSION_KIND=bg, which the same three hooks read beside it.
+unset CLAUDE_CODE_SESSION_KIND
 
 # SECTION FILTER child identity. The --only/--for launcher below runs a partial copy of this script from $TMPDIR,
 # whose own BASH_SOURCE and $0 point there, so it passes the real root and path in these three. Read once and
@@ -686,8 +692,8 @@ assert_contains "FIRE Edit on .claude/rules/*.md → deny" "$out" '"permissionDe
 assert_contains "FIRE deny names the guard" "$out" "ALWAYS-LOADED write guard"
 assert_contains "FIRE deny tells a SUB-AGENT what to do instead" "$out" "Recommendation"
 assert_contains "FIRE deny tells the ORCHESTRATOR the escape" "$out" "/tmp/claude-always-loaded-allow"
-assert_contains "FIRE deny forbids making the marker another way on a classifier denial" "$out" "do not create the marker with Write, Edit or any other command"
-assert_contains "FIRE deny hands a classifier-denied touch to the owner" "$out" "Ask the owner to run ! touch" # stops before the path: this suite refuses a "touch <live marker>" literal in its own source
+assert_contains "FIRE deny forbids a session making the marker at all, whatever the classifier allows" "$out" "Never create the marker yourself, with touch, Write, Edit or any other command"
+assert_contains "FIRE deny hands the door to the owner" "$out" "Ask the owner to run ! touch" # stops before the path: this suite refuses a "touch <live marker>" literal in its own source
 assert_not_contains "FIRE deny no longer prescribes the Write tool as the marker route" "$out" "USE THE Write TOOL"
 sout=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$REPO_ROOT"'/.claude/rules/security.md","old_string":"a","new_string":"b"}}' | bash "$ALW" 2>/dev/null)
 assert_one_json_doc "PARSE: block-subagent-always-loaded-write.sh Edit deny arm → ONE parseable hookSpecificOutput doc, the orchestrator escape path survives" "$sout" '/tmp/claude-always-loaded-allow'
@@ -990,7 +996,7 @@ assert_contains "PER-SESSION: the bare shared file (prefix, no session id) opens
 assert_contains "PER-SESSION: the bare file opens nothing for a call with no session_id" "$(printf '{"tool_name":"Edit","tool_input":{"file_path":".claude/rules/copy.md","old_string":"a","new_string":"b"}}' | env -u FF_ALWAYS_LOADED_ALLOW_MARKER FF_ALWAYS_LOADED_ALLOW_PREFIX="$_alw_ps_pfx" bash "$ALW" 2>/dev/null)" '"permissionDecision": "deny"'
 assert_contains "PER-SESSION: the bare file opens nothing for a call with an odd session_id" "$(_alw_ps '../x')" '"permissionDecision": "deny"'
 assert_contains "PER-SESSION: the deny prints the calling session's own door" "$(_alw_ps "$_alw_ps_b")" "$_alw_ps_pfx.$_alw_ps_b before the batch"
-assert_contains "PER-SESSION: the owner hand-off names the calling session's own door" "$(_alw_ps "$_alw_ps_b")" "! touch $_alw_ps_pfx.$_alw_ps_b himself"
+assert_contains "PER-SESSION: the owner hand-off names the calling session's own door" "$(_alw_ps "$_alw_ps_b")" "Ask the owner to run ! touch $_alw_ps_pfx.$_alw_ps_b before the batch"
 # A file tool never creates a door: Write, MultiEdit, and an upper-case spelling of the caller's own door
 # all deny; a look-alike file beside it is untouched.
 _alw_pw() { python3 -c 'import json,sys; t=sys.argv[1]; p=sys.argv[2]; ti={"file_path":p,"content":""} if t=="Write" else {"file_path":"src/a.ts","edits":[{"file_path":p,"old_string":"a","new_string":"b"}]}; print(json.dumps({"session_id":sys.argv[3],"tool_name":t,"tool_input":ti}))' "$1" "$2" "$_alw_ps_b" | env -u FF_ALWAYS_LOADED_ALLOW_MARKER FF_ALWAYS_LOADED_ALLOW_PREFIX="$_alw_ps_pfx" bash "$ALW" 2>/dev/null; }
@@ -7676,7 +7682,7 @@ out=$(dlc '{"tool_name":"Edit","tool_input":{"file_path":"/x/todo.txt","old_stri
 assert_empty "SAFE: 'entangled-particles' feature name is not a blocker (entangled-WITH anchor)" "$out"
 out=$(dlc '{"tool_name":"Edit","tool_input":{"file_path":"/x/todo.txt","old_string":"a","new_string":"- [ ] Defer the refund fix (~5 LOC) — entangled with the renewal race"}}')
 assert_contains "FIRE: 'entangled with X' is still a real blocker (TP kept, zero loss)" "$out" "blocker-unverified"
-# --- ITEM-GRAMMAR + TIME-ESTIMATE (2026-07-12 — scripts/defer-loc-fire-triage.mjs measured 47/87=54% of real fires) ---
+# --- ITEM-GRAMMAR + TIME-ESTIMATE (2026-07-12: this class was 47 of 87 real fires, 54%) ---
 # FP class: residue (a loc-estimate: field) on a SIBLING line of the same multi-line item → no longer fires.
 out=$(dlc '{"tool_name":"Edit","tool_input":{"file_path":"/x/todo.txt","old_string":"a","new_string":"- [ ] compound-genre coverage\n    trigger: post-launch when genre-link CTR data exists\n    loc-estimate: 1 DB query + decision"}}')
 assert_empty "SAFE (item-grammar): defer continuation whose item carries a loc-estimate: field (prose value) → silent" "$out"
@@ -7859,13 +7865,14 @@ echo "=== pre-push / self-audit enforce scripts (syntax + self-test) ==="
 # migration-column-acl-check, ...). A silently-broken enforce script (syntax error, a regex that
 # stops matching, a no-op after a src refactor) degrades the gate with nothing to catch it -- the
 # same enforce-layer drift this suite was built to prevent, one layer over. The list is DERIVED
-# from the routines (pre-push + pre-commit + meta self-audit SKILL.md) so a NEW enforce script is
+# from the routines (pre-push + pre-commit + the meta SKILL.md and its references/) so a NEW enforce script is
 # auto-covered. (a) syntax-check every one (load-breaking); (b) run --self-test for the ones that
 # ship one (behavioral regression). Closes the recurrence: memory-config-drift shipped
 # 2026-06-18 with a --self-test that ran in ZERO routine.
 ENFORCE_SCRIPTS=$(grep -ohE 'scripts/[a-zA-Z0-9_-]+\.(mjs|py|sh)' \
   "$REPO_ROOT/.githooks/pre-push" "$REPO_ROOT/.githooks/pre-commit" \
-  "$REPO_ROOT/.claude/skills/meta/SKILL.md" 2>/dev/null | sort -u)
+  "$REPO_ROOT/.claude/skills/meta/SKILL.md" "$REPO_ROOT"/.claude/skills/meta/references/*.md \
+  2>/dev/null | sort -u)
 # `architecture-counts` added 2026-09-08 with its first --self-test. Its arms cover ONE thing:
 # the Appendix C range-span EXEMPTION, the only subtractive branch in that script — everything
 # else there over-reports on failure, while a range regex that matches too much silently exempts
@@ -7909,8 +7916,10 @@ else
   fail "syntax: $_hooks_bad hook(s) FAIL bash -n — if any is wired block-mode it is denying every call right now"
 fi
 
+_enf_found=0
 for sp in $ENFORCE_SCRIPTS; do
   [ -f "$REPO_ROOT/$sp" ] || continue   # prose-mentioned-but-renamed -> not a real gate
+  _enf_found=$((_enf_found+1))
   base=$(basename "$sp"); stem="${base%.*}"
   # (a) syntax/load check -- the scripts/ analog of `bash -n` on the pre-push itself
   if [[ "$sp" == *.mjs ]]; then
@@ -7934,6 +7943,35 @@ for sp in $ENFORCE_SCRIPTS; do
     else fail "self-test: $base --self-test FAIL -> $(printf '%s' "$st_out" | tail -1)"; fi
   fi
 done
+# The list is DERIVED, so a routine moving its script mentions out of the files read above (the meta skill's
+# process text moved into references/ and 9 arms silently stopped) shrinks it with every arm
+# still green: pin a floor on the scripts found and present.
+if [ "$_enf_found" -ge 17 ]; then pass "enforce-script discovery: $_enf_found derived scripts exist and were checked (floor 17)"
+else fail "enforce-script discovery: only $_enf_found derived scripts exist (floor 17) -- a routine's script list moved out of the files read above"; fi
+# The floor alone cannot see the references/ half go missing on a tree whose pre-push names many scripts
+# (live: 45 with references/, 33 without -- both over 17; the copy: 23 and 6), so pin the contribution itself:
+# the meta references must name at least one present script, or the list has silently shrunk to the hooks.
+# The references' real contribution is what the derived list holds beyond the hooks and SKILL.md: a re-derivation
+# of the references on their own stays green when the list above stops reading them (both counted 33 / 23 there).
+_enf_base=0
+for sp in $(grep -ohE 'scripts/[a-zA-Z0-9_-]+\.(mjs|py|sh)' "$REPO_ROOT/.githooks/pre-push" "$REPO_ROOT/.githooks/pre-commit" \
+  "$REPO_ROOT/.claude/skills/meta/SKILL.md" 2>/dev/null | sort -u); do
+  [ -f "$REPO_ROOT/$sp" ] && _enf_base=$((_enf_base+1))
+done
+_enf_ref=$((_enf_found - _enf_base))
+if [ "$_enf_ref" -ge 1 ]; then pass "enforce-script discovery: the meta skill's references/ add $_enf_ref present script(s) the hooks and SKILL.md do not name"
+else fail "enforce-script discovery: the meta skill's references/ add 0 scripts to the derived list -- the directory is missing, the list above no longer reads it, or its process text no longer names the enforce scripts"; fi
+# Each self-test stem the suite knows must still be reached by the derived list: a routine that stops naming
+# one sends its --self-test back to zero routines while the floor and the contribution arm
+# above both stay green (live: one stem dropped leaves 44 found and 22 contributed).
+_enf_unreached=""
+for _st in $SELFTEST_STEMS; do
+  _st_file=$(ls "$REPO_ROOT/scripts/$_st".mjs "$REPO_ROOT/scripts/$_st".py "$REPO_ROOT/scripts/$_st".sh 2>/dev/null | head -1)
+  [ -n "$_st_file" ] || continue   # this tree does not ship the script
+  printf '%s\n' "$ENFORCE_SCRIPTS" | grep -qxF "scripts/$(basename "$_st_file")" || _enf_unreached="$_enf_unreached $_st"
+done
+if [ -z "$_enf_unreached" ]; then pass "enforce-script discovery: every self-test stem shipped in scripts/ is reached by the derived list"
+else fail "enforce-script discovery: self-test stem(s)$_enf_unreached ship in scripts/ but no file read above names them -- their --self-test runs nowhere"; fi
 
 echo ""
 echo "=== mail-listen-armed-marker.sh (PostToolUse Monitor — per-session arm marker) ==="
@@ -7974,7 +8012,7 @@ else
   fail "SCOPE: mail-listen-arm-reminder.sh idle exception must name review-hub-active and deploy-hold, or it switches off seats that are waiting for mail"
 fi
 # SAFE: marker present (session armed) → fully silent (no stdout, no stderr). SMK2TEST-bbbb → same [:8] key.
-touch .claude/state/mail-listen-armed-smk2test
+mkdir -p .claude/state; touch .claude/state/mail-listen-armed-smk2test
 out=$(echo '{"prompt":"do a thing","session_id":"SMK2TEST-bbbb"}' | bash .claude/hooks/mail-listen-arm-reminder.sh 2>&1)
 assert_empty "SAFE: armed session (marker present) → silent" "$out"
 rm -f .claude/state/mail-listen-armed-smk2test 2>/dev/null
@@ -8091,6 +8129,78 @@ mkdir -p "$KW_P/.claude/state"; touch "$KW_P/.claude/state/keep-warm-armed-smk7t
 echo '{"session_id":"SMK7TEST-aaaa","reason":"other"}' | CLAUDE_PROJECT_DIR="$KW_P" bash .claude/hooks/session-end.sh >/dev/null 2>&1
 assert_eq "FIRE: SessionEnd drops the keep-warm marker" "0" "$(ls "$KW_P/.claude/state" | grep -c 'keep-warm-armed-smk7test' || true)"
 rm -rf "$KW_T" "$KW_P"
+
+echo ""
+echo "=== unattended runs: session-start.sh, mail-listen-arm-reminder.sh and keep-warm-arm-reminder.sh direct neither the listener nor keep-warm when CLAUDE_CODE_SESSION_ATTENDED=0 (claude -p, the SDK; 2026-10-28) ==="
+# A headless session that arms the mail listener never exits: the listener's expiry wakes it and it re-arms. Each hook
+# runs three ways: =0 (headless), =1 (interactive) and unset (a Claude Code that does not set it), so a gate keyed on
+# anything but the literal 0 goes red. The keep-warm switch is on in every arm, so a keep-warm negative cannot pass
+# for want of it.
+_ua_state="$(mktemp -d)"; touch "$_ua_state/keep-warm-enabled"
+_ua_root="$(mktemp -d)"; mkdir -p "$_ua_root/.claude/state"
+_ua_ss() { echo '{"session_id":"SMK7UNAT-1234","source":"resume"}' | env "$@" FF_STATE_DIR="$_ua_state" bash .claude/hooks/session-start.sh 2>&1; }
+_ua_ml() { echo '{"prompt":"do a thing","session_id":"SMK7UNAT-1234"}' | env "$@" CLAUDE_PROJECT_DIR="$_ua_root" bash .claude/hooks/mail-listen-arm-reminder.sh; }
+_ua_kw() { echo '{"prompt":"do a thing","session_id":"SMK7UNAT-1234"}' | env "$@" FF_STATE_DIR="$_ua_state" bash .claude/hooks/keep-warm-arm-reminder.sh; }
+out=$(_ua_ss CLAUDE_CODE_SESSION_ATTENDED=0)
+assert_contains "FIRE: session-start, unattended → the UNATTENDED RUN line" "$out" "UNATTENDED RUN"
+assert_not_contains "SAFE: session-start, unattended → no mail-listen arm directive" "$out" "MAIL-LISTEN (standing directive)"
+assert_not_contains "SAFE: session-start, unattended → no keep-warm arm directive" "$out" "KEEP-WARM (standing directive)"
+for _ua_how in "CLAUDE_CODE_SESSION_ATTENDED=1" "-u CLAUDE_CODE_SESSION_ATTENDED"; do
+  out=$(_ua_ss $_ua_how)
+  assert_not_contains "CONTROL: session-start, env $_ua_how → no UNATTENDED RUN line" "$out" "UNATTENDED RUN"
+  assert_contains "CONTROL: session-start, env $_ua_how → the mail-listen arm directive" "$out" "MAIL-LISTEN (standing directive)"
+  assert_contains "CONTROL: session-start, env $_ua_how → the keep-warm arm directive" "$out" "KEEP-WARM (standing directive)"
+  assert_one_json_doc "CONTROL: mail-listen-arm-reminder, env $_ua_how, unarmed → nags" "$(_ua_ml $_ua_how 2>/dev/null)" "mail-listen --poll 30"
+  assert_one_json_doc "CONTROL: keep-warm-arm-reminder, env $_ua_how, switch on, unarmed → nags" "$(_ua_kw $_ua_how 2>/dev/null)" "/keep-warm on"
+done
+assert_empty "SAFE: mail-listen-arm-reminder, unattended, unarmed → silent, stdout and stderr" "$(_ua_ml CLAUDE_CODE_SESSION_ATTENDED=0 2>&1)"
+assert_empty "SAFE: keep-warm-arm-reminder, unattended, switch on, unarmed → silent, stdout and stderr" "$(_ua_kw CLAUDE_CODE_SESSION_ATTENDED=0 2>&1)"
+# The UNATTENDED line says every other directive still applies: the block suppresses two directives, it never ends the hook.
+out=$(_ua_ss CLAUDE_CODE_SESSION_ATTENDED=0)
+assert_contains "SAFE: session-start, unattended → the working-plan directive still prints (the block is not an exit)" "$out" "WORKING PLAN"
+assert_not_contains "SAFE: session-start, unattended → no tripwire line (0 is a known value)" "$out" "CLAUDE_CODE_SESSION_ATTENDED is unset or not 0/1"
+# Claude Code writes 0 for a daemon background session too (CLAUDE_CODE_SESSION_KIND=bg); that kind keeps today's directives.
+out=$(_ua_ss CLAUDE_CODE_SESSION_ATTENDED=0 CLAUDE_CODE_SESSION_KIND=bg)
+assert_not_contains "CONTROL: session-start, =0 in a bg session → no UNATTENDED RUN line" "$out" "UNATTENDED RUN"
+assert_contains "CONTROL: session-start, =0 in a bg session → the mail-listen arm directive" "$out" "MAIL-LISTEN (standing directive)"
+assert_contains "CONTROL: session-start, =0 in a bg session → the keep-warm arm directive" "$out" "KEEP-WARM (standing directive)"
+assert_one_json_doc "CONTROL: mail-listen-arm-reminder, =0 in a bg session, unarmed → nags" "$(_ua_ml CLAUDE_CODE_SESSION_ATTENDED=0 CLAUDE_CODE_SESSION_KIND=bg 2>/dev/null)" "mail-listen --poll 30"
+assert_one_json_doc "CONTROL: keep-warm-arm-reminder, =0 in a bg session, switch on, unarmed → nags" "$(_ua_kw CLAUDE_CODE_SESSION_ATTENDED=0 CLAUDE_CODE_SESSION_KIND=bg 2>/dev/null)" "/keep-warm on"
+# The tripwire: an interactive session always sees 0 or 1, so unset or any other value means Claude Code changed the variable.
+assert_contains "FIRE: session-start, variable unset → the tripwire line" "$(_ua_ss -u CLAUDE_CODE_SESSION_ATTENDED)" "CLAUDE_CODE_SESSION_ATTENDED is unset or not 0/1"
+assert_contains "FIRE: session-start, variable 'false' → the tripwire line" "$(_ua_ss CLAUDE_CODE_SESSION_ATTENDED=false)" "CLAUDE_CODE_SESSION_ATTENDED is unset or not 0/1"
+assert_not_contains "SAFE: session-start, =1 → no tripwire line" "$(_ua_ss CLAUDE_CODE_SESSION_ATTENDED=1)" "CLAUDE_CODE_SESSION_ATTENDED is unset or not 0/1"
+# The tripwire reads before the MAIL-LISTEN directive it qualifies; the split is vacuous unless the directive prints.
+out=$(_ua_ss -u CLAUDE_CODE_SESSION_ATTENDED)
+assert_contains "CONTROL: session-start, variable unset → the mail-listen arm directive (the order arm below needs it)" "$out" "MAIL-LISTEN (standing directive)"
+assert_contains "FIRE: session-start, variable unset → the tripwire line comes before the MAIL-LISTEN directive" "${out%%MAIL-LISTEN (standing directive)*}" "CLAUDE_CODE_SESSION_ATTENDED is unset or not 0/1"
+# After a compaction the UNATTENDED line prints again and names the re-arm-if-dead checks it overrides.
+out=$(echo '{"session_id":"SMK7UNAT-1234","source":"compact"}' | env CLAUDE_CODE_SESSION_ATTENDED=0 FF_STATE_DIR="$_ua_state" bash .claude/hooks/session-start.sh 2>&1)
+assert_contains "FIRE: session-start, unattended, source=compact → the UNATTENDED RUN line again" "$out" "UNATTENDED RUN"
+assert_contains "FIRE: session-start, unattended, source=compact → the line names the re-arm-if-dead checks" "$out" "every re-arm-if-dead check"
+assert_contains "CONTROL: session-start, unattended, source=compact → the post-compact directive still prints" "$out" "/post-compact"
+assert_not_contains "SAFE: session-start, unattended, source=compact → no mail-listen arm directive" "$out" "MAIL-LISTEN (standing directive)"
+rm -rf "$_ua_state" "$_ua_root"; unset -f _ua_ss _ua_ml _ua_kw; unset _ua_state _ua_root _ua_how
+
+echo "=== session-start.sh first-session anchor (a repository with no .claude/state yet still gets its start-sha marker; 2026-10-28) ==="
+# A fresh clone, or a fresh copy of this system, has no .claude/state/ (it is git-ignored); the anchor write failed
+# there and the first session never got one (seen in a recorded session on a fresh copy). The fixture
+# repository has one commit and no state folder; the hook runs from inside it, so no relative path reaches this tree.
+_ssa_r="$(mktemp -d)"
+( cd "$_ssa_r" && git init -q . && git -c user.name=smoke -c user.email=smoke@invalid commit -q --allow-empty -m one ) >/dev/null 2>&1
+_ssa_head="$(git -C "$_ssa_r" rev-parse HEAD 2>/dev/null)"
+assert_eq "session-start anchor fixture: the repository starts with no .claude/state (control)" "absent" "$([ -e "$_ssa_r/.claude/state" ] && echo present || echo absent)"
+assert_eq "session-start anchor fixture: its HEAD resolves to a full sha (control)" "40" "${#_ssa_head}"
+_ssa_err="$( cd "$_ssa_r" && printf '{"session_id":"smkanchor-0000-0000","source":"startup"}' | CLAUDE_PROJECT_DIR="$_ssa_r" bash "$REPO_ROOT/.claude/hooks/session-start.sh" 2>&1 >/dev/null )"
+# Brackets make the contains an exact match on the file's whole content (the lint's FIRE shape is assert_contains).
+assert_contains "FIRE: session-start writes the start-sha anchor in a repository with no .claude/state, naming HEAD" "<$(cat "$_ssa_r/.claude/state/session-start-sha-smkanchor-0000-0000" 2>/dev/null)>" "<$_ssa_head>"
+assert_eq "SAFE: ...and its stderr names no missing anchor file" "0" "$(printf '%s' "$_ssa_err" | grep -c 'session-start-sha-.*No such file')"
+# An unborn repository (no commit yet) has no HEAD: `git rev-parse HEAD` prints the word "HEAD", and this write-once
+# marker would keep it, so a later wrap diffs HEAD..HEAD and counts nothing. Its baseline is the empty tree.
+_ssa_u="$(mktemp -d)"; git -C "$_ssa_u" init -q . >/dev/null 2>&1
+( cd "$_ssa_u" && printf '{"session_id":"smkanchor-1111-1111","source":"startup"}' | CLAUDE_PROJECT_DIR="$_ssa_u" bash "$REPO_ROOT/.claude/hooks/session-start.sh" >/dev/null 2>&1 )
+assert_contains "FIRE: in an unborn repository the anchor names the empty tree, not the word HEAD" "<$(cat "$_ssa_u/.claude/state/session-start-sha-smkanchor-1111-1111" 2>/dev/null)>" "<$(git hash-object -t tree /dev/null)>"
+rm -rf "$_ssa_r" "$_ssa_u"; unset _ssa_r _ssa_u _ssa_head _ssa_err
 
 echo ""
 echo "=== session-start.sh working-plan pointer (two plan files for one sid → the LAST in byte order, as summary-plan-sync's findPlan resolves it; 2026-10-12) ==="
@@ -12027,7 +12137,7 @@ PYB
   _ppdev_o="$(_ppdev_push refs/heads/dev refs/heads/dev)"; _ppdev_rc=$?
   assert_contains "dev e2e skip (real hook): a dev push touching no e2e-relevant path stops at the no-e2e exit" "$_ppdev_o" "skipping e2e gate"
   assert_not_contains "dev e2e skip (real hook): ...without the gate build (a failing stub build is armed)" "$_ppdev_o" "running the gate build"
-  assert_eq "dev e2e skip (real hook): ...and exits 0" "0" "$_ppdev_rc"
+  assert_eq "dev e2e skip (real hook): ...and exits 0 on the no-e2e path" "0" "$_ppdev_rc"
  # A build input OUTSIDE the e2e path set, shaped like the measured
   # gap (3 of the 4 observed dev ranges that changed a build input and no e2e path were package.json bumps):
   # an all-dev push builds it, a failing build refuses it, a passing one claims no skipped spec, and a feature
@@ -13119,6 +13229,98 @@ assert_eq "SAFE: no arm in this section wrote a row to the suite's own HOOK_FIRE
   "$(cat "$_SMOKE_HFL_DIR/decisions-archive-zero-hit-fires.jsonl" 2>/dev/null | grep -c '')"
 rm -rf "$_dazh_root"; unset _dazh_root _dazh_out _dazh_rc
 
+echo ""
+echo "=== always-loaded-commit-gate.sh (the commit tools refuse an always-loaded file while the session's door is closed; asks block-subagent-always-loaded-write.sh; 2026-10-28) ==="
+# The gate's protected set and door window ARE this guard's (it puts each committed path to the guard as a
+# synthetic Edit), so a guard change that breaks the gate shows here, on the push that changes the hook.
+# The exact count pins the arm set: a deleted or added arm reds the second assert.
+_alg_out=$(bash scripts/always-loaded-commit-gate.sh --self-test 2>&1); _alg_rc=$?
+assert_eq "always-loaded-commit-gate.sh --self-test exits 0 (closed/open/expired door, every protected family, the removed override refused, no session)" "0" "$_alg_rc"
+assert_contains "always-loaded-commit-gate.sh --self-test runs its 40 arms, 0 failed" "$_alg_out" "self-test: 40 passed, 0 failed"
+unset _alg_out _alg_rc
+# A plain `git commit` meets the same gate through .githooks/prepare-commit-msg (the only site, which git runs
+# for revert, cherry-pick, merge, rebase picks and --no-verify too). A throwaway repo wired to THIS checkout's .githooks: an ordinary file commits, CLAUDE.md with
+# the door closed is refused, the same commit with the door open lands, a deleted CLAUDE.md with the door closed is
+# refused. The door is the marker seam, which the gate honours only outside its own repo.
+# MUTATION: delete .githooks/prepare-commit-msg -> R2 and R4 commit and these arms red.
+_alh_hooks="$(pwd -P)/.githooks"; _alh_d="$(cd "$(mktemp -d)" && pwd -P)"
+(
+  cd "$_alh_d" && git init -q . && git config user.email t@t && git config user.name t
+  echo x > plain.txt; echo rules > CLAUDE.md; git add plain.txt CLAUDE.md; git commit -qm init
+  git config core.hooksPath "$_alh_hooks"
+  export CLAUDE_CODE_SESSION_ID=feedc0de-0000-4000-8000-0000 FF_ALWAYS_LOADED_ALLOW_MARKER="$_alh_d/door"
+  rm -f "$_alh_d/door"
+  echo y >> plain.txt; git add plain.txt; git commit -qm ordinary >/dev/null 2>&1; echo "R1=$?"
+  echo more >> CLAUDE.md; git add CLAUDE.md; git commit -qm rules-closed >/dev/null 2>&1; echo "R2=$?"
+  : > "$_alh_d/door"; git commit -qm rules-open >/dev/null 2>&1; echo "R3=$?"
+  rm -f "$_alh_d/door"; git rm -q CLAUDE.md; git commit -qm rules-deleted >/dev/null 2>&1; echo "R4=$?"
+) > "$_alh_d.out" 2>&1
+_alh_out="$(cat "$_alh_d.out")"
+assert_contains "plain-commit door: a plain commit of an ordinary file passes" "$_alh_out" "R1=0"
+assert_contains "plain-commit door: a plain commit of CLAUDE.md with the door closed is refused" "$_alh_out" "R2=1"
+assert_contains "plain-commit door: the same commit with the door open lands" "$_alh_out" "R3=0"
+assert_contains "plain-commit door: deleting CLAUDE.md with the door closed is refused" "$_alh_out" "R4=1"
+rm -rf "$_alh_d" "$_alh_d.out"; unset _alh_d _alh_out
+# The commits pre-commit never sees go through .githooks/prepare-commit-msg (2026-10-28):
+# --no-verify, git revert and git cherry-pick of CLAUDE.md with the door closed are refused; the revert lands
+# with the door open. MUTATION: delete .githooks/prepare-commit-msg -> P1, P3 and P4 move HEAD and red.
+_alp_d="$(cd "$(mktemp -d)" && pwd -P)"
+(
+  cd "$_alp_d" && git init -q . && git config user.email t@t && git config user.name t
+  echo x > plain.txt; echo rules > CLAUDE.md; git add plain.txt CLAUDE.md; git commit -qm init
+  git config core.hooksPath "$_alh_hooks"
+  export CLAUDE_CODE_SESSION_ID=feedc0de-0000-4000-8000-0000 FF_ALWAYS_LOADED_ALLOW_MARKER="$_alp_d/door"
+  : > "$_alp_d/door"; echo more >> CLAUDE.md; git commit -qam rules-open >/dev/null 2>&1; echo "P0=$?"; _rs=$(git rev-parse HEAD); rm -f "$_alp_d/door"
+  _h=$(git rev-parse HEAD); git revert --no-edit HEAD >/dev/null 2>&1; [ "$(git rev-parse HEAD)" = "$_h" ] && echo "P1=held"; git revert --abort >/dev/null 2>&1; git reset -q --hard "$_h"
+  : > "$_alp_d/door"; git revert --no-edit HEAD >/dev/null 2>&1; [ "$(git rev-parse HEAD)" != "$_h" ] && echo "P2=landed"; rm -f "$_alp_d/door"
+  _h=$(git rev-parse HEAD); git cherry-pick "$_rs" >/dev/null 2>&1; [ "$(git rev-parse HEAD)" = "$_h" ] && echo "P3=held"; git cherry-pick --abort >/dev/null 2>&1; git reset -q --hard "$_h"
+  echo nv >> CLAUDE.md; git commit -qam nv --no-verify >/dev/null 2>&1; [ "$(git rev-parse HEAD)" = "$_h" ] && echo "P4=held"; git reset -q --hard "$_h"
+) > "$_alp_d.out" 2>&1
+_alp_out="$(cat "$_alp_d.out")"
+assert_contains "prepare-commit-msg door: a door-open commit of CLAUDE.md lands (the fixture's base)" "$_alp_out" "P0=0"
+assert_contains "prepare-commit-msg door: git revert of a CLAUDE.md commit with the door closed is refused" "$_alp_out" "P1=held"
+assert_contains "prepare-commit-msg door: the same revert with the door open lands" "$_alp_out" "P2=landed"
+assert_contains "prepare-commit-msg door: git cherry-pick of a CLAUDE.md change with the door closed is refused" "$_alp_out" "P3=held"
+assert_contains "prepare-commit-msg door: git commit --no-verify of CLAUDE.md with the door closed is refused" "$_alp_out" "P4=held"
+rm -rf "$_alp_d" "$_alp_d.out"; unset _alp_d _alp_out
+unset _alh_hooks
+
+echo "=== smoke-expected-failures.py (the closing summary's expected/unexpected split, read when scripts/smoke-expected-failures.txt exists; 2026-10-28) ==="
+# This copy ships that list, so a fresh copy's run reads "N expected, 0 unexpected" instead of N bare reds
+# (the source tree carries no list at that path, and its summary is unchanged). This section runs the helper's
+# own self-test; the closing tail below does the sorting.
+_sef_out=$(python3 scripts/smoke-expected-failures.py --self-test 2>&1); _sef_rc=$?
+assert_eq "smoke-expected-failures.py --self-test exits 0 (exact and ' ('-bounded matches, stale, partial, duplicates, NUL input)" "0" "$_sef_rc"
+assert_contains "smoke-expected-failures.py --self-test reports zero failed arms" "$_sef_out" "self-test: 0 failed"
+unset _sef_out _sef_rc
+
+echo ""
+echo "=== smoke-test-hooks.sh closing tail (the expected/unexpected split runs only with a list, takes --partial in a filter child, and keeps the exit code; 2026-10-28) ==="
+# The tail is this file's own last lines, run from an extract against a fixture root that holds the helper and a
+# two-line list. The section filter's child passes --partial through _SMOKE_FILTER_CHILD; nothing else reaches it.
+_sft_r="$(cd "$(mktemp -d)" && pwd -P)"; mkdir -p "$_sft_r/scripts"
+cp "$REPO_ROOT/scripts/smoke-expected-failures.py" "$_sft_r/scripts/"
+_sft_n=$(grep -nF 'echo "  PASS: $PASS"' "$REPO_ROOT/scripts/smoke-test-hooks.sh" | tail -1 | cut -d: -f1)
+sed -n "${_sft_n:-999999},\$p" "$REPO_ROOT/scripts/smoke-test-hooks.sh" > "$_sft_r/tail.sh"
+_sft_run() { # $1 = filter child value; the run has one listed failure and one unlisted
+  { echo 'set -u'; echo "REPO_ROOT='$_sft_r'"; echo 'PASS=1 FAIL=2'; echo "_SMOKE_FILTER_CHILD='$1'"
+    echo "FAILS=('listed arm (expected=1 actual=0)' 'novel arm (x)')"; cat "$_sft_r/tail.sh"; } > "$_sft_r/run.sh"
+  /bin/bash "$_sft_r/run.sh" 2>&1; echo "TAIL-RC=$?"
+}
+_sft_nolist="$(_sft_run '')"
+assert_contains "closing tail: the extract is this file's tail (control)" "$(cat "$_sft_r/tail.sh")" 'smoke-expected-failures.py'
+assert_eq "closing tail: no list file -> the tail names neither the split nor the helper" "0" "$(printf '%s\n' "$_sft_nolist" | grep -cF 'smoke-expected-failures')"
+assert_contains "closing tail: no list file -> a failure still exits 1" "$_sft_nolist" "TAIL-RC=1"
+printf 'listed arm\nnever red\n' > "$_sft_r/scripts/smoke-expected-failures.txt"
+_sft_full="$(_sft_run '')"; _sft_part="$(_sft_run 1)"
+assert_contains "closing tail: a failure keeps exit 1 with the split printed" "$_sft_full" "TAIL-RC=1"
+assert_contains "closing tail: full run counts 1 expected, 1 unexpected" "$_sft_full" "  1 expected, 1 unexpected"
+assert_contains "closing tail: full run names the stale entry" "$_sft_full" "  * never red"
+assert_contains "closing tail: a filter child runs the split as --partial" "$_sft_part" "Partial run"
+assert_not_contains "closing tail: ...and names no stale entry" "$_sft_part" "never red"
+assert_contains "closing tail: ...and still names the unexpected failure" "$_sft_part" "  * novel arm (x)"
+rm -rf "$_sft_r"; unset _sft_r _sft_n _sft_nolist _sft_full _sft_part; unset -f _sft_run
+
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"
 
@@ -13128,7 +13330,17 @@ if [[ $FAIL -gt 0 ]]; then
   for f in "${FAILS[@]}"; do
     echo "  - $f"
   done
-  exit 1
 fi
 
+# The expected/unexpected split, printed after the list so it is the last thing read. The lines above keep their
+# exact format (smoke-mutation-matrix.sh parses the "  - " lines after "Failures:", so the split's bullets are
+# "  * "), and the exit code is unchanged: an expected failure is still a failure.
+if [[ -f "$REPO_ROOT/scripts/smoke-expected-failures.txt" ]]; then
+  echo ""
+  { if [[ $FAIL -gt 0 ]]; then printf '%s\0' "${FAILS[@]}"; fi; } \
+    | python3 "$REPO_ROOT/scripts/smoke-expected-failures.py" ${_SMOKE_FILTER_CHILD:+--partial} "$REPO_ROOT/scripts/smoke-expected-failures.txt" \
+    || echo "smoke: the expected/unexpected split did not run (scripts/smoke-expected-failures.py exited non-zero, its error is above); the failures above are unsorted"
+fi
+
+[[ $FAIL -gt 0 ]] && exit 1
 exit 0

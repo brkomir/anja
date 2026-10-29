@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# prepare-commit-msg — the always-loaded door check for the commits pre-commit never sees.
+# git runs pre-commit only for a plain `git commit` without --no-verify. It runs THIS hook for that commit and
+# also for --no-verify, git revert, git cherry-pick, git merge and each pick of a default (merge-backend) git rebase,
+# and a non-zero exit
+# stops each of them (measured on git 2.50.1, 2026-10-28). Same gate, beside this hook.
+# THE ONLY SITE (the check first went into pre-commit and moved here because pre-commit misses those routes;
+# pre-commit carries no copy). The gate is the one beside
+# this hook, not the committing checkout's: core.hooksPath points every worktree here, so a worktree on an older
+# commit is checked by the current gate. BLOCK-MODE, no escape variable. Still open, stated not closed: whatever
+# writes a commit or moves a branch without git's commit path (git commit-tree / update-ref; git am and git rebase
+# --apply, which never run this hook; a fast-forward merge, pull or cherry-pick --ff; reset), and any run with
+# core.hooksPath overridden. private-index-commit.sh uses commit-tree and runs
+# the gate itself, as safe-commit.sh does before staging.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+AL_GATE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/scripts/always-loaded-commit-gate.sh"
+AL_LIST="$(mktemp)"; trap 'rm -f "$AL_LIST"' EXIT
+git diff --cached --name-only --no-renames -z > "$AL_LIST" || { echo "prepare-commit-msg: REFUSED — could not list the staged paths for the always-loaded door check; nothing was committed." >&2; exit 1; }
+[ -s "$AL_LIST" ] || exit 0
+[ -f "$AL_GATE" ] || { echo "prepare-commit-msg: REFUSED — the always-loaded door check is missing ($AL_GATE); nothing was committed." >&2; exit 1; }
+AL_STAGED=(); while IFS= read -r -d '' _al_p; do AL_STAGED+=("$_al_p"); done < "$AL_LIST"
+bash "$AL_GATE" -- "${AL_STAGED[@]}" || { echo "prepare-commit-msg: REFUSED — the always-loaded door check above; nothing was committed." >&2; exit 1; }

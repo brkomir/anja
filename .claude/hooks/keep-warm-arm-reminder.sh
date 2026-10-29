@@ -26,6 +26,9 @@
 set -u
 
 [[ "${SKIP_KEEP_WARM_ARM_REMINDER:-0}" == "1" ]] && exit 0  # =1 only — a stray =0/=no must NOT bypass
+# An unattended run (claude -p, the SDK: CLAUDE_CODE_SESSION_ATTENDED=0) never arms keep-warm (session-start.sh's
+# UNATTENDED block, 2026-10-28): a headless process with a recurring timer has nothing to keep warm for.
+[[ "${CLAUDE_CODE_SESSION_ATTENDED:-}" == "0" && "${CLAUDE_CODE_SESSION_KIND:-}" != "bg" ]] && exit 0  # a bg (daemon) session keeps arming: session-start.sh
 
 INPUT="$(cat 2>/dev/null || true)"
 # A keep-warm ping turn is a harness timer, not the owner: inject nothing.

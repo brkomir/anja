@@ -605,8 +605,8 @@ SHIM
   git config user.email t@t; git config user.name t
   printf -- '-- alpha\n-- beta\n' > d.txt; git add .; git commit -qm base
   # ⚠️ EVERY deleted line must start `--`, and that is what makes this fixture discriminating.
-  # A first version added a plain `PEER-LINE` here: the listing assertion still caught the
-  # mutation, but `grep -v '^---'` then kept that one line, exited 0, and NO abort occurred —
+  # A first version added a plain `PEER-LINE` here: the mutation was still caught, but
+  # `grep -v '^---'` then kept that one line, exited 0, and NO abort occurred —
   # so the rc=8 assertion passed under the defect and only one of the two conjuncts was live.
   printf -- '-- alpha\n-- beta\n-- gamma\n' > d.txt; git add d.txt; git commit -qm "peer adds"
   printf -- 'replaced\n' > d.txt          # stale worktree: would delete all three
@@ -672,6 +672,7 @@ SHIM
   git config user.email t@t; git config user.name t
   echo x > f.txt; git add f.txt; git commit -qm base
   cp "$self" ./pic.sh                      # <-- AT THE ROOT, which is the whole point
+  printf '#!/bin/bash\nexit 0\n' > ./always-loaded-commit-gate.sh   # an allowing door check, so the seam is what refuses
   printf 'x\nADDED\n' > f.txt              # append-only: the deletion gate must not refuse first
   local rsrc=0
   PRIVATE_INDEX_COMMIT_TEST_RACE="echo RAN > $tmp/rootseam/payload.marker" \
@@ -823,6 +824,47 @@ SHIM
     && ok "ARM 28: the worktree edit is still there, uncommitted, on the new branch" || bad "ARM 28: the worktree edit is gone"
 
   cd "$tmp/repo"
+  # ARMS 40-42 — the always-loaded door (2026-10-28). Door closed -> refused, nothing committed;
+  # door open -> commits; the removed override flag -> refused by name.
+  # MUTATION: delete the gate call -> ARM 40 commits and reds.
+  local al_door="$tmp/al-door" al_h0
+  rm -f "$al_door"; echo rules > CLAUDE.md; git add CLAUDE.md; git commit -qm al-base; echo more >> CLAUDE.md
+  al_h0="$(git rev-parse HEAD)"
+  local al_rc=0
+  CLAUDE_CODE_SESSION_ID="${SID_A}-0000" FF_ALWAYS_LOADED_ALLOW_MARKER="$al_door" bash "$self" -F "$tmp/msg" -- CLAUDE.md >"$tmp/al.out" 2>&1 || al_rc=$?
+  [ "$al_rc" -eq 1 ] && [ "$(git rev-parse HEAD)" = "$al_h0" ] && grep -qF 'always-loaded' "$tmp/al.out" \
+    && ok "ARM 40: an always-loaded commit with the door closed is refused, HEAD unmoved" \
+    || bad "ARM 40: an always-loaded commit with the door closed is refused, HEAD unmoved"
+  : > "$al_door"; al_rc=0
+  CLAUDE_CODE_SESSION_ID="${SID_A}-0000" FF_ALWAYS_LOADED_ALLOW_MARKER="$al_door" bash "$self" -F "$tmp/msg" -- CLAUDE.md >"$tmp/al.out" 2>&1 || al_rc=$?
+  [ "$al_rc" -eq 0 ] && [ "$(git rev-parse HEAD)" != "$al_h0" ] && git show --name-only --format= HEAD | grep -qx 'CLAUDE.md' \
+    && ok "ARM 41: the same commit with the door open lands" \
+    || bad "ARM 41: the same commit with the door open lands"
+  rm -f "$al_door"; echo again >> CLAUDE.md; al_h0="$(git rev-parse HEAD)"
+  al_rc=0
+  CLAUDE_CODE_SESSION_ID="${SID_A}-0000" FF_ALWAYS_LOADED_ALLOW_MARKER="$al_door" bash "$self" -F "$tmp/msg" --owner-always-loaded="yes, commit it" -- CLAUDE.md >"$tmp/al.out" 2>&1 || al_rc=$?
+  [ "$al_rc" -eq 2 ] && [ "$(git rev-parse HEAD)" = "$al_h0" ] && grep -qF "was removed" "$tmp/al.out" \
+    && ok "ARM 42: the removed --owner-always-loaded flag is refused by name, HEAD unmoved" \
+    || bad "ARM 42: the removed --owner-always-loaded flag is refused by name, HEAD unmoved"
+
+  # ARM 43 (2026-10-28): a RENAME out of the protected set, both endpoints declared, door
+  # closed -> refused by the door check (the old protected path reaches it). MUTATION: pass the gate only the
+  # declared paths present on disk -> the rename commits; this arm reds.
+  mkdir -p .claude/rules al4; seq 1 30 > .claude/rules/al4.md; git add .claude/rules/al4.md; git commit -qm al4-base; mv .claude/rules/al4.md al4/al4.md
+  al_h0="$(git rev-parse HEAD)"; al_rc=0
+  CLAUDE_CODE_SESSION_ID="${SID_A}-0000" FF_ALWAYS_LOADED_ALLOW_MARKER="$al_door" bash "$self" -F "$tmp/msg" -- .claude/rules/al4.md al4/al4.md >"$tmp/al.out" 2>&1 || al_rc=$?
+  [ "$al_rc" -eq 1 ] && [ "$(git rev-parse HEAD)" = "$al_h0" ] && grep -qF '    .claude/rules/al4.md' "$tmp/al.out" \
+    && ok "ARM 43: a rename out of the protected set with the door closed is refused, HEAD unmoved" \
+    || bad "ARM 43: a rename out of the protected set with the door closed is refused, HEAD unmoved"
+
+  # ARM 44 (2026-10-28): a copy of this tool with no door check beside it refuses, HEAD unmoved.
+  # MUTATION: put back the `if [ -f "$_PIC_ALG" ]` skip -> the commit lands; this arm reds.
+  mkdir -p "$tmp/nogate"; cp "$self" "$tmp/nogate/pic.sh"; echo al5 > al5.txt; al_h0="$(git rev-parse HEAD)"; al_rc=0
+  CLAUDE_CODE_SESSION_ID="${SID_A}-0000" bash "$tmp/nogate/pic.sh" -F "$tmp/msg" -- al5.txt >"$tmp/al.out" 2>&1 || al_rc=$?
+  [ "$al_rc" -eq 1 ] && [ "$(git rev-parse HEAD)" = "$al_h0" ] && grep -qF 'door check is missing' "$tmp/al.out" \
+    && ok "ARM 44: with the door check missing the tool refuses, HEAD unmoved" \
+    || bad "ARM 44: with the door check missing the tool refuses, HEAD unmoved"
+
   echo "self-test: ${pass}/$((pass+fail)) passed, ${fail} failed."
   [ "$fail" -eq 0 ]
 }
@@ -835,6 +877,7 @@ PATHS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     -F) MSG="${2:-}"; shift 2 || { usage; exit 2; } ;;
+    --owner-always-loaded|--owner-always-loaded=*) echo "REFUSE: --owner-always-loaded was removed on 2026-10-28 (the door is the only way through). Ask the owner to run the ! touch line the door check prints." >&2; exit 2 ;;
     --) shift; while [ $# -gt 0 ]; do PATHS+=("$1"); shift; done ;;
     -h|--help) usage; exit 0 ;;
     *) echo "REFUSE: unknown argument: $1" >&2; usage; exit 2 ;;
@@ -869,6 +912,18 @@ grep -q '[^[:space:]]' "$MSG" || {
 for p in "${PATHS[@]}"; do
   [ -d "$p" ] && { echo "REFUSE: '$p' is a DIRECTORY. Declare FILES — the gate compares file paths, so a directory can never match the staged set, and the refusal would wear a peer-collision costume." >&2; exit 2; }
 done
+
+# ── ALWAYS-LOADED DOOR (2026-10-28) ──────────────────────────
+# A commit carrying an always-loaded file is REFUSED while this session's door is closed: the
+# always-loaded write guard never sees a shell write, and the commit is where every write method
+# meets. The protected set and the door test are the guard's own (always-loaded-commit-gate.sh puts
+# each path to it). Before any index work, so a refusal leaves nothing behind. No override flag:
+# in a Claude session only the owner's `! touch` opens it, and a session that drops its session
+# variables is refused while Claude Code is one of the commit's parent processes (a process it
+# detached reads as the owner's terminal: the gate's header). ARMS 40-44 of the self-test.
+_PIC_ALG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/always-loaded-commit-gate.sh"
+[ -f "$_PIC_ALG" ] || { echo "REFUSE: the always-loaded door check is missing ($_PIC_ALG). Nothing was staged or committed." >&2; exit 1; }
+bash "$_PIC_ALG" -- "${PATHS[@]}" || { echo "REFUSE: the always-loaded door check above. Nothing was staged or committed." >&2; exit 1; }
 
 # ── PLANE AND BRANCH — the fix for the defect that got this tool disarmed ─────
 # A linked worktree has its own git-dir but shares the common dir. Moving refs/heads/* from
