@@ -4,7 +4,7 @@
 
 **One developer. An entire engineering team, on Claude Code.**
 
-Anja is an engineering organization built on Claude Code: a lead session you talk to, 33 specialists it brings in and 1 that models an outside project, reviewers who did not write the changes they review, memory that outlives a conversation, and guards that refuse or warn at the moment of a costly action.
+Anja is an engineering organization built on Claude Code: a lead session you talk to, 33 specialists it brings in and 1 that models an outside system, reviewers who did not write the changes they review, memory that outlives a conversation, and guards that refuse or warn at the moment of a costly action.
 
 I built Anja because one person working with coding agents on the same codebase, month after month, needs more than a good prompt. Work must survive sessions and context compactions. Corrections must become lasting knowledge. Independent review must challenge completed work. And consequential actions must remain under human control.
 
@@ -14,7 +14,7 @@ Claude Code already provides sub-agents, skills, hooks, and memory. **What Anja 
 
 ## Where to start
 
-1. **See how it works:** [A working day with Anja](docs/a-working-day.md), with its diagrams.
+1. **See how it works:** [A working day with Anja](docs/a-working-day.md), with its diagrams, and [See it run](docs/see-it-run.md), one real session on a fresh copy, its replies quoted as written.
 2. **Get started:** [Start a new project](docs/start-a-new-project.md), the first run and what you supply.
 3. **Inspect the implementation and the evidence:** [the repository map](docs/repository-map.md) and [what was measured](docs/evidence.md).
 
@@ -82,7 +82,7 @@ One example from this repository's own history. Several sessions commit to one b
 
 **Commands run the work.** 53 commands cover the session rhythm (`/orient`, `/summary`, `/wrap`), review (`/expert-review`, `/review-hub`), hand-offs (`/mail`, `/spinoff`), recovery (`/post-compact`, `/circuit-break`) and the system's own upkeep (`/meta`). `/help` maps a task to its command.
 
-**33 specialists bring the depth, and 1 more models an outside project.** Security, accessibility, performance, QA, architecture, code design, UX design, UX copy, prompt engineering, context and memory architecture, pricing, SEO, launch, legal and more; the outside-project one is the worked example of an external expert. Each has its own knowledge file and builds a memory as you use it; the copy ships the knowledge, and the memories are yours. Specialists hand their work back to the lead session, which commits it; their primer tells them not to commit, and the lead session writes their memory for them, since [a hook](.claude/hooks/block-subagent-memory-write.sh) refuses a specialist's direct edit of a memory file.
+**33 specialists bring the depth, and 1 more models an outside system.** Security, accessibility, performance, QA, architecture, code design, UX design, UX copy, prompt engineering, context and memory architecture, pricing, SEO, launch, legal and more; the outside-system one is the worked example of an external expert. Each has its own knowledge file and builds a memory as you use it; the copy ships the knowledge, and the memories are yours. Specialists hand their work back to the lead session, which commits it; their primer tells them not to commit, and the lead session writes their memory for them, since [a hook](.claude/hooks/block-subagent-memory-write.sh) refuses a specialist's direct edit of a memory file.
 
 **Several sessions, one branch.** Run more than one session and they share one branch in one checkout. [The commit tool](scripts/safe-commit.sh) stages exactly the paths you name and refuses if anything else is staged. [`session-manifest.py check-overlap`](scripts/session-manifest.py) refuses a change to code another session is already editing. Work that would leave files dirty for the others moves to its own branch in its own worktree and merges back when it is done. Sessions mail each other: a mail waits for a session that is not running, can go to every session at once, and stays on record. Claude Code's agent teams split one task among teammates under one lead; Anja is the structure around every session you run.
 
@@ -97,23 +97,23 @@ One example from this repository's own history. Several sessions commit to one b
 - **Mail.** 15,472 of 16,754 direct mails (92.3%) were delivered to a running session between 16 August and 20 October 2026. That is delivery, not reading: whether each was read was not measured.
 - **The memory read guard.** When it refuses an oversized read and says where to page, agents paged 68.1% of the time, against 12.7% after a plain size error. An observational comparison, not a randomized one.
 
-The copy's own smoke suite, run in a fresh repository holding only this copy, passed 2,049 arms and failed 169. The red arms are expected on a fresh copy: 125 drive tooling the copy does not ship, and 44 drive what your project supplies: its own files, the git hooks setting, and history; [the start page](docs/start-a-new-project.md#first-run) says what each group needs and which passes hold only because something is missing.
+The copy's own smoke suite, run in a fresh repository holding only this copy, passed 2,128 arms and failed 170. The red arms are expected on a fresh copy: 126 drive tooling the copy does not ship, and 44 drive what your project supplies: its own files, the git hooks setting, and history; [the start page](docs/start-a-new-project.md#first-run) says what each group needs and which passes hold only because something is missing.
 
 ## What is in the copy
 
-461 files:
+466 files:
 
-- **[`.claude/agents/`](.claude/agents/)**: 34 agent definitions (33 specialists and 1 that models an outside project) and [the primer](.claude/agents/_agent-primer.md) each one reads first.
+- **[`.claude/agents/`](.claude/agents/)**: 34 agent definitions (33 specialists and 1 that models an outside system) and [the primer](.claude/agents/_agent-primer.md) each one reads first.
 - **[`.claude/skills/`](.claude/skills/)**: the 53 commands and each specialist's knowledge file.
 - **[`.claude/commands/`](.claude/commands/)**: 4 older command files (`/status`, `/verify`, `/external-audit` and one alias).
 - **[`.claude/hooks/`](.claude/hooks/)**: 65 hook scripts that refuse, warn, log or inject on the harness's events. [The settings file](.claude/settings.json) wires 58 of them, and 2 more run when another hook calls them.
 - **[`.claude/rules/`](.claude/rules/)**: 9 rule files, about 327 KB in all; 7 carry `paths:` and load only when a session reads, writes or edits a matching file.
 - **[`.claude/orchestrator/`](.claude/orchestrator/)**: 4 files of rules for the lead session alone. Two arrive at every start, one with the first commit command, and the fourth only through a hook the shipped settings switch off.
 - **[`scripts/`](scripts/)**: the commit tool, sessions and mail, the smoke suite and mutation matrix, self-tests and drift checks.
-- **[`.githooks/`](.githooks/)**: the pre-commit hook and the notes on wiring git hooks; the pre-push hook is yours to write.
+- **[`.githooks/`](.githooks/)**: the pre-commit and prepare-commit-msg hooks and the notes on wiring git hooks; the pre-push hook is yours to write.
 - **[`docs/starters/`](docs/starters/)**: a `CLAUDE.md` starter and four blank audit registers.
 
-Of the 461, 31 files written for the copy: this readme, the licence, notice, trademark, contributing and code-owner files, the `.claude/.gitignore` that keeps run-time state out of git, the 8 pages under `docs/`, the 5 starters and the 11 images. [The repository map](docs/repository-map.md) says what each file holds. The counts describe the tree; they are not the point.
+Of the 466, 33 files written for the copy: this readme, the licence, notice, trademark, contributing and code-owner files, the `.claude/.gitignore` that keeps run-time state out of git, the smoke suite's list of expected failures, the 9 pages under `docs/`, the 5 starters and the 11 images. [The repository map](docs/repository-map.md) says what each file holds. The counts describe the tree; they are not the point.
 
 ## Where the ideas came from
 

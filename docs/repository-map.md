@@ -2,7 +2,7 @@
 
 This page is an index to look things up in, not a tour: read the table below, then jump to the directory you are about to open. To set up your own project, read [the start page](start-a-new-project.md). If you open only a few files, open `.claude/settings.json` (what runs, on which event), the hooks section below, `.claude/rules/session-cadence.md` (how a guard is proposed, counted and promoted from warn to block) and `scripts/smoke-test-hooks.sh` (how each guard is tested).
 
-The page covers every directory the copy ships, says what each one holds, and gives one line per file wherever a line helps. Anja grew inside one application, the source project, a photography critique application built and shipped with Anja. That application's own code is not part of the copy. Every count on this page is taken from the committed copy, which lists 461 files.
+The page covers every directory the copy ships, says what each one holds, and gives one line per file wherever a line helps. Anja grew inside one application, the source project, a photography critique application built and shipped with Anja. That application's own code is not part of the copy. Every count on this page is taken from the committed copy, which lists 466 files.
 
 | Directory | Files shipped | What it holds |
 |---|---|---|
@@ -16,14 +16,14 @@ The page covers every directory the copy ships, says what each one holds, and gi
 | `.claude/templates/` | 8 | Fill-in templates for audits, specs, panels and migrations |
 | `.claude/docs/` | 3 | The architecture guide, a short overview, and the current-state record |
 | `.claude/traps/` | 1 | Shell traps, delivered one command at a time |
-| `scripts/` (top level) | 109 | Gates, scanners, test suites, session tooling and generators |
+| `scripts/` (top level) | 112 | Gates, scanners, test suites, session tooling and generators |
 | `scripts/lib/` | 14 | Shared modules that scripts and git hooks source or import |
 | `scripts/probes/` | 5 | One investigation rig, kept with its probes |
 | `scripts/band/` | 4 | The tools from one compression pass over the always-loaded rule corpus |
 | `scripts/fixtures/` | 1 | A test fixture for the hook payload harness |
-| `.githooks/` | 2 | How the project's git hooks are wired, and the pre-commit hook |
+| `.githooks/` | 3 | How the project's git hooks are wired, and the pre-commit and prepare-commit-msg hooks |
 
-The table's rows add up to 431 files. It does not count the root files and what sits under `docs/` (the pages, the starter registers, the diagrams and the logo), 30 files that make up the rest of the 461. They are listed at the end.
+The table's rows add up to 435 files. It does not count the root files and what sits under `docs/` (the pages, the starter registers, the diagrams and the logo), 31 files that make up the rest of the 466. They are listed at the end.
 
 ## `.claude/` (top-level files)
 
@@ -92,7 +92,7 @@ There are 73 files: 65 hook scripts, 5 shared libraries and 3 fixtures. Each lin
 - `bash-safety-warn.sh`: before a shell call. Warns on risky git patterns and adds advisories before a commit.
 - `block-dangerous.sh`: before a shell call. Blocks catastrophic, unrecoverable commands, such as deleting the filesystem root, overwriting a disk device, or a fork bomb.
 - `block-push-without-approval.sh`: before a shell call. Blocks a push that can reach the `main` branch, a force or delete push, and the `gh` commands that merge a pull request or start a CI run, unless the command carries an `ALLOW_PUSH=1` prefix marking explicit approval. A plain push to any other branch passes.
-- `block-subagent-always-loaded-write.sh`: before an edit or write. Blocks a sub-agent from writing an always-loaded file (the rules, the orchestrator files and the entry files). Only the main session writes those.
+- `block-subagent-always-loaded-write.sh`: before an edit or write. Blocks any session, the main one included, from writing an always-loaded file (the rules, the orchestrator files and the entry files) unless that session's door is open: `/tmp/claude-always-loaded-allow.<full session id>`, which the owner creates with `! touch` and which stays open for 15 minutes. A sub-agent gets no door. `always-loaded-commit-gate.sh` asks this hook about every committed path, so the door must also be open when the commit is made.
 - `block-subagent-memory-write.sh`: before an edit or write. Blocks an edit or write to a skill memory file, its archives or the meta skill's two registers, for the main session as well, because memory is persisted only by a shell append. A marker file lets the main session through for bulk maintenance.
 - `check-memory-budget-post.sh`: after a shell call. Measures the project memory index and the skill memory files after the command and warns when one is past its budget, which covers the shell writes that `check-memory-budget.sh` cannot predict from the command text.
 - `check-memory-budget.sh`: before a write. Guards the byte budget of the project memory index and warns when an edit grows a file past its pin.
@@ -111,7 +111,7 @@ There are 73 files: 65 hook scripts, 5 shared libraries and 3 fixtures. Each lin
 - `grep-blowup-warn.sh`: before a shell call. Blocks a grep whose pattern puts a variable-width quantifier before an alternation, a shape that has exhausted the machine's memory, and warns on a recursive grep from an absolute path, which also walks every worktree clone. Despite the name, the first arm blocks.
 - `help-arg-intercept.sh`: before a skill call. Blocks a command whose only argument is `help`, `--help`, `-h` or `?`, and has the main session show that command's usage instead, so a help argument never runs the command. The help skill itself is exempt.
 - `hooks-integrity-check.sh`: at session start. Detects a hook left stubbed on disk by an interrupted mutation run. It works from outside the process that did the mutating.
-- `keep-warm-arm-reminder.sh`: on prompt submit. Injects the directive to arm this session's keep-warm timer on every turn until the timer is armed, then falls silent. It stays silent where keep-warm is off for the session or the fleet, or where the gate and tool-deny hooks below are not both wired. Warn mode.
+- `keep-warm-arm-reminder.sh`: on prompt submit. Injects the directive to arm this session's keep-warm timer on every turn until the timer is armed, then falls silent. It stays silent where keep-warm is off for the session or the fleet, in an unattended run (a one-shot headless launch), or where the gate and tool-deny hooks below are not both wired. Warn mode.
 - `keep-warm-armed-marker.sh`: after a CronCreate call. Writes the per-session marker that silences `keep-warm-arm-reminder.sh` once the recurring keep-warm timer is created. A one-shot timer does not count. It never blocks.
 - `keep-warm-gate.py`: on prompt submit. Decides whether a keep-alive timer fire becomes a paid turn: it lets a ping through only when the one-hour prompt cache is close to expiring and nothing says keep-warm is off, and blocks every other fire at no cost. It reads the status line's state file for the cache countdown, the usage limit and the context size, and falls back to the transcript's timing without it.
 - `keep-warm-tool-deny.sh`: before every tool call. Blocks every main-session tool call during a keep-alive turn, so a ping only reads the cached prompt and cannot act; a sub-agent's call is never blocked.
@@ -121,7 +121,7 @@ There are 73 files: 65 hook scripts, 5 shared libraries and 3 fixtures. Each lin
 - `log-skill-invocations.sh`: before a skill call. Logs each skill invocation, so that dormant and most-used skills can be counted.
 - `log-subagent-dispatch.sh`: when a sub-agent starts. Logs the agent type of each dispatch and prints nothing, since anything it printed would land in the new agent's context.
 - `log-user-slash-commands.sh`: on prompt submit. Logs a slash command you typed to the same log as skill invocations, since a typed command never passes through the skill tool.
-- `mail-listen-arm-reminder.sh`: on prompt submit. Injects the directive to arm the inbound-mail listener on every turn until this session has armed it, then falls silent.
+- `mail-listen-arm-reminder.sh`: on prompt submit. Injects the directive to arm the inbound-mail listener on every turn until this session has armed it, then falls silent. It injects nothing in an unattended run (a one-shot headless launch), which never arms the listener.
 - `mail-listen-armed-marker.sh`: after a Monitor call. Writes the per-session marker that silences `mail-listen-arm-reminder.sh` once the mail listener is armed.
 - `mail-relay-staleness-warn.sh`: at turn end. Warns when a session-mail block surfaced and no ground-truth check (a git read, an overlap check, a tracker read) followed it, the trace of relaying a mail's state claim unchecked. It writes to stderr only.
 - `mail-send-carrier-warn.sh`: before a shell call. Warns when a mail send's body does not open with a finding count and a line telling the reader to read the stored message, because a mail notification is cut from the end.
@@ -135,7 +135,7 @@ There are 73 files: 65 hook scripts, 5 shared libraries and 3 fixtures. Each lin
 - `scan-secrets-writes.sh`: after a write or edit. Scans the written file for secret patterns before any git operation.
 - `session-end.sh`: at session end. Writes the session's "finished" marker through `scripts/session-lifecycle.py` and stops this session's mail listener. Leaving with `/exit` or `/clear` does not fire it.
 - `session-memory-reminder.sh`: at turn end. Prints a reminder to run `/session-memory` when the current git identity has made two or more commits today and no marker shows that it already ran today. It stays a reminder because every session shares that identity.
-- `session-start.sh`: at session start. The hook that does the most. It warns when a resumed session has already been wrapped; after a compaction it tells the agent to run `/post-compact` first and replays the checkpoint `compact-save.sh` wrote; it prints a capped summary of unread mail and tells the agent, on its first turn, to arm the mail listener, open a working plan and, where keep-warm is switched on, arm the keep-warm timer; it runs two drift checks and the first-turn echo watch, points to a live review hub if there is one, names any warn-only hook that `lib/run-advisory.sh` caught failing, and garbage-collects old marker files.
+- `session-start.sh`: at session start. The hook that does the most. It warns when a resumed session has already been wrapped; after a compaction it tells the agent to run `/post-compact` first and replays the checkpoint `compact-save.sh` wrote; it prints a capped summary of unread mail and tells the agent, on its first turn, to arm the mail listener, open a working plan and, where keep-warm is switched on, arm the keep-warm timer, except in an unattended run (a one-shot headless launch), which it tells to arm neither; it runs two drift checks and the first-turn echo watch, points to a live review hub if there is one, names any warn-only hook that `lib/run-advisory.sh` caught failing, and garbage-collects old marker files.
 - `shell-trap-inject.sh`: before a shell call. Matches the command against the keys in `traps/shell-traps.md` and injects the matching traps, each once per context, sub-agents included. It never blocks.
 - `standby-resume-check.sh`: on prompt submit. While `/standby` has parked the session, injects the resume steps on every prompt until `/standby resume` clears the marker.
 - `subagent-cache-window-inject.sh`: when a sub-agent starts. Adds one paragraph to the new agent's context, before its first tool call, about its five-minute prompt cache: a foreground call or a wait that outlasts the window makes the agent's next call rewrite its whole context. Advisory text only; it never blocks.
@@ -207,11 +207,12 @@ There is 1 file.
 
 ## `scripts/`
 
-There are 109 files at the top level. Each line below comes from the script's header comment or docstring.
+There are 112 files at the top level. Each line below comes from the script's header comment or docstring.
 
 **Commit and shared-worktree safety**
 - `safe-commit.sh`: stages, gates and commits on a shared worktree. It refuses and never repairs.
 - `private-index-commit.sh`: commits declared paths through a private git index. It uses a compare-and-swap that fails rather than overwrite a peer's commit.
+- `always-loaded-commit-gate.sh`: the commit-time door check. A commit that stages an always-loaded file is refused while this session's door is closed. With neither session variable set it lets the commit through as your own terminal's; it refuses when a Claude Code process is among the commit's parent processes or the walk cannot finish (the process table cannot be read, or the walk passes 64 levels). Both commit tools call it themselves, and `.githooks/prepare-commit-msg` runs it on every commit git's own commit path makes, `safe-commit.sh`'s included.
 - `shared-commit-gate.mjs`: before committing a file that peers also write, asks whether the commit holds a deletion you cannot account for.
 - `staged-parse-check.mjs`: a syntax-only parse gate over the blobs being committed, not the working tree.
 - `stage-own-hunks.mjs`: stages only your own changed hunks of a file another session is also editing, chosen by text keys you pass, and never touches the worktree. Its `--expect` count refuses when the kept hunks add or remove a different number of lines than your edit did.
@@ -249,6 +250,8 @@ There are 109 files at the top level. Each line below comes from the script's he
 
 **Hook test suites**
 - `smoke-test-hooks.sh`: the hook smoke suite. It runs a firing payload and a safe payload against each hook and checks the settings wiring.
+- `smoke-expected-failures.py`: sorts a smoke run's failures against `smoke-expected-failures.txt`, so a fresh copy's closing summary reads "N expected, 0 unexpected" and any other red stands out.
+- `smoke-expected-failures.txt`: written for the copy. The arms a fresh copy fails for want of something it does not ship or your project supplies, grouped by what each group needs.
 - `smoke-assert-lint.mjs`: finds self-grading assertions in that suite, which can never fail.
 - `smoke-mutation-matrix.sh`: mutates each hook to find out which assertions can actually fail.
 - `smoke-payload-matrix.sh`: drives the block-mode security hooks with an adversarial input corpus, to show which inputs they actually catch.
@@ -379,14 +382,15 @@ There is 1 file.
 
 ## `.githooks/`
 
-There are 2 files.
+There are 3 files.
 
 - `README.md`: explains that the git hooks live in `.githooks/`, are wired through `core.hooksPath` when dependencies are installed, and go silent if that setting drifts. It also describes the pre-push and pre-commit gates. The pre-commit hook ships; the pre-push hook does not.
 - `pre-commit`: the commit-time gate, warn-only in every arm. It warns when staged skill memory shards disagree with their router, typechecks staged TypeScript outside `tests/`, and runs `scripts/skill-lint.mjs` when skill or other `.claude/` files are staged. Each arm has its own skip variable.
+- `prepare-commit-msg`: runs `scripts/always-loaded-commit-gate.sh` on every commit git's own commit path makes, so a plain `git commit`, a revert, a cherry-pick or a merge meets the same refusal as the commit tools while the session's door is closed.
 
 ## Root files and `docs/`
 
-These 30 files sit at the root of the copy (6) and under `docs/` (24); the table at the top does not count them. They are most of the 31 files written for the copy rather than taken from the source project: the six root files below, `.claude/.gitignore`, the 8 pages under `docs/`, the 5 starters and the 11 images.
+These 31 files sit at the root of the copy (6) and under `docs/` (25); the table at the top does not count them. They are most of the 33 files written for the copy rather than taken from the source project: the six root files below, `.claude/.gitignore`, `scripts/smoke-expected-failures.txt` (listed under `scripts/` above), the 9 pages under `docs/`, the 5 starters and the 11 images.
 
 - `README.md`: the entry page for the copy.
 - `LICENSE`: the copy's licence.
@@ -400,6 +404,7 @@ These 30 files sit at the root of the copy (6) and under `docs/` (24); the table
 - `docs/beside-native-features.md`: each mechanism beside the harness's native feature for the same job, and whether that feature replaces it, overlaps it or is what it builds on.
 - `docs/where-the-ideas-came-from.md`: the credits: what was adopted from other projects and when, what it became here, and what was built here.
 - `docs/a-working-day.md`: a day of work once Anja is in your project: how a session starts and ends, asking for a review and using what comes back, what you decide yourself, what the guards do without being asked, and what changes when a session grows long or a second one joins.
+- `docs/see-it-run.md`: one real session on a fresh copy, its replies quoted as written.
 - `docs/saving-the-cache.md`: one cost, the prompt cache: what loses it, what it costs to write it again, and the habits and commands that keep it.
 - `docs/github-settings.md`: the repository settings on GitHub.
 - `docs/starters/`: four starter registers (critical flows, feature audits, surface audits, the ops register) in the shape the tracker scripts parse, for a project that wants the tracking pattern. Beside them, `CLAUDE.starter.md`: a neutral `CLAUDE.md` holding the table of which rule files load when, built from the copy's own rule files, for you to copy to your root and fill in.

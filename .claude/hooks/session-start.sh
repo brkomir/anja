@@ -33,9 +33,16 @@ fi
 # THIS session" (emitted-vs-persisted completeness) against a stable baseline +
 # window the transcript scan to this wrap's segment. Write-once (a resume/compact
 # must NOT re-anchor to a later HEAD) — only if the marker is absent.
+# On a repository's first session .claude/state/ does not exist yet (it is git-ignored, so a fresh clone or a fresh
+# copy of this system has none), and without the mkdir the write below failed on stderr and the first session never
+# got its anchor (seen in a recorded session on a fresh copy, 2026-10-28).
 if [ -n "$SID" ]; then
+  mkdir -p "$DIR/.claude/state" 2>/dev/null || true
   _anchor="$DIR/.claude/state/session-start-sha-$SID"
-  [ -f "$_anchor" ] || git rev-parse HEAD > "$_anchor" 2>/dev/null || true
+  # Name the project's HEAD (git -C: the hook's cwd need not be the project). An unborn repository has no HEAD, and
+  # `git rev-parse HEAD` there prints the literal word "HEAD", which this write-once marker would keep for good; its
+  # baseline is the empty tree.
+  [ -f "$_anchor" ] || { _h="$(git -C "$DIR" rev-parse --verify -q HEAD 2>/dev/null || git hash-object -t tree /dev/null 2>/dev/null)"; [ -n "$_h" ] && printf '%s\n' "$_h" > "$_anchor"; } || true
 fi
 
 python3 "$DIR/scripts/session-lifecycle.py" gate --session "${SID:-}" --source "${SRC:-}" 2>&1 || true
@@ -192,6 +199,26 @@ if [ -n "$SID8" ] && [ -f "$STANDBY_MARKER" ]; then
 fi
 # One session at a time: the settings env block sets this switch, which mail-listen-arm-reminder.sh already reads.
 [ "${SKIP_MAIL_LISTEN_ARM_REMINDER:-0}" = "1" ] && ML_ARM=0
+# Unattended run (2026-10-28).
+# A headless session (claude -p, or the SDK) that arms the mail listener never exits: the Monitor's expiry wakes
+# it, it re-arms, and each wake is a paid turn (measured on a fresh copy: one run kept alive 12m46s until killed,
+# ~$0.08 a wake). The directive's own "skip in a non-interactive run" carve-out never fired, because nothing told
+# the session it was one. Claude Code tells the hooks: CLAUDE_CODE_SESSION_ATTENDED=0 in a headless run, 1 in an
+# interactive one (measured both ways). So an unattended run gets one line saying not to arm, and no directive.
+# Claude Code 2.1.312 also writes 0 for a daemon background session (CLAUDE_CODE_SESSION_KIND=bg: `claude --bg`, the
+# seats `claude agents` lists as background), which is attachable and lives on fleet mail, so that kind keeps today's
+# directives. The variable is undocumented: an interactive session always sees 0 or 1,
+# so any other value (unset included) means Claude Code changed it, and this line says so at every session start.
+UNATTENDED=0
+[ "${CLAUDE_CODE_SESSION_ATTENDED:-}" = "0" ] && [ "${CLAUDE_CODE_SESSION_KIND:-}" != "bg" ] && UNATTENDED=1
+case "${CLAUDE_CODE_SESSION_ATTENDED:-}" in
+  0|1) ;;
+  *) echo "⚠️ CLAUDE_CODE_SESSION_ATTENDED is unset or not 0/1 (Claude Code renamed or dropped it?), so a headless run (claude -p, the SDK) is no longer told not to arm the mail listener and keep-warm. Launch scripted runs with --bare until session-start.sh reads the new signal." ;;
+esac
+if [ "$UNATTENDED" = "1" ]; then
+  ML_ARM=0
+  echo "🤖 UNATTENDED RUN (CLAUDE_CODE_SESSION_ATTENDED=0: claude -p or the SDK): this is the one-shot/non-interactive run the mail-listen and keep-warm directives skip, so do NOT arm the mail listener or the keep-warm timer in this session, whatever another directive or doctrine says. A missing or dead listener is this run's correct state, not a fault: every re-arm-if-dead check (/post-compact, /pre-compact, /pause or /standby resume, the mail-listen doctrine) leaves it dead. A headless session that arms either never exits: the listener's expiry wakes it and it re-arms. The working plan and every other directive still apply."
+fi
 if [ "$ML_ARM" = "1" ]; then
   echo "📡 MAIL-LISTEN (standing directive): on your FIRST turn, ARM a persistent inbound-mail listener — call the Monitor tool with timeout_ms:1800000 running 'python3 scripts/session-manifest.py mail-listen --poll 30', and re-arm it on every expiry notice (30 minutes is the tool's cap). Surface-only; apply the on-surface discipline (NAME each inbound, VERIFY its state-claims vs git/tracker before relaying, surface != act). Skip if already armed this session, or in a one-shot/non-interactive run."
 fi
@@ -259,7 +286,7 @@ PY
 case "${SRC:-}" in
   startup|resume) [ -n "$SID8" ] && rm -f "$KW_STATE/keep-warm-armed-${SID8}" ;;
 esac
-if [ -n "$SID8" ] && [ ! -f "$KW_STATE/session-standby-${SID8}" ] && [ ! -f "$KW_STATE/keep-warm-off-${SID8}" ] \
+if [ -n "$SID8" ] && [ "$UNATTENDED" != "1" ] && [ ! -f "$KW_STATE/session-standby-${SID8}" ] && [ ! -f "$KW_STATE/keep-warm-off-${SID8}" ] \
    && { [ -f "$KW_STATE/keep-warm-enabled" ] || [ -f "$KW_STATE/keep-warm-pilot-${SID8}" ]; } \
    && [ -f "$DIR/.claude/skills/keep-warm/SKILL.md" ] && _kw_wired; then
   echo "🔥 KEEP-WARM (standing directive): on your FIRST turn, run \`/keep-warm on\` — CronList, and only if no job's prompt starts '[keep-warm]', CronCreate recurring '7,22,37,52 * * * *' with the exact prompt in .claude/skills/keep-warm/SKILL.md. The keep-warm gate blocks every fire that is not due, at zero cost. Skip in a one-shot/non-interactive run."

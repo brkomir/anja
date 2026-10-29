@@ -2,9 +2,9 @@
 name: external-fagemx-edda
 version: edda 0.6.2 on crates.io (7 published versions at the read) — body deep-cataloged from a full local clone at 46bf30ec215546912a1833b3c3b808e53f9e0025 (main HEAD, 2026-09-26) on 2026-10-09, read with cat, sed, grep and read-only git only, nothing built or run; the workspace Cargo.toml:30 says 0.6.2 and the clone carries 10 tags, v0.1.0 to v0.6.2
 stars: 36
-last-fetched: 2026-10-27
-last-deep-catalog: 2026-10-27
-upstream-status: live, verified at source 2026-10-09; main confirmed unchanged by `git ls-remote` on 2026-10-27 — pushed_at 2026-09-26T13:31:08Z, 803 commits by one author (fagemx), created 2026-02-19, not archived, no archival or deprecation notice; dual-licensed Apache-2.0 OR MIT (LICENSE-APACHE 190 lines + LICENSE-MIT 21 lines, both read whole from the clone 2026-10-09: no party-exclusion rider, no training clause)
+last-fetched: 2026-10-28
+last-deep-catalog: 2026-10-28
+upstream-status: live, verified at source 2026-10-09; main confirmed unchanged by `git ls-remote` on 2026-10-28 — pushed_at 2026-09-26T13:31:08Z, 803 commits by one author (fagemx), created 2026-02-19, not archived, no archival or deprecation notice; dual-licensed Apache-2.0 OR MIT (LICENSE-APACHE 190 lines + LICENSE-MIT 21 lines, both read whole from the clone 2026-10-09: no party-exclusion rider, no training clause)
 version-source-of-truth: crates.io `edda` (0.6.2 at the read) and the repo's main HEAD sha — re-read `gh api repos/fagemx/edda` and `/commits/HEAD` before citing any number in this file
 type: research
 catalog-basis: deep-cataloged from a full local clone at 46bf30ec215546912a1833b3c3b808e53f9e0025 on 2026-10-09 — the clone made with `GIT_LFS_SKIP_SMUDGE=1` and `core.symlinks=false` (0 symlinks, 0 gitlinks, no `.lfsconfig`; 1,663 tree entries, equal to the API listing) and read with cat, sed, grep and read-only git only, nothing built or run; an earlier draft written from the contents API was checked against the clone citation by citation and its corrections are folded into this body
@@ -22,7 +22,7 @@ description: >-
 
 # External — fagemx/edda
 
-**This file describes fagemx/edda at commit `46bf30ec215546912a1833b3c3b808e53f9e0025` as read on 2026-10-09, confirmed current on 2026-10-27 (`git ls-remote` returned the same main commit). It is not maintained here; refresh it with `/scout` (§ CLONE BEFORE YOU CATALOG) before relying on it. Every count, every path:line and every statement about what the code does is dated by that read.** It ships as a worked example of what `/scout` and `/external-audit` produce.
+**This file describes fagemx/edda at commit `46bf30ec215546912a1833b3c3b808e53f9e0025` as read on 2026-10-09, confirmed current on 2026-10-28 (`git ls-remote` returned the same main commit). It is not maintained here; refresh it with `/scout` (§ CLONE BEFORE YOU CATALOG) before relying on it. Every count, every path:line and every statement about what the code does is dated by that read.** It ships as a worked example of what `/scout` and `/external-audit` produce.
 
 A compiled CLI and TUI (Rust; 23 crates under `crates/`, one `edda` binary published on crates.io) that keeps "local, append-only state in `.edda/`" (README.md:59) for coding agents: a hash-chained SQLite ledger of decisions, sessions and tasks; a peers board with claims, heartbeats, requests and acks; bridges that install hooks into Claude Code, Codex, Cursor, OpenClaw and Hermes; a review gate and a verdict gate bound to commit shas; and a session-end post-mortem that learns rules and fades them. The repository's own description: *"Local, tamper-evident ledger for coding agents — decisions that survive sessions, coordination that survives agents."*
 

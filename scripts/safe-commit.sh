@@ -103,6 +103,7 @@ if [ "$SELFTEST" -eq 0 ]; then
       --del) EXP_DEL="${2:-}"; shift 2 ;;
       --add) EXP_ADD="${2:-}"; shift 2 ;;
       --drift-ok) DRIFT_OK=1; shift ;;
+      --owner-always-loaded|--owner-always-loaded=*) echo "safe-commit: --owner-always-loaded was removed on 2026-10-28 (the door is the only way through). Ask the owner to run the ! touch line the door check prints." >&2; exit 2 ;;
       -F) MSGFILE="${2:-}"; shift 2 ;;
       -m) MSG="${2:-}"; shift 2 ;;
       --) shift; PATHS=("$@"); break ;;
@@ -128,6 +129,19 @@ if [ "$SELFTEST" -eq 0 ]; then
       exit 1 ;;
     esac
   done
+
+  # ALWAYS-LOADED DOOR (2026-10-28).
+  # A commit carrying an always-loaded file (.claude/rules/*.md, CLAUDE.md, AGENTS.md, .claude/orchestrator/*.md)
+  # is REFUSED while this session's door is closed: the always-loaded write guard never sees a shell write
+  # (git apply, sed -i, a redirect), and the commit is where every write method meets. The protected set and
+  # the door test are the guard's own (always-loaded-commit-gate.sh puts each path to it). It runs BEFORE
+  # anything is staged, so a refusal leaves the index as it found it. No override flag: in a Claude session only
+  # the owner's `! touch` opens it, and a session that drops its session variables is refused while Claude Code
+  # is one of the commit's parent processes (a process it detached reads as the owner's terminal: the gate's
+  # header). Arms AL1-AL5 of the self-test; the gate's own arms are in its --self-test.
+  SC_ALG="$(dirname "$0")/always-loaded-commit-gate.sh"
+  [ -f "$SC_ALG" ] || { echo "safe-commit: REFUSED — the always-loaded door check is missing ($SC_ALG). Nothing was staged." >&2; exit 1; }
+  bash "$SC_ALG" -- "${PATHS[@]}" || { echo "safe-commit: REFUSED — the always-loaded door check above. Nothing was staged." >&2; exit 1; }
 
   # FIRE LEDGER (2026-08-25). OBSERVABILITY ONLY, never a gate: the
   # commit-row rule class had no falsifier — nobody could say whether its rewrites changed
@@ -1301,6 +1315,53 @@ else
   FAIL=$((FAIL+1)); echo "  FAIL AK: rc=$RC head=$(git show --name-only --format= HEAD | tr '\n' ' ') staged=$(git diff --cached --name-only | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
 fi
 git checkout -q -- k/i/p.txt
+
+# Arms AL1-AL3 (the always-loaded door, 2026-10-28): a commit of CLAUDE.md with this session's door closed is
+# refused before anything is staged; the same commit with the door open lands; the removed override flag is refused.
+# MUTATION: delete the gate call above -> AL1 commits and reds.
+AL_DOOR="$T/al-door"; rm -f "$AL_DOOR"; echo rules > CLAUDE.md; git add CLAUDE.md; git commit -qm al-base; echo more >> CLAUDE.md
+set +e; CLAUDE_CODE_SESSION_ID=feedc0de-0000-4000-8000-0000 FF_ALWAYS_LOADED_ALLOW_MARKER="$AL_DOOR" "$SELF" --add 1 -m "rules edit, door closed" -- CLAUDE.md >"$SC_OUT" 2>&1; RC=$?; set -e
+if [ "$RC" = 1 ] && grep -qF 'always-loaded' "$SC_OUT" && [ -z "$(git diff --cached --name-only)" ] && [ "$(git log -1 --format=%s)" = al-base ]; then
+  PASS=$((PASS+1)); echo "  PASS AL1: an always-loaded commit with the door closed is refused, nothing staged"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AL1: rc=$RC head=$(git log -1 --format=%s) staged=$(git diff --cached --name-only | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
+fi
+: > "$AL_DOOR"
+set +e; CLAUDE_CODE_SESSION_ID=feedc0de-0000-4000-8000-0000 FF_ALWAYS_LOADED_ALLOW_MARKER="$AL_DOOR" "$SELF" --add 1 -m "rules edit, door open" -- CLAUDE.md >"$SC_OUT" 2>&1; RC=$?; set -e
+if [ "$RC" = 0 ] && [ "$(git log -1 --format=%s)" = "rules edit, door open" ]; then
+  PASS=$((PASS+1)); echo "  PASS AL2: the same commit with the door open lands"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AL2: rc=$RC head=$(git log -1 --format=%s)"; sed 's/^/      /' "$SC_OUT" || true
+fi
+rm -f "$AL_DOOR"; echo again >> CLAUDE.md
+set +e; CLAUDE_CODE_SESSION_ID=feedc0de-0000-4000-8000-0000 FF_ALWAYS_LOADED_ALLOW_MARKER="$AL_DOOR" "$SELF" --add 1 --owner-always-loaded="yes, commit it" -m "rules edit, owner words" -- CLAUDE.md >"$SC_OUT" 2>&1; RC=$?; set -e
+if [ "$RC" = 2 ] && [ "$(git log -1 --format=%s)" = "rules edit, door open" ] && grep -qF "was removed" "$SC_OUT" && [ -z "$(git diff --cached --name-only)" ]; then
+  PASS=$((PASS+1)); echo "  PASS AL3: the removed --owner-always-loaded flag is refused by name, nothing staged or committed"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AL3: rc=$RC head=$(git log -1 --format=%s)"; sed 's/^/      /' "$SC_OUT" || true
+fi
+
+# Arm AL4 (2026-10-28): a RENAME out of the protected set, both endpoints declared, door closed,
+# is refused by the door check: Gate 1 needs both endpoints declared, so the OLD protected path reaches the gate.
+# MUTATION: pass the gate only the declared paths present on disk -> the rename commits; this arm reds.
+git checkout -q -- CLAUDE.md; mkdir -p .claude/rules al4; seq 1 30 > .claude/rules/al4.md; git add .claude/rules/al4.md; git commit -qm al4-base; mv .claude/rules/al4.md al4/al4.md
+set +e; CLAUDE_CODE_SESSION_ID=feedc0de-0000-4000-8000-0000 FF_ALWAYS_LOADED_ALLOW_MARKER="$AL_DOOR" "$SELF" -m "rename out, door closed" -- .claude/rules/al4.md al4/al4.md >"$SC_OUT" 2>&1; RC=$?; set -e
+if [ "$RC" = 1 ] && grep -qF '    .claude/rules/al4.md' "$SC_OUT" && [ "$(git log -1 --format=%s)" = al4-base ] && [ -z "$(git diff --cached --name-only)" ]; then
+  PASS=$((PASS+1)); echo "  PASS AL4: a rename out of the protected set with the door closed is refused, nothing staged"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AL4: rc=$RC head=$(git log -1 --format=%s)"; sed 's/^/      /' "$SC_OUT" || true
+fi
+
+# Arm AL5 (2026-10-28): a copy of this tool with no door check beside it refuses before staging.
+# MUTATION: put back the `if [ -f "$SC_ALG" ]` skip -> the commit lands; this arm reds.
+AL5D="$(mktemp -d)"; cp "$SELF" "$AL5D/safe-commit.sh"; echo al5 > al5.txt; AL5_H0="$(git rev-parse HEAD)"
+set +e; CLAUDE_CODE_SESSION_ID=feedc0de-0000-4000-8000-0000 "$AL5D/safe-commit.sh" --add 1 -m "no door check" -- al5.txt >"$SC_OUT" 2>&1; RC=$?; set -e
+if [ "$RC" = 1 ] && grep -qF 'door check is missing' "$SC_OUT" && [ "$(git rev-parse HEAD)" = "$AL5_H0" ] && [ -z "$(git diff --cached --name-only)" ]; then
+  PASS=$((PASS+1)); echo "  PASS AL5: with the door check missing the tool refuses, nothing staged"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AL5: rc=$RC head=$(git log -1 --format=%s)"; sed 's/^/      /' "$SC_OUT" || true
+fi
+rm -rf "$AL5D"
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

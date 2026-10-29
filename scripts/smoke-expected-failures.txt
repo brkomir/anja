@@ -1,0 +1,239 @@
+# Expected failures on a fresh copy — the arms of scripts/smoke-test-hooks.sh that fail in a new repository
+# holding only this copy (one commit, no project files, no installed packages, git hooks path unset).
+#
+# The suite reads this file at the end of every run and sorts its failures into expected and unexpected, so a
+# fresh copy's run ends with "N expected, 0 unexpected". An expected failure is still a failure: each one names
+# something the copy does not ship or your project supplies. Supply it, or drop the arm and its line here. A red
+# arm this file does not name is a finding: read it before anything else. The summary also names any line here
+# whose arm no longer fails; delete those lines.
+#
+# One failure per line, the arm's label as the suite prints it. A line matches a failure that equals it, or that
+# starts with it followed by " (" (the actual value the suite appends there changes from run to run). Lines
+# starting with # are comments. The start page's step 7 (docs/start-a-new-project.md) explains each group.
+
+# ── These drive .githooks/pre-push, which the copy does not ship.
+# Most check the source project's own pre-push hook line by line, with its messages and exit codes. Write your own
+# .githooks/pre-push (step 3 of the start page's first run) and rewrite or drop the arms it does not answer; drop
+# them all if you have no pre-push hook.
+pre-push source-grep warn: one run appends ONE clean row
+pre-push TODO-inventory warn: one run appends ONE clean row
+skip-disclosure DERIVES the list (a gate invented in this test is disclosed with no message edit)
+skip-disclosure degrades LOUDLY when it cannot derive
+cert-freshness: block not found in .githooks/pre-push (WIRED arm — the gate is gone or renamed)
+pre-push: .githooks/pre-push is not readable from here — the per-process-log arm cannot certify a file it never opened
+pre-push: _pp_logs is not created with mktemp -d — the gate logs have no private home
+pre-push empty stdin ANNOUNCES that nothing was checked
+pre-push empty stdin still exits 0 (a valid no-op push must not break)
+pre-push with a REAL ref range reaches its own gates (positive control)
+pre-push range (wired): the real hook printed no 'push range checked:' line — the disclosure is gone or reworded
+pre-push range (non-trivial): the range block's markers are not in .githooks/pre-push — the arm cannot run
+L#-ledger guard exists but is NOT wired into pre-push — present != firing
+could not extract the L#-stanza trigger regex from .githooks/pre-push (shape changed)
+pre-push EXECUTED (clone): synthetic ledger-touch ref-update exits 0
+pre-push EXECUTED (clone): L#-ledger stanza FIRED (per-stanza fire, not just survival)
+pre-push EXECUTED (clone): the non-main LIGHT gate branch was reached and its skip announced
+pre-push MUTANT (clone copy) survived (rc=127) -- the exercise CANNOT detect the dead-gate class; its green means nothing 
+pre-push LIGHT wiring (stub rc=0): the check is called with PREPUSH_LIGHT=1
+pre-push LIGHT wiring (stub rc=0): the hook exits 0
+pre-push LIGHT wiring (stub rc=1): the check is called with PREPUSH_LIGHT=1
+pre-push LIGHT wiring (stub rc=1): the hook exits 1
+pre-push recursion guard: under HOOK_SMOKE_EXEC=1 the arm says why it did not run
+pre-push recursion guard (control): the same range without the marker starts the suite
+pre-push recursion guard (control): ...and the hook announces it
+push lock: a live lock refuses a second push (rc 75: nothing was gated, not a red gate)
+push lock: the refusal names the running push
+push lock: the refusal names its recorded escape
+push lock: an exported PREPUSH_IN_SNAPSHOT=1 alone does not skip a live lock
+push lock: a live pid that is not a pre-push (a reused pid) is taken over
+push lock: still held after the reused-pid takeover exited
+push lock: a dead owner's lock is taken over
+push lock: still held after the gate exited
+push lock: a takeover already under way refuses (rc 75, nothing gated)
+push lock: the refusal says another push is taking the lock over
+push lock: a takeover lock older than 60 s is cleared and the stale lock taken over
+push lock: a lock or a takeover lock was left behind by the aged-takeover push
+push lock: control -- an outer run with a SKIP_ var writes one ledger row
+push lock: the fail-closed mutant did not land (anchor '  _pp_rc=0' moved) -- that arm is void
+push lock: a lock whose owner is not written yet refuses (rc 75, nothing gated)
+push lock: the not-yet-written owner is reported as a running push
+push lock: the own-lock arm never saw the push stamp its token (instrument, not a verdict)
+push lock: a live owner just under 3 h old still refuses
+push lock: a live owner over 3 h old is taken over
+push lock e2e: push A never reached its gate inside a clean copy
+clean copy e2e: push A exits 0
+clean copy e2e: the gate ran the COMMITTED stub
+clean copy e2e: node_modules in the copy shares the tree's files
+clean copy e2e: the lock record push A wrote names its sha
+clean copy e2e: the copy's path is announced, and the copy is removed when the push ends
+clean copy e2e: the SKIP_* ledger records the push once, not once per run
+clean copy e2e: a TRACKED log in the copy reads its committed bytes, not the main tree's dirty ones
+clean copy e2e: an UNTRACKED ledger in the copy is linked to the shared one
+push lock TERM: the push never reached its gate inside a clean copy (pid=none)
+push lock TERM: the TERMed push exits 143 once its inner gate returns
+push lock TERM: the copy is removed after it exits
+LIGHT empty-push test: expected exactly one '  elif [[ … CHANGED … ]]; then' line in the hook, found: ''
+text-floor gate: the block's markers are not in .githooks/pre-push — the arm cannot run
+SKIP guards: extracted only 0 guard expressions (expected >= 20) — the extraction pattern no longer reads the hook
+TODO count: the block's markers are not in .githooks/pre-push — the arm cannot run
+L3 liveness: the block's markers are not in .githooks/pre-push — the arm cannot run
+fail-safe: a block marker is missing from .githooks/pre-push — the arm cannot run
+push secret scan: the block's markers are not in .githooks/pre-push — the arm cannot run
+e2e hook tail: the selection/build/run lines are not in .githooks/pre-push — the arm cannot run
+dev e2e skip: the PUSH_TO_DEV detection or the dev flag block is not in .githooks/pre-push — the arms cannot run
+dev e2e skip (real hook): an all-dev push touching tests/e2e runs the lint-warning ratchet
+dev e2e skip (real hook): ...whose eslint call ran
+dev e2e skip (real hook): ...and counts its two warning rows against the baseline
+dev e2e skip (real hook): an all-dev push touching tests/e2e runs the gate build
+dev e2e skip (real hook): ...then announces the skip
+dev e2e skip (real hook): ...and exits 0
+dev e2e skip (real hook): a failing build refuses the dev push
+dev e2e skip (real hook): ...printing the build log's tail (the stub's own line)
+dev e2e skip (real hook): ...with exit 1
+dev e2e skip (real hook): the same commit pushed to a feature branch reaches the changed-e2e run (control)
+dev e2e skip (real hook): a dev push touching no e2e-relevant path stops at the no-e2e exit
+dev e2e skip (real hook): ...and exits 0 on the no-e2e path
+dev build (real hook): an all-dev push changing only package.json runs the gate build
+dev build (real hook): ...and a failing build refuses it, exit 1
+dev build (real hook): ...and exits 0
+dev build (real hook): the same package.json commit pushed to a feature branch still exits before the build
+dev build (real hook): ...with exit 0
+main gate: an exported PREPUSH_LIGHT=1 does not reach pre-deploy-check (pinned to 0), and the lint base is main's remote tip
+main gate: the clone's main push exits 0 with a passing pre-deploy stub
+dirty warning: an uncommitted tracked edit under scripts/ is announced (a warning, not a refusal)
+multi-ref push: the base comes from the refs/heads/main line, not the first line
+HEAD check: pushing a sha that is not HEAD is refused (rc)
+HEAD check: the refusal says why
+band-directive-preservation.mjs exists but is NOT wired into pre-push — present != firing
+pre-push band-preservation invocation shape changed — check planes and mode
+section filter: --for pre-push (another spelling of a full-suite file) refuses
+enforce-script discovery: self-test stem(s) focus-visible-staged-check ship in scripts/ but no file read above names them -- their --self-test runs nowhere
+
+# ── These drive scripts/check-copy-test-orphans.py, which the copy does not ship.
+# The source project's interface-text checker. Write your own, or drop the arms.
+FIRE: en.json value drops a phrase a real test holds → ORPHAN warn
+FIRE: names the orphaned e2e test:file
+FIRE: the emitted line RESOLVES to the phrase (property, drift-proof) (no tests/e2e/flow19-password-reset.spec.ts:<line> coordinate emitted)
+SAFE: check-copy-test-orphans is warn-mode (exit 0 — never blocks a push)
+FIRE: a phrase another live key still renders is ANNOTATED, not suppressed
+SAFE: value change KEEPS the locator phrase → silent (FP control)
+SAFE: purely-added key (no stranded old value) → silent
+SAFE: the skipped mentions are REPORTED, never hidden
+SAFE/FIRE: _is_mention skips each comment leg and the marker, never a locator
+FIRE: findings and mentions together → ORPHAN lines
+FIRE: findings and mentions together → the skip is still REPORTED
+FIRE: a same-leaf change in a LATER hunk does not hide the earlier one's orphan
+
+# ── These drive .claude/hooks/expand-before-code-warn.sh, which the copy does not ship.
+# The source project's migration-ordering warning. Write your own, or drop the arms.
+expand-before-code-warn: one run appends ONE clean row BESIDE its redirected findings log
+FIRE: names the offending column
+SAFE: expand-before-code is warn-mode (exit 0 — never blocks a push)
+ESCAPE: SKIP_EXPAND_BEFORE_CODE=1 silences it
+SAFE: 'NNNN staging+prod applied' notation → silent
+self-test: expand-before-code-warn --self-test all-green
+self-test: expand-before-code-warn ran at least its pinned assertion count (an emptied list is not green)
+
+# ── These drive scripts/promote-precheck.sh, which the copy does not ship.
+# The source project's promote gate. Write your own, or drop the arms.
+promote precheck: SKIP_E2E_HOOK=1 set → refused before the gate (rc 2)
+promote precheck: the refusal names the escape
+promote precheck: SKIP_E2E_HOOK=0 is not an escape, the gate runs (control)
+promote precheck: no escape set → the gate and the migration gate run (control)
+promote precheck: no escape set → rc 0 with passing stubs
+promote precheck: a push-lock refusal (hook rc 75) → rc 75, not a verdict
+
+# ── These drive scripts/pre-deploy-check.sh, which the copy does not ship.
+# The source project's deploy gate. Write your own, or drop the arms.
+lint-verdict: pre-deploy-check.sh does not parse
+lint-verdict: pre-deploy-check does not source the lib on a live line — the gate is INERT
+lint-verdict: the disposition is not fed eslint's rc on a live line
+lint-verdict: eslint is invoked through xargs (BSD xargs collapses rc 2 -> 1, so the rc>=2 branch is unreachable)
+lint-verdict: the no-merge-base branch does not fall back — the gate is OPEN on a degenerate baseline
+
+# ── These drive .claude/rules/copy.md, the source project's interface-text rules.
+# They expect a hook to warn when a session grows that file past its size limits. Supply your own rules file under that name, or drop the arms.
+MODEL CHANNEL: check-memory-budget ARM 3b (band ENTRY >400 B) reaches STDOUT as additionalContext
+MODEL CHANNEL: check-memory-budget ARM 3 (band per-file pin) reaches STDOUT as additionalContext
+
+# ── These drive .claude/rules/supabase.md, the source project's database rules.
+# It expects a hook to name that file when a session creates a file in the database folder. Supply your own, or drop the arm.
+FIRE: write-scope-inject.sh names the supabase rules for a NEW src/db file
+
+# ── These drive scripts/check-auth-actions.sh, which the copy does not ship.
+# The source project's server-action auth check. Write your own, or drop the arm.
+check-auth-actions: one run over an authed actions dir appends ONE clean row
+
+# ── These need a TypeScript build under node_modules.
+# Expected until your project installs one (npm ci); drop the arms if it never will.
+pre-commit tsc gate FIRE: a staged plans/*.mts with a planted TS2322 prints the banner and the error's own code, runs tsc once, exits 0, and records ONE fire
+pre-commit tsc gate FIRE: the record carries the trigger file, the error count and the first error line
+pre-commit tsc gate CLEAN: the same file without the error runs tsc once (the wrapper count, since a clean run is silent) and records nothing
+pre-commit tsc gate tests/-ONLY: the same planted bytes under tests/ never reach tsc (tsc=0) — non-vacuous because the FIRE arm fires on these bytes one directory over
+pre-commit tsc gate ESCAPE: SKIP_TSC_GATE=1 prints the skip line naming the file, runs no tsc, records nothing
+pre-commit tsc gate WORKTREE READ: a staged error whose disk copy is clean runs tsc and is silent — the header's own limitation, measured rather than asserted
+pre-commit tsc gate MISSING TOOLCHAIN: a non-executable node_modules/.bin/tsc is a LOUD skip (never a silent pass), no invocation, no record
+pre-commit tsc gate MUTATION: with the tsc call replaced by ':' the FIRE fixture goes silent and records nothing — the fire arm's green depends on the call
+
+# ── These need plans/*.md files large enough to trip the read guard.
+# Working plans grow as sessions run; these turn green once one passes 50 KB.
+smoke fixture: no plans/*.md over 50 KB — the large-plan arms CANNOT RUN (instrument failure, not a silent guard)
+FIRE read-guard: unbounded Read of an over-band plan → warn
+FIRE read-guard: plan advised window FITS the band (no 'offset=N limit=N' in advice)
+smoke fixture: near-miss copy is empty — the scope-skip control CANNOT fail (instrument failure, not a silent guard)
+smoke fixture: no plans/*.md in the (51200, 57500] band — the in-band arms CANNOT RUN (instrument failure, not a silent guard)
+FIRE read-guard: an in-band plan still warns
+FIRE read-guard: the plan payload scopes session-wide claims
+FIRE read-guard: an over-band plan IS told the read returns a prefix
+
+# ── These need agent and project memory files.
+# At least one skill MEMORY*.md and one file in .claude/project-memory/; they appear as your experts and sessions write memory.
+skill-lint --self-test → exit 0 (MISSING_TRIGGER fixtures pass)
+--heal --dry-run emitted no HEAL VERDICT token
+--heal on a BROKEN router → rc 1
+--heal on a BROKEN router → no ATTENTION token
+pre-commit router arm FIRE → no warn
+agent-memory-brief FIRE → no nudge emitted
+PARSE: agent-memory-brief-warn.sh nudge arm → ONE parseable hookSpecificOutput doc, the agent's own MEMORY.md path survives (verdict='EMPTY' token='.claude/skills/qa-expert/MEMORY.md')
+agent-memory-brief FIRE (another type's path) → silent — predicate is not type-specific
+agent-memory-brief ledger missing haspath/fired fields
+self-test: skill-lint.mjs --self-test FAIL -> skill-lint --self-test: 64 pass / 1 fail
+
+# ── These need a large project-memory tracker.
+# A .claude/project-memory/*.md file over 50 KB; expected until one grows that large.
+smoke fixture: no .claude/project-memory/*.md over 50 KB — the large-tracker arms CANNOT RUN (instrument failure, not a silent guard)
+FIRE full Read of >50KB tracker → warn
+MODEL CHANNEL: warn-large-tracker-read (ARM A) CANNOT RUN — no .claude/project-memory/*.md over 50 KB (instrument failure, not a pass)
+
+# ── These need a package.json and a tests/ folder.
+# Supply them, or drop the arms.
+FIRE on src/lib/no-sibling-test → warn
+PARSE: check-test-exists.sh FIRE arm → ONE parseable hookSpecificOutput doc, the expected-test-path prescription survives (verdict='EMPTY' token='Expected: tests/**/')
+MODEL CHANNEL: check-test-exists reaches STDOUT as additionalContext
+
+# ── These need todo.txt.
+# The tracker the source project keeps at the repository root; supply yours, or drop the arms.
+  ...main() prints PLAN-SYNC WARN for a heading ahead of the clock
+  ...main() folds the clock finding into the stdout verdict line
+
+# ── These need src/types/index.ts.
+# The mail smoke test anchors one message on that path; supply the file, or point the fixture at a file you have.
+session-mail smoke FAILED
+
+# ── These need .claude/meta-corrections-registry.md.
+# A record working sessions write; /wrap appends to it. Expected on a new tree.
+FIRE: SessionStart auto-emits the blindspot prime block (2026-06-09)
+FIRE: --prime --render emits the spotlight header
+FIRE: --prime --render labels the #1 pattern
+FIRE: --prime --render attaches a counter-action to #1
+FIRE: --prime (raw TSV) still works (backward-compat)
+
+# ── These need the git hooks path set.
+# Set core.hooksPath (step 3). The section-filter arm re-runs the suite's core sections and passes only when every
+# core arm passes, so it also stays red while any other core arm is red.
+core.hooksPath='<unset → inert .git/hooks default>' → .githooks/* hooks are DORMANT (pushes silently skip EVERY gate). Fix: 'git config core.hooksPath .githooks' (or re-run 'npm install' — the prepare script wires it).
+section filter: a live selection runs and exits 0
+
+# ── These need more history than one commit.
+# Two session-start arms compare .claude/orchestrator/conventions.md at its last 2 commits; expected until that file has two.
+FIRE: session-start.sh compact + doctrine changed since launch → names the files
+FIRE: session-start.sh clear + doctrine changed since launch → names the files (/clear keeps the launch-time system prompt)
