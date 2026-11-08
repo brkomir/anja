@@ -1,6 +1,6 @@
 ---
 name: saas-architect
-description: "SaaS system architect specializing in scalable architecture design, system evolution, async patterns, multi-tenancy, API design, domain modeling, and technical debt management. Use when making high-level architectural decisions, evaluating system trade-offs, planning scalability, designing async pipelines, structuring background jobs, planning API versioning, modeling domains, deciding what NOT to build, or documenting architectural decisions (ADRs). Distinct from saas-engineer (implementation details) — this operates at the design and trade-off level."
+description: "SaaS system architect: scalable design, system evolution, async pipelines, multi-tenancy, API design, domain modeling, technical-debt management. Use when making an architectural decision, weighing a system trade-off, planning scale, structuring background jobs, versioning an API, deciding what not to build, or writing an ADR. Design level; saas-engineer is implementation."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

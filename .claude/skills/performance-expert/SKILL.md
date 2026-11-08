@@ -6,12 +6,10 @@ applies_when:
     - "next.config.ts"
     - "src/app/**/page.tsx"
 description: >-
-  Web performance and optimization expert for Next.js App Router SaaS applications.
-  Covers Core Web Vitals, bundle analysis, image optimization, caching strategies,
-  server vs client component boundaries, database query performance, connection pooling,
-  AI API latency/cost optimization, and Vercel-specific deployment performance. Use when
-  auditing page speed, reducing bundle size, optimizing database queries, improving
-  TTFB, analyzing AI token costs, or diagnosing performance regressions.
+  Web performance expert for Next.js App Router SaaS: Core Web Vitals, bundle size, image
+  optimization, caching, server and client boundaries, query performance, connection pooling, AI
+  latency and token cost, Vercel deployment. Use when auditing page speed, cutting bundle size,
+  optimizing queries, improving TTFB, analyzing AI token cost, or diagnosing a regression.
 skepticism: medium
 ---
 
@@ -123,7 +121,7 @@ Next.js App Router automatically code-splits per route. But shared components in
 | Dashboard | Dynamic (no cache) | 0 | `dynamic = 'force-dynamic'` |
 | Critique results | Dynamic | 0 | User-specific data |
 | Static assets | Immutable | 1 year | Next.js default for `_next/static` |
-| Images (Supabase) | CDN + signed URL | 1-3 hours | `cacheControl` on upload |
+| Images (object storage) | CDN + signed URL | 1-3 hours | a cache-control header on upload |
 | Thumbnails | Immutable | 1 year | Content-addressed paths |
 | API responses | `stale-while-revalidate` | 60s | Custom headers |
 | Fonts (CJK) | Browser cache | Long | `font-display: swap` + `unicode-range` |
@@ -331,3 +329,9 @@ npx @lhci/cli autorun
 - **saas-architect** — system design, async patterns
 - **prompt-engineer** — AI token cost optimization
 - **web-designer** — image optimization, CLS prevention
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Web performance and optimization expert for Next.js App Router SaaS applications. Covers Core Web Vitals, bundle analysis, image optimization, caching strategies, server vs client component boundaries, database query performance, connection pooling, AI API latency/cost optimization, and Vercel-specific deployment performance. Use when auditing page speed, reducing bundle size, optimizing database queries, improving TTFB, analyzing AI token costs, or diagnosing performance regressions.

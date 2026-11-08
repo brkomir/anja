@@ -47,6 +47,8 @@ Zero missing markers = clean. ⚠️ **The predicate was WIDENED in a `/backlog 
 - `/backlog refine` — walk through current P0/P1/P2 items; prompt for effort/trigger updates
 - `/backlog maintain` — the weekly-cadence umbrella pass: git-verify + truth-up statuses → archive the verified-shipped → propose re-ranks for approval (composes `refine` + `archive` in the one workable order; preserves their propose-vs-write split)
 
+Working on an entry this session? Add `- #N — <live-table row>` under the plan's `## Backlog items`; `/wrap` step 7c.1c archives it when it is DONE (step7-notes § SIGNAL 3) and otherwise writes it a dated line.
+
 ## Process — `/backlog` (default view)
 
 1. Read `BACKLOG.md`

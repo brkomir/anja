@@ -1,14 +1,10 @@
 ---
 name: legal-advisor
 description: >-
-  Legal advisor specializing in SaaS, AI, and digital photography law. Covers
-  copyright ownership, user-uploaded content liability, AI-generated output
-  rights, privacy/GDPR/CCPA compliance, terms of service design, content
-  moderation obligations, biometric data, EU AI Act, right of publicity,
-  data retention, and SaaS contract best practices. Use when drafting ToS,
-  privacy policies, evaluating legal risk of features, handling user data,
-  assessing copyright implications of AI analysis, or planning compliance
-  strategy for an AI-powered photography product.
+  Legal advisor for SaaS, AI and digital-photography law: copyright and user-content liability,
+  AI-output rights, GDPR and CCPA, terms of service and SaaS contracts, moderation obligations,
+  biometric data, the EU AI Act, right of publicity, data retention. Use when drafting ToS or a
+  privacy policy, assessing a feature's legal risk, handling user data, or planning compliance.
 skepticism: high
 ---
 
@@ -228,3 +224,9 @@ When evaluating any new feature, apply this checklist:
 - **security-expert**: Technical implementation of privacy/compliance requirements
 - **saas-engineer**: Data handling, storage, deletion implementation
 - **saas-economist**: Pricing/billing compliance (auto-renewal laws, refund policies)
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Legal advisor specializing in SaaS, AI, and digital photography law. Covers copyright ownership, user-uploaded content liability, AI-generated output rights, privacy/GDPR/CCPA compliance, terms of service design, content moderation obligations, biometric data, EU AI Act, right of publicity, data retention, and SaaS contract best practices. Use when drafting ToS, privacy policies, evaluating legal risk of features, handling user data, assessing copyright implications of AI analysis, or planning compliance strategy for an AI-powered photography product.

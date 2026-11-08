@@ -69,7 +69,7 @@ vi.mock("@/x", async () => {
 
 ### New i18n namespace requires allowlist update (i18n namespace)
 **Trigger:** adding a new top-level key to `messages/en.json` (e.g., `"Critique": {...}`).
-**Action:** `rg -l "pickMessages as pick" src/app/` to locate the 6 allowlists (the `pick(` call sites are multi-line, so a `pick(messages,` pattern matches NOTHING). Update the ones corresponding to surfaces where the namespace is consumed, OR flag `**ORCHESTRATOR I18N ALLOWLIST SWEEP NEEDED**`. Missing allowlist = runtime `MISSING_MESSAGE` on every render.
+**Action:** `rg -l "pickMessages as pick" src/app/` to locate the 10 allowlists (the `pick(` call sites are multi-line, so a `pick(messages,` pattern matches NOTHING). Update the ones corresponding to surfaces where the namespace is consumed, OR flag `**ORCHESTRATOR I18N ALLOWLIST SWEEP NEEDED**`. Missing allowlist = runtime `MISSING_MESSAGE` on every render.
 
 ## Command / shell discipline
 

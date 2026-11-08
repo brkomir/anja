@@ -1,6 +1,6 @@
 ---
 name: frontend-developer
-description: "React/Next.js App Router implementation expert for this project. Covers component architecture, server vs client component decisions, hooks patterns, state management, form handling, optimistic UI, Suspense boundaries, base-ui primitive wrapping, error boundaries, and production-grade React patterns. Use when building or refactoring components, splitting large files, deciding server vs client boundaries, wiring server actions, implementing forms, adding loading/error states, or wrapping base-ui primitives into project UI components."
+description: "React/Next.js App Router implementation expert for this project: component architecture, server vs client boundaries, hooks, state, forms, optimistic UI, Suspense, base-ui wrapping, error boundaries. Use when building or refactoring a component, splitting a large file, wiring a server action, adding loading or error states, or wrapping a base-ui primitive."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

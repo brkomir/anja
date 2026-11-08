@@ -45,7 +45,9 @@ you write (measured 2026-10-14 over 164 outputs of this command: 100% wrote coun
 7. **"How I know" is a bulleted list**, 1 check and its result per line. The 4 checks' verdict
    goes in the answer sentence, never in a card — currency, closure, authority and size are my
    words for my checks, not the owner's.
-8. **An options fork is 1 bullet per option, the recommended one first with its reason attached**;
+8. **An options fork is 1 bullet per option, the recommended one first with its reason attached**; a
+   pros-and-cons ask, about my options or ones the owner names, takes this form with each option's pros, cons
+   and cost on its bullet;
    a table with a cost column only when the content is genuinely tabular — at most 4
    columns, each cell a value or a state and never a sentence (an expansion that put 4
    options in a 3-column table with 60-word cells left the owner asking what it even meant). Each

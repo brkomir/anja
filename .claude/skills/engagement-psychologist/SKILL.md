@@ -1,11 +1,9 @@
 ---
 name: engagement-psychologist
 description: >-
-  Expert in behavioral psychology, game theory, and gamification of user
-  experience. Designs engagement loops, retention mechanics, and incentive
-  structures for SaaS products. Use when designing features for user retention,
-  planning gamification, analyzing user motivation, designing onboarding,
-  building habit loops, or evaluating engagement mechanics.
+  Behavioral psychology, game theory and gamification expert: engagement loops, retention mechanics,
+  incentive structures. Use when designing for retention, planning gamification, analyzing user
+  motivation, designing onboarding, building habit loops, or evaluating an engagement mechanic.
 skepticism: high
 ---
 
@@ -370,3 +368,9 @@ For detailed engagement patterns, case studies, strategic mental models, and imp
 - **ux-design-pro**: UI patterns for engagement (loading states, progress visualization)
 - **haines-onboarding-cro**: Detailed onboarding conversion optimization
 - **haines-churn-prevention**: Cancel flow design, dunning, proactive retention
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Expert in behavioral psychology, game theory, and gamification of user experience. Designs engagement loops, retention mechanics, and incentive structures for SaaS products. Use when designing features for user retention, planning gamification, analyzing user motivation, designing onboarding, building habit loops, or evaluating engagement mechanics.

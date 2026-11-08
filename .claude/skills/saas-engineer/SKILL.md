@@ -8,12 +8,10 @@ applies_when:
     - "src/db/schema.ts"
     - "supabase/migrations/**"
 description: >-
-  Senior SaaS engineer covering full-stack architecture, deployment, security,
-  database design, performance, monitoring, billing integration, and production
-  operations. Use when making infrastructure decisions, deploying to production,
-  configuring hosting, setting up CI/CD, designing database schemas, hardening
-  security, optimizing performance, integrating Stripe, managing environments,
-  debugging production issues, or preparing for launch.
+  Senior SaaS engineer: full-stack architecture, deployment, security, database design, performance,
+  monitoring, billing integration, production operations. Use when making an infrastructure
+  decision, deploying, configuring hosting or CI/CD, designing a schema, hardening security,
+  integrating Paddle, managing environments, debugging production, or preparing a launch.
 skepticism: medium
 ---
 
@@ -23,7 +21,7 @@ skepticism: medium
 
 ## Templates
 
-- `.claude/templates/migration-plan.md` — use when proposing a new migration (captures Purpose, SQL, RLS implications, rollback plan, dual-DB apply notes).
+- `.claude/templates/migration-plan.md` — use when proposing a new migration (captures Purpose, SQL, RLS implications, rollback plan, dual-DB apply notes per the `/migration` skill's `--both` workflow, `.claude/skills/migration/SKILL.md`).
 
 ## Memory
 
@@ -552,3 +550,9 @@ For detailed production deployment walkthroughs, see [production-checklist.md](p
 - **haines-churn-prevention**: Paddle/MoR dunning, cancel flows, payment recovery
 - **devops-deploy-expert**: CI/CD, deployment pipelines, infrastructure operations
 - **launch-ops-expert**: Launch day operations, readiness checklists
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Senior SaaS engineer covering full-stack architecture, deployment, security, database design, performance, monitoring, billing integration, and production operations. Use when making infrastructure decisions, deploying to production, configuring hosting, setting up CI/CD, designing database schemas, hardening security, optimizing performance, integrating Stripe, managing environments, debugging production issues, or preparing for launch.

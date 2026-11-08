@@ -162,7 +162,17 @@ PUSHBACK_REGEX = re.compile(
     # negative-control arm in cmd_self_test, because that property is the whole safety case.
     # HONEST RECALL: 5 of the 6 measured instances. The miss is a misspelled form of the same
     # question — a typo, and a pattern stretched to catch it would be fitted to one keystroke.
-    r"what does (?:this|that|it|[\"'][^\"']{1,24}[\"']) (?:actually |even |really )?mean"    # (h)
+    r"what does (?:this|that|it|[\"'][^\"']{1,24}[\"']) (?:actually |even |really )?mean|"   # (h)
+    # v0.10 Cat I — THE STEP-ASK (2026-11-01).
+    # The owner was handed a step with no click path and had to ask how to do it. Corpus count
+    # before adding (all 357 transcripts, owner records under the 1500-char gate): 19 records in
+    # 14 sessions carry `how do i do this|it` or `what do i do here`; 18 are this class, 1 is an
+    # echo (a /meta learn-session prompt quoting the owner); the pre-v0.10 regex flagged 1 of
+    # the 19. `how do i do that` occurs 0 times, so it is left out. The 71 longer hits are all
+    # compaction summaries, peer mail and skill pastes, silent behind the 1500 gate.
+    # Word order is the FP guard, as for Cat H: mention-form reads "how to do this" /
+    # "what to do here", neither of which contains "do i do". Pinned by I-NEG arms.
+    r"how do i do (?:this|it)|what do i do here"                                               # (i)
     r")\b",
     re.I
 )
@@ -175,6 +185,16 @@ LEGIBILITY_ASK_REGEX = re.compile(
     r"\bwhat does (?:this|that|it|[\"'][^\"']{1,24}[\"']) (?:actually |even |really )?mean",
     re.I,
 )
+
+# The Cat I idiom on its own, for the same two narrow exemptions Cat H needs: the bare ask
+# ("how do i do this?" is 17 characters, "what do i do here?" 18) sits under the 20-char floor,
+# and the owner's commonest form of the second one is a screenshot plus the question
+# ("[Image #18] what do i do here?"), which extract_user_text() drops as '['-leading system
+# content. Both exemptions are scoped to this idiom only: the 361 image-prefixed owner
+# messages in the corpus are NOT opened to the whole vocabulary (71 of them would newly flag,
+# an intake change nobody has measured the precision of).
+STEP_ASK_REGEX = re.compile(r"\b(?:how do i do (?:this|it)|what do i do here)\b", re.I)
+IMAGE_PREFIX = re.compile(r"^(?:\[Image #\d+\]\s*)+")
 
 # Header markers that flag a skill-spec / doc paste rather than owner pushback (FP guard).
 HEADER_MARKERS = [
@@ -205,11 +225,27 @@ def reaction_tail(text):
     tail = parts[-1].strip()
     return tail if 0 < len(tail) <= 400 else None
 
+SIDE_AGENT_NOTE_HEADER = "Here is a note offered by a side agent:"
+
+
+def owner_words_of_side_agent_note(text):
+    """A pasted side-agent note is the NOTE's words plus, at most, a short line of his own
+    ("check these claims"). The note's prose routinely carries "isn't" / "you said", which
+    scored as his pushback (4 of 14 entries in the 2026-10-27 maintain-run tail). Keep only the lines that are NOT
+    the header and NOT `>`-quoted; text without the header passes through unchanged."""
+    if not text or not text.lstrip().startswith(SIDE_AGENT_NOTE_HEADER):
+        return text
+    body = text.lstrip()[len(SIDE_AGENT_NOTE_HEADER):]
+    own = [ln for ln in body.split("\n") if ln.strip() and not ln.lstrip().startswith(">")]
+    return "\n".join(own).strip()
+
+
 def pushback_signals(text):
     """Core per-message detection shared by scan_session() and --self-test. Returns up to 5
     sorted unique pushback signal strings ([] if none). Encapsulates length-gating, header
     FP-skip, quote-and-react reaction-tail extraction, and the PUSHBACK_REGEX scan so the
     detection logic has exactly ONE home (the v0.7 regression-guard surface)."""
+    text = owner_words_of_side_agent_note(text)
     if not text:
         return []
     # ⛔ THE 20-CHAR FLOOR BELOW SILENTLY CANCELS THE HIGHEST-SIGNAL MESSAGE IN THIS CORPUS.
@@ -224,7 +260,7 @@ def pushback_signals(text):
     # headline case, in a different file.
     # The floor exists to drop "ok" / "yes" / "sure". A complete interrogative idiom is not that:
     # it carries its full meaning at 20 characters, so the floor does not apply to it.
-    if len(text) <= 20 and not LEGIBILITY_ASK_REGEX.search(text):
+    if len(text) <= 20 and not (LEGIBILITY_ASK_REGEX.search(text) or STEP_ASK_REGEX.search(text)):
         return []
     react = reaction_tail(text)
     if len(text) >= 1500:
@@ -257,8 +293,14 @@ def extract_user_text(msg):
     # Slash-command wrapping: actual user text appears after "ARGUMENTS:"
     if 'ARGUMENTS:' in text:
         text = text.split('ARGUMENTS:', 1)[1].strip()
-    # Skip system content
-    if text.startswith('<') or text.startswith('['):
+    # Skip system content — except a screenshot-plus-step-ask (Cat I, see STEP_ASK_REGEX):
+    # "[Image #18] what do i do here?" is owner speech, and the '[' test read it as system.
+    if text.startswith('['):
+        rest = IMAGE_PREFIX.sub('', text, count=1).strip()
+        if rest != text.strip() and STEP_ASK_REGEX.search(rest) and not rest.startswith(('<', '[')):
+            return rest
+        return None
+    if text.startswith('<'):
         return None
     if 'system-reminder' in text[:200] or 'command-name' in text[:200]:
         return None
@@ -1165,8 +1207,8 @@ def _rule_repeats(registry_text, known=()):
     `_rule_repeat_rows` counts from the rule file's creation date when it has one. This counts MENTIONS, not proven breaks: the registry has
     a structured `**Violated existing rule:**` field, but it takes an L# and 4 entries use it,
     while the rule names sit in free text.
-    `known` = bare rule names (`use_available_tooling`): an entry naming one WITHOUT the
-    `feedback_` prefix counts for `feedback_<name>` too (43 entries across 24 rules did). A truncated name (`feedback_stage_decisions`) still
+    `known` = bare rule names (`prefer_dry_runs`): an entry naming one WITHOUT the
+    `feedback_` prefix counts for `feedback_<name>` too (43 entries across 24 rules did). A truncated name (`feedback_ask_first`) still
     counts as its own row."""
     bare_res = [(f'feedback_{b}', re.compile(rf'(?<![a-z0-9_])(?:feedback_)?{re.escape(b)}(?![a-z0-9_])'))
                 for b in known]
@@ -1331,6 +1373,32 @@ def cmd_self_test():
          "the owner asked what this meant, so I unpacked the sentence", False),
         ("H-NEG-2 MENTION not use: indirect-question word order must NOT fire",
          "I could not tell what this means without re-reading the session", False),
+        # === v0.10 Cat I — the step-ask. Arms I-1..I-4 are modelled on real utterances from the corpus.
+        ("I-1 bare step-ask under the 20-char floor (20 chars)",
+         "so how do i do this?", True),
+        ("I-2 quote-and-react step-ask",
+         '"  2. You enable the setting in the dashboard." - how do i do this?', True),
+        ("I-3 bare 'what do i do here' under the floor (20 chars)",
+         "so what do i do here", True),
+        ("I-4 'it' variant",
+         '"you can turn the option on and rerun the check whenever you like." - how do i do it?', True),
+        # ⛔ The word-order FP guard is the safety case, as for Cat H: if either of these fires,
+        # Cat I has become a bare-token widening and must be reverted, not widened further.
+        ("I-NEG-1 MENTION not use: 'how to do this' must NOT fire",
+         "I was not sure how to do this step, so I looked up the dashboard path first", False),
+        ("I-NEG-2 MENTION not use: 'what to do here' must NOT fire",
+         "the owner asked what to do here and I gave him the click path", False),
+        # Side-agent notes: only his own line after the quoted block is his speech.
+        ("SA-NEG pasted side-agent note's own words must NOT fire",
+         "Here is a note offered by a side agent:\n\n> Heads up · The index isn't right, you said "
+         "it was fixed but it wasn't.\n> - more detail here about the problem\n\ncheck these claims ]",
+         False),
+        ("SA-POS his own pushback after a note still fires",
+         "Here is a note offered by a side agent:\n\n> Heads up · some neutral status line about "
+         "the build.\n\nthat's wrong, you said this was already fixed yesterday", True),
+        ("SA-PASS owner words BEFORE the header are his own and still fire",
+         "that's wrong, you said it was fixed yesterday\n\nHere is a note offered by a side agent:\n\n"
+         "> Heads up · some neutral status line about the build.", True),
     ]
     failures = 0
     print("=== meta-corrections-scan --self-test (v0.7 detection regression) ===\n")
@@ -1445,6 +1513,46 @@ def cmd_self_test():
             print(f"  [{'PASS' if _ok else 'FAIL'}] {_lbl}")
     finally:
         os.unlink(_fx)
+
+    # ---- v0.10 Cat I RECORD-LEVEL arms: the screenshot-plus-step-ask. A text-level case
+    # cannot reach this — the drop happened in extract_user_text(), before pushback_signals()
+    # ever saw the text, so I-3 passing alone would have looked like the idiom worked.
+    _img_recs = [
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "text", "text": "[Image #18] so what do i do here?"}]}},       # MUST admit
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "text", "text": "[Image #3] but this one looks fine"}]}},     # MUST NOT: carve-out is Cat I only
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "text", "text": "[Request interrupted by user] how do i do this?"}]}},  # MUST NOT: not an image prefix
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "text", "text": "[Image #2] <system-reminder>how do i do this?</system-reminder>"}]}},  # MUST NOT: image prefix then system content
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "text", "text": "<local-command-stdout>how do i do this?</local-command-stdout>"}]}},  # MUST NOT: '<'-leading system content
+    ]
+    with _tf.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as _fh:
+        for _r in _img_recs:
+            _fh.write(json.dumps(_r) + "\n")
+        _fxi = _fh.name
+    try:
+        _ev = scan_session(_fxi)
+        _idx = [e["idx"] for e in _ev]
+        for _lbl, _ok in [
+            ("I-REC-1 image-prefixed step-ask IS admitted ('[Image #N]' then the idiom)",
+             0 in _idx),
+            ("I-REC-NEG-1 image-prefixed NON-step-ask stays dropped (carve-out does not open the vocabulary)",
+             1 not in _idx),
+            ("I-REC-NEG-2 a non-image '[' prefix stays dropped (system content)",
+             2 not in _idx),
+            ("I-REC-NEG-3 an image prefix followed by '<' system content stays dropped",
+             3 not in _idx),
+            ("I-REC-NEG-4 '<'-leading system content stays dropped even when it holds a step-ask",
+             4 not in _idx),
+        ]:
+            if not _ok:
+                failures += 1
+            print(f"  [{'PASS' if _ok else 'FAIL'}] {_lbl}")
+    finally:
+        os.unlink(_fxi)
 
     # ── cmd_dig RESOLVE-SIDE ARM (2026-09-08) ────────────────────────────────────────────
     # The four arms above test INTAKE (scan_session). They all passed while --dig, the
@@ -1592,7 +1700,7 @@ def cmd_self_test():
          and "feedback_use_tools_more" not in _rule_repeats("## 2026-08-01 aaaa — a\nuse_tools_more\n",
                                                             known=["use_tool"])
          and _rule_repeats("## 2026-08-01 aaaa — a\nuse_tools_more\n", known=["use_tool"]) == {}
-         # the real prefix pair is model_routing / model_routing_policy: an underscore continuation
+         # a real prefix pair (one rule's name the start of another's): an underscore continuation
          # and an underscore lead are longer names too
          and _rule_repeats("## 2026-08-01 aaaa — a\nuse_tool_more and x_use_tool\n", known=["use_tool"]) == {}),
         ("rule-repeats: entries are date-sorted whatever the file order",

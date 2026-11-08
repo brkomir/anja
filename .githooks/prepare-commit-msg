@@ -4,12 +4,15 @@
 # also for --no-verify, git revert, git cherry-pick, git merge and each pick of a default (merge-backend) git rebase,
 # and a non-zero exit
 # stops each of them (measured on git 2.50.1, 2026-10-28). Same gate, beside this hook.
-# THE ONLY SITE (the check first went into pre-commit and moved here because pre-commit misses those routes;
-# pre-commit carries no copy). The gate is the one beside
+# git am and git rebase --apply never run this hook; .githooks/pre-applypatch runs this file for them.
+# TWO HOOK SITES, ONE BODY: this file (the check first went into pre-commit and moved here because pre-commit
+# misses those routes; pre-commit carries no copy) and pre-applypatch, which runs this file and was added later as
+# the second site. The gate is the one beside
 # this hook, not the committing checkout's: core.hooksPath points every worktree here, so a worktree on an older
 # commit is checked by the current gate. BLOCK-MODE, no escape variable. Still open, stated not closed: whatever
-# writes a commit or moves a branch without git's commit path (git commit-tree / update-ref; git am and git rebase
-# --apply, which never run this hook; a fast-forward merge, pull or cherry-pick --ff; reset), and any run with
+# writes a commit or moves a branch without git's commit path (git commit-tree / update-ref; git am --no-verify,
+# which skips pre-applypatch; a fast-forward
+# merge, pull, rebase or cherry-pick --ff; reset), and any run with
 # core.hooksPath overridden. private-index-commit.sh uses commit-tree and runs
 # the gate itself, as safe-commit.sh does before staging.
 set -euo pipefail

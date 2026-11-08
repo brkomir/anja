@@ -34,17 +34,28 @@ End of every session, or when the user says "let's wrap up" / "that's it for now
 
 ⛔ **THE BAND IS ×3-×5 (6-10 MB) AND THE DEFAULT IS THE TOP OF IT — ×5 / 10 MB. TAKE THE LARGEST MULTIPLIER IN THE BAND; drop to a smaller one ONLY when it yields the SAME N.** *(📁 the rest of this paragraph moved, with the copy's edits, to [`references/modes-and-light-history.md`](references/modes-and-light-history.md) § Light mode — the ×3 attribution error — provenance only.)*
 
-**Memefy mode (`/wrap --memefy`).** The only way Step 10 runs (in the source project, a write-up suggestion this copy does not ship); it combines with `--checkpoint` and `--light`. Without it Step 10 is skipped in silence.
+**Memefy mode (`/wrap --memefy`).** The only way Step 10 runs (in the source project, a write-up suggestion this copy does not ship); it combines with `--checkpoint` and `--light`. Without it Step 10 is skipped in silence. *(Superseded: Step 10 runs on every wrap; `--memefy` changes nothing.)*
 
 > 📁 **Moved, with the copy's edits, to [`references/modes-and-light-history.md`](references/modes-and-light-history.md) § Light mode — who picked the multiplier, and why it is a flag** — READ IT before executing this step.
 
-⚠️ **STATE THE TRADE IN THE WRAP OUTPUT WHENEVER `--light` IS ACTIVE**, one line: past ~2.4 MB an agent cannot context-read its slice (window arithmetic), so coverage rests entirely on its grep + windowed reads. That cut is real and UNMEASURED — say so rather than reporting a light wrap as if it were a full one.
+⚠️ **STATE THE TRADE IN THE WRAP OUTPUT WHENEVER `--light` IS ACTIVE**, one line: a helper takes in about 0.1 MB at either slice size, so both modes sample their slice and light reaches less of it: at most ~8% of tool-result and ~17% of tool-call text on the one window measured, against ~38% and ~67% at ~2 MB. That cut is real — say so rather than reporting a light wrap as if it were a full one.
 
 **The bigger lever is NOT the multiplier — scope to the last checkpoint first (below), which on a re-wrapped session saves far more than the slice size does.** Measured on the session that prompted this flag: whole transcript 83.5 MB → **42 slices**; since the last `/wrap` (12.9 MB) → **7**; with `--light` at ×5 on that window → **2**. Scoping cut 83%, the multiplier cut the remaining 71%.
 
 > 📁 **Moved, with the copy's edits, to [`references/modes-and-light-history.md`](references/modes-and-light-history.md) § Light mode — the checkpoint grep must exclude the current invocation** — READ IT before executing this step.
 
 **Sonnet mode (`/wrap --sonnet`)** lets the operator choose Sonnet or Opus for the deep pass. ONE thing changes: the Step 1b-DEEP slice agents dispatch with `model: "sonnet"` instead of the default `model: "opus"` (mechanics in `/deep-pass` § MODEL ROUTING, including the served-model read-back and the stop: one slice first, and any launch serving anything but `claude-sonnet-5-5` ends dispatching; the wrap then continues with the undispatched region declared unscanned and one question to the owner). Every other step, every inline check and every non-slice agent is unchanged. **State it in the wrap output, one line, with the served model per slice** — or, when Step 1b-DEEP did not fire, as *"--sonnet: no deep pass fired, no slice ran"* (`--sonnet` then changes nothing; `--light` does NOT skip the deep pass, it only enlarges the slices): on 3 paired slices (2026-09-29) Sonnet 5.5 found about half what Opus 5.5 found (3 new verified items against 6), but that Sonnet arm ran at effort medium against Opus at high (read off the agents' records 2026-10-20), so it settles nothing; at matched effort and an identical brief (high on both, 2026-10-20) 4 paired slices showed no such gap: Opus found clearly more on 1 slice and somewhat more on 1, the two were level on 2, and Sonnet found items Opus missed in every pair (an earlier read of the same 4 slices with unequal briefs had shown them level); 38 unpaired slices used about the same tokens (N=4, one transcript, one unblinded scorer) — and on that result both models are a preference: neither model is the quality choice, so `--sonnet` is a preference to make on any wrap (Sonnet is cheaper per token; Opus finds modestly more; each finds items the other misses), and any later comparison runs both models on the same brief at the same explicit effort. Without the flag the slices run on Opus, whatever model the session itself is on.
+
+### Estimate mode — moved to `/deep-pass estimate` (2026-10-29)
+
+A `/wrap --estimate` run loaded the whole wrap core (~45,400 characters) to print ~1,500, so the mode moved to `/deep-pass estimate`. Its full text is `.claude/skills/deep-pass/references/estimate.md`.
+
+### Four spans moved here from the core the same day to pay for that line (with the copy's edits; every directive stayed in the core)
+
+- From Light mode: *"Per-agent spend ~89-108k tokens, FLAT in slice size."* — the measured per-slice ranges now live in `scripts/deep-pass-estimate.mjs` (TOKENS, with the runs they came from).
+- From Light mode: *"(the checkpoint grep must exclude the current invocation)"* — the qualifier on READ `references/modes-and-light-history.md` first; `references/modes-and-light-history.md` § "Light mode — the checkpoint grep must exclude the current invocation" carries the rule, and `/deep-pass`'s walk implements it (`marks[:-1]`, `deep-pass/references/checkpoint-derivation.md`).
+- From Sonnet mode: *both models are a preference, not a quality call*; a later comparison runs both on one brief at one explicit effort. — that comparison ran 2026-10-20 and the question is closed on it.
+- From Memefy mode: *"Without it Step 10 is skipped in silence."* — Step 10's own text says the same. *(Superseded: Step 10 runs on every wrap; `--memefy` changes nothing.)*
 
 ## The modes COMPOSE — in full — from `SKILL.md` § The modes COMPOSE, and all three are FLAGS — `/wrap --checkpoint --light --sonnet`, lines 48–65
 
@@ -57,6 +68,8 @@ Step 1b-DEEP target. Sonnet governs which MODEL runs those slices. None reads an
 **And the combination is the NATURAL one for the case each was built for:** light exists because a
 long session is expensive to wrap, and a long session is exactly what gets checkpointed rather than
 closed.
+
+*(Superseded: the CHECKPOINT state is retired. Step 0 stamps `wrapping --checkpoint` (WRAPPING while the wrap runs) and the completion stamp `wrapped --checkpoint`, the wrap's last act before the Summary, on "wrap complete: yes", clears the markers so the seat reads ACTIVE — never WRAPPED, never CHECKPOINT. The "framing only; the marker is 'wrapped' either way" clause in § Checkpoint mode above is superseded the same way. Record: `step0-gate-notes.md` § Checkpoint flag.)*
 
 > 📁 **Moved, with the copy's edits, to [`references/modes-and-light-history.md`](references/modes-and-light-history.md) § Modes compose — spelling alignment and the per-line sweep boundary** — READ IT before executing this step.
 

@@ -1,6 +1,6 @@
 ---
 name: haines-signup-flow-cro
-description: When the user wants to optimize signup, registration, account creation, or trial activation flows. Also use when the user mentions "signup conversions," "registration friction," "signup form optimization," "free trial signup," "reduce signup dropoff," "account creation flow," "people aren't signing up," "signup abandonment," "trial conversion rate," "nobody completes registration," "too many steps to sign up," or "simplify our signup." Use this whenever the user has a signup or registration flow that isn't performing. For post-signup onboarding, see haines-onboarding-cro.
+description: "When the user wants to optimize signup, registration, account creation, or trial activation flows. Also use when the user mentions signup conversions, registration friction, signup form optimization, reduce signup dropoff, or simplify signup. For post-signup onboarding, see haines-onboarding-cro."
 metadata:
   version: 1.1.0
 skepticism: medium
@@ -388,3 +388,9 @@ Organized by:
 
 - **haines-onboarding-cro**: For optimizing what happens after signup
 - **haines-page-cro**: For the landing page leading to signup
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+When the user wants to optimize signup, registration, account creation, or trial activation flows. Also use when the user mentions "signup conversions," "registration friction," "signup form optimization," "free trial signup," "reduce signup dropoff," "account creation flow," "people aren't signing up," "signup abandonment," "trial conversion rate," "nobody completes registration," "too many steps to sign up," or "simplify our signup." Use this whenever the user has a signup or registration flow that isn't performing. For post-signup onboarding, see haines-onboarding-cro.

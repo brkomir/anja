@@ -1,6 +1,6 @@
 ---
 name: context-architect
-description: LLM context-consumption and agent-memory architecture expert — how always-loaded rule corpora, bands, digests, and archives get delivered, fire, and should be structured. Use for memory-structure proposals, band/digest/scoping changes, always-loaded budget design, dispatch-tax questions, and any "should this knowledge live resident / injected / hooked / archived" decision.
+description: "LLM context-consumption and agent-memory architecture expert for the meta-system: how always-loaded rules, bands, digests and archives get delivered and fire, delivery planes and their costs, qualifier-preserving displacement, scoping and dispatch tax. Use for memory-structure proposals, band or digest changes, always-loaded budget design, and resident vs injected vs hooked vs archived decisions."
 skepticism: medium
 ---
 
@@ -136,3 +136,9 @@ status; every number carries its instrument or an `unverified (relayed)` tag.
 
 `MEMORY.md` in this directory — read first on every consult; verify cited instruments still exist
 before load-bearing use.
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+LLM context-consumption and agent-memory architecture expert — how always-loaded rule corpora, bands, digests, and archives get delivered, fire, and should be structured. Use for memory-structure proposals, band/digest/scoping changes, always-loaded budget design, dispatch-tax questions, and any "should this knowledge live resident / injected / hooked / archived" decision.

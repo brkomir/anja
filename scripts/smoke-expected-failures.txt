@@ -155,6 +155,12 @@ lint-verdict: the no-merge-base branch does not fall back — the gate is OPEN o
 MODEL CHANNEL: check-memory-budget ARM 3b (band ENTRY >400 B) reaches STDOUT as additionalContext
 MODEL CHANNEL: check-memory-budget ARM 3 (band per-file pin) reaches STDOUT as additionalContext
 
+# ── These need band pins for your own rules files.
+# .claude/band-pins.json ships the source project's file sizes, and a copied rules file sits below its pin, so the
+# arm's small appends never cross it and the hook stays silent. Once the rules files are yours, run
+# `bash .claude/hooks/check-memory-budget.sh --refresh-pins` to pin their own sizes.
+MODEL CHANNEL: band multi-fire emits EXACTLY ONE parseable doc
+
 # ── These drive .claude/rules/supabase.md, the source project's database rules.
 # It expects a hook to name that file when a session creates a file in the database folder. Supply your own, or drop the arm.
 FIRE: write-scope-inject.sh names the supabase rules for a NEW src/db file
@@ -196,7 +202,7 @@ agent-memory-brief FIRE → no nudge emitted
 PARSE: agent-memory-brief-warn.sh nudge arm → ONE parseable hookSpecificOutput doc, the agent's own MEMORY.md path survives (verdict='EMPTY' token='.claude/skills/qa-expert/MEMORY.md')
 agent-memory-brief FIRE (another type's path) → silent — predicate is not type-specific
 agent-memory-brief ledger missing haspath/fired fields
-self-test: skill-lint.mjs --self-test FAIL -> skill-lint --self-test: 64 pass / 1 fail
+self-test: skill-lint.mjs --self-test FAIL -> skill-lint --self-test: 73 pass / 1 fail
 
 # ── These need a large project-memory tracker.
 # A .claude/project-memory/*.md file over 50 KB; expected until one grows that large.
@@ -234,6 +240,10 @@ core.hooksPath='<unset → inert .git/hooks default>' → .githooks/* hooks are 
 section filter: a live selection runs and exits 0
 
 # ── These need more history than one commit.
-# Two session-start arms compare .claude/orchestrator/conventions.md at its last 2 commits; expected until that file has two.
+# Five session-start arms (after a compaction, after a /clear, and three resume cases) compare
+# .claude/orchestrator/conventions.md at its last 2 commits; expected until that file has two.
 FIRE: session-start.sh compact + doctrine changed since launch → names the files
 FIRE: session-start.sh clear + doctrine changed since launch → names the files (/clear keeps the launch-time system prompt)
+FIRE: session-start.sh resume of a conversation recorded at an older commit, relaunched at HEAD → names the files
+FIRE: session-start.sh a second resume of the conversation recorded at an older commit → still names the files (a resume never rewrites the record)
+FIRE: session-start.sh resume after a /clear recorded at an older commit → names the RECORDED commit

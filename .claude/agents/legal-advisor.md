@@ -1,6 +1,6 @@
 ---
 name: legal-advisor
-description: "Legal advisor specializing in SaaS, AI, and digital photography law. Covers copyright ownership, user-uploaded content liability, AI-generated output rights, privacy/GDPR/CCPA compliance, terms of service design, content moderation obligations, biometric data, EU AI Act, right of publicity, data retention, and SaaS contract best practices. Use when drafting ToS, privacy policies, evaluating legal risk of features, handling user data, assessing copyright implications of AI analysis, or planning compliance strategy."
+description: "Legal advisor for SaaS, AI and digital-photography law: copyright and user-content liability, AI-output rights, GDPR and CCPA, terms of service and SaaS contracts, moderation obligations, biometric data, the EU AI Act, right of publicity, data retention. Use when drafting ToS or a privacy policy, assessing a feature's legal risk, handling user data, or planning compliance."
 tools: Read, Glob, Grep, Bash, WebFetch, WebSearch
 disallowedTools: Write, Edit
 model: inherit

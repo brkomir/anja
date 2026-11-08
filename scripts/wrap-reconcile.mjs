@@ -967,6 +967,29 @@ function wrapSubSkillGaps(logText, sessionId) {
     : WRAP_SUBSKILLS.filter(([, is]) => !recs.some((r) => at(r) >= since && is(r))).map(([name]) => name);
   return { since: since == null ? null : new Date(since).toISOString(), checkpoint: last ? isCheckpointWrap(last.args) : null, missing, unparsed, heads, mine };
 }
+// Step 0 lifecycle probe body: module scope, so the self-test drives the
+// function the probe calls, against the state dir it is handed (FF_STATE_DIR when set, else .claude/state: the same
+// smoke-isolation override session-lifecycle.py honours). Branch order restates WRAPPING-before-WRAPPED on purpose: a
+// standing wrapping marker is THIS wrap; a wrapped marker alone is either a completion stamp that ran
+// before this reconcile (out of order) or a PRIOR wrap's, and its age is the discriminator.
+function step0Lifecycle(stateDir, shortSid, nowSec = Date.now() / 1000) {
+  const notes = [], findings = [];
+  if (!shortSid) return { present: null, notes, findings };
+  const wrapping = join(stateDir, `session-wrapping-${shortSid}`);
+  const wrapped = join(stateDir, `session-wrapped-${shortSid}`);
+  const present = existsSync(wrapping);
+  if (present) {
+    const mode = (readFileSync(wrapping, "utf8").trim().split(/\s+/)[2] === "checkpoint") ? "checkpoint" : "wrap";
+    notes.push(`⏳ COMPLETION STAMP OWED (open item, not a finding): this session reads WRAPPING until the completion stamp after this gate, before the summary — ${mode === "checkpoint" ? "python3 scripts/session-lifecycle.py wrapped --checkpoint (the seat then reads ACTIVE)" : "python3 scripts/session-lifecycle.py wrapped (the seat then reads WRAPPED and wakes a peer on mail-await --peer-done)"}. Stamp it ONLY on "wrap complete: yes"; a "no" leaves WRAPPING standing and the summary says so.`);
+  } else if (existsSync(wrapped)) {
+    const epoch = Number(readFileSync(wrapped, "utf8").trim().split(/\s+/)[1]);
+    const age = Number.isFinite(epoch) && epoch > 0 ? `${Math.round((nowSec - epoch) / 60)} min ago` : "undated";
+    findings.push(`⚠️  STEP 0 NOT STAMPED: no .claude/state/session-wrapping-${shortSid}, but session-wrapped-${shortSid} exists (stamped ${age}). Either this wrap's completion stamp already ran — then this reconcile ran out of order (Step 11 precedes the completion stamp) — or Step 0 skipped \`wrapping\` and that is a PRIOR wrap's marker: if the wrap is still running, run python3 scripts/session-lifecycle.py wrapping now.`);
+  } else {
+    findings.push(`⚠️  STEP 0 NOT STAMPED: no .claude/state/session-wrapping-${shortSid}. Peers read this seat as ACTIVE instead of WRAPPING (mid-wrap). Run: python3 scripts/session-lifecycle.py wrapping (checkpoint mode: wrapping --checkpoint)`);
+  }
+  return { present, notes, findings };
+}
 
 // ── SELF-TEST (deterministic; proves the content-match + norm) ──
 if (args.includes("--self-test")) {
@@ -1743,6 +1766,40 @@ if (args.includes("--self-test")) {
     transcriptCompacted([JSON.stringify({ type: "user", isMeta: true, message: { content: 'run "/compact" — continued from a previous conversation <<autonomous-loop' } })]) === false
     && transcriptCompacted([JSON.stringify({ type: "user", isCompactSummary: true, message: { content: "x" } })]) === true
     && transcriptCompacted([JSON.stringify({ type: "system", subtype: "compact_boundary" })]) === true);
+  // STEP 0 LIFECYCLE: one fixture per branch of the probe body, in a temp state dir.
+  {
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const d = mkdtempSync(join(tmpdir(), "wr-step0-"));
+    try {
+      const now = 1_800_000_000;
+      writeFileSync(join(d, "session-wrapping-aaaa0001"), `deadbeef ${now} wrap\n`);
+      const w = step0Lifecycle(d, "aaaa0001", now);
+      t("step-0: a plain wrapping marker → present, a note owing `wrapped`, no finding",
+        w.present === true && w.findings.length === 0 && w.notes.length === 1
+        && w.notes[0].includes("session-lifecycle.py wrapped (the seat then reads WRAPPED") && !w.notes[0].includes("wrapped --checkpoint"));
+      writeFileSync(join(d, "session-wrapping-aaaa0002"), `deadbeef ${now} checkpoint\n`);
+      const c = step0Lifecycle(d, "aaaa0002", now);
+      t("step-0: a checkpoint wrapping marker → the note names `wrapped --checkpoint` (reads ACTIVE)",
+        c.present === true && c.findings.length === 0 && c.notes.length === 1 && c.notes[0].includes("wrapped --checkpoint (the seat then reads ACTIVE)"));
+      writeFileSync(join(d, "session-wrapped-aaaa0003"), `deadbeef ${now - 1800} wrap\n`);
+      const o = step0Lifecycle(d, "aaaa0003", now);
+      t("step-0: a wrapped marker alone → not present, the out-of-order finding with the marker's age",
+        o.present === false && o.notes.length === 0 && o.findings.length === 1 && o.findings[0].includes("session-wrapped-aaaa0003 exists (stamped 30 min ago)"));
+      const n = step0Lifecycle(d, "aaaa0004", now);
+      t("step-0: neither marker → not present, the NOT STAMPED finding naming `wrapping`",
+        n.present === false && n.notes.length === 0 && n.findings.length === 1
+        && n.findings[0].includes("Peers read this seat as ACTIVE instead of WRAPPING") && !n.findings[0].includes("session-wrapped-"));
+      t("step-0: no session id → no verdict (null), nothing emitted", step0Lifecycle(d, "", now).present === null);
+      writeFileSync(join(d, "session-wrapping-aaaa0005"), `deadbeef ${now} wrap\n`);
+      writeFileSync(join(d, "session-wrapped-aaaa0005"), `deadbeef ${now - 7200} wrap\n`);
+      const b = step0Lifecycle(d, "aaaa0005", now);
+      t("step-0: a wrapping marker beside a PRIOR wrap's wrapped marker → present, the note, no finding (WRAPPING is read first)",
+        b.present === true && b.findings.length === 0 && b.notes.length === 1);
+      t("step-0: the probe calls step0Lifecycle with FF_STATE_DIR before the repo state dir, routes notes/findings, returns present",
+        /^  const r = step0Lifecycle\(process\.env\.FF_STATE_DIR \|\| join\(REPO_ROOT, "\.claude\/state"\), shortSid\);\n  notes\.push\(\.\.\.r\.notes\); findings\.push\(\.\.\.r\.findings\);\n  return r\.present;$/m.test(readFileSync(fileURLToPath(import.meta.url), "utf8")));
+    } finally { rmSync(d, { recursive: true, force: true }); }
+  }
   console.log(ok ? "\nself-test: ALL PASS" : "\nself-test: FAILURES");
   process.exit(ok ? 0 : 1);
 }
@@ -2307,14 +2364,16 @@ const smoke = { skip: smokeSkippedProbes(sid, process.env.WRAP_RECONCILE_SMOKE_S
 const probe = makeProbe(blind, smoke);
 const sh = (cmd) => execSync(cmd, { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
-// Step 0 — the `wrapped` lifecycle stamp. It is the peer WAKE signal (a peer blocked on
-// `mail-await --peer-done <sid>`) and next-session /orient state — not bookkeeping.
-probe("step-0 wrapped-marker", () => {
-  if (!shortSid) return null;
-  const p = join(REPO_ROOT, ".claude/state", `session-wrapped-${shortSid}`);
-  const present = existsSync(p);
-  if (!present) findings.push(`⚠️  STEP 0 NOT STAMPED: no .claude/state/session-wrapped-${shortSid}. That marker is the peer WAKE signal (mail-await --peer-done) + next-session /orient state. Run: python3 scripts/session-lifecycle.py wrapped`);
-  return present;
+// Step 0 — the `wrapping` lifecycle stamp (WRAPPING while the wrap runs, WRAPPED only when it is
+// fully complete). This reconcile runs at Step 11, BEFORE the completion
+// stamp (`session-lifecycle.py wrapped` / `wrapped --checkpoint`, after this gate and before the
+// summary), so what must stand here is the WRAPPING marker; the completion stamp is an OPEN ITEM (a
+// note), never a finding. Until 2026-11-01 Step 0 wrote the wrapped marker itself, and a peer's
+// `mail-await --peer-done` woke on it while the wrap still had ~10 steps to run. Body: step0Lifecycle.
+probe("step-0 wrapping-marker", () => {
+  const r = step0Lifecycle(process.env.FF_STATE_DIR || join(REPO_ROOT, ".claude/state"), shortSid);
+  notes.push(...r.notes); findings.push(...r.findings);
+  return r.present;
 });
 
 // Step 7d — architecture doc count/listing drift. MANDATORY when the session added a
@@ -2574,7 +2633,7 @@ if (asJson) {
   console.log(`  memory-updates: ${emitted} emitted (${emittedNone} None-skips, ${unclassified} unclassified) · ${persisted == null ? "?" : persisted} persisted${persistNote ? ` [${persistNote}]` : ""}${anchorNote ? ` [${anchorNote}]` : ""}`);
   console.log(`  deep-pass: fired=${deepPassFired} ran=${deepPassRan}`);
   console.log(`  post-compact marker: ${markerOwed ? `PENDING (focus=${pendingFocus})` : markerDeferred ? "DEFERRED (hook fired, no compaction landed)" : "cleared"}`);
-  console.log(`  step-probes: 0 (wrapped-stamp) · 7d (arch-counts) = artifact-bearing → findings; 7e (distill) · 7h (defer-triggers) · plan clock-labels = surface-bearing → printed above`);
+  console.log(`  step-probes: 0 (wrapping-stamp; the completion stamp is the open item noted below) · 7d (arch-counts) = artifact-bearing → findings; 7e (distill) · 7h (defer-triggers) · plan clock-labels = surface-bearing → printed above`);
   console.log(`  coverage: COMPUTED = memory-delta + deep-pass + post-compact-marker + the 4 step-probes + the plan clock-label note + the sub-skill invocation check (Iron Law #6, report-only) + the self-started-wrap-after-a-recovery check (report-only). Every OTHER wrap step is still SELF-ATTESTED (cite its artifact inline; a new mandatory step → add a probe here or list it as UNVERIFIED, same commit)`);
   if (blind.length) { console.log(""); console.log(`  ⚠️  BLIND — could NOT verify completeness (this is NOT a pass): ${blind.join("; ")}. Verify the persists manually before claiming complete.`); }
   if (findings.length) { console.log(""); findings.forEach((f) => console.log("  " + f)); }

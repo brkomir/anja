@@ -11,8 +11,9 @@ prompt starting with SENTINEL every 15 minutes. This hook decides, at fire time,
 becomes a paid turn:
   * BLOCK -> the prompt never reaches the model: zero tokens (probed 2026-10-06 in a throwaway
              project: a blocked prompt returned num_turns 0, every usage field 0, cost $0).
-  * PASS  -> one minimal turn that reads the cached prefix and resets its hour. Prints NOTHING,
-             because the cron prompt itself carries the instruction; a quiet pass is the point.
+  * PASS  -> one minimal turn that reads the cached prefix and resets its hour. Prints NOTHING
+             (one exception: the recovery line, below), because the cron prompt itself carries the
+             instruction; a quiet pass is the point.
 Every non-sentinel prompt only updates state and exits 0 silently.
 
 THE RULES:
@@ -47,6 +48,14 @@ THE RULES:
                    window, which instead ends 12 hours after the pause (the epoch /pause writes)
   * switch       — a ping that came back as a full re-cache (an account switch killed the cache, or it
                    expired) stops keep-warm for the session until the owner speaks
+  * recovery     — a passing ping whose session went deaf after a safety refusal prints ONE additionalContext
+                   line telling that ping to re-arm the mail listener, and writes keep-warm-recovery-<sid8> so the
+                   tool block lets exactly that one Monitor call through; a session that is in or is compacted
+                   with its mail listener shut down on purpose, waiting on the owner's message, is never touched. See
+                   refused_listener_expiry() for the narrow trigger.
+  * refusal notice — every timer tick that reaches the transcript (passed or blocked, every 15 minutes) posts
+                   ONE desktop notification per refused reply, whatever turn was refused:
+                   notify_refusal() / notify_owner(). Ticks the off-states block earlier never reach it.
 
 FAIL CLOSED on the sentinel path: any error BLOCKS (a broken gate must never turn fires into paid
 turns). FAIL OPEN everywhere else: an owner prompt is never blocked by a gate bug.
@@ -60,6 +69,8 @@ import datetime
 import json
 import math
 import os
+import re
+import subprocess
 import sys
 import time
 
@@ -218,6 +229,224 @@ def compaction_only_prepared(sid, state_dir, tx):
         return False, f'ERROR {type(e).__name__}'   # the verdict slot's own word form: no parentheses
 
 
+# ── recovery ping (2026-11-06) ──────────────────────────────────────────────────────────────────────────────
+# A safety refusal ends a turn with no fallback model, and no Stop hook runs after it (0 Stop records after
+# either refusal in one session, one after each keep-warm reply). When the refused turn was the mail
+# listener's own expiry notice, nothing re-arms the listener, no mail can wake the seat, and the pings that do
+# wake it may not call tools: that seat sat deaf from 08:52Z to 12:22Z on 2026-11-06 until the owner typed.
+# This gate is the first code that runs afterwards. The trigger is deliberately narrow, because a seat whose
+# listener was shut down on purpose and which is waiting on the owner's message must not be touched:
+#   * a listener stopped on purpose (/standby, /pre-compact, a hub retiring) is stopped by TaskStop and never
+#     ends in its own expiry notice, so it cannot match;
+#   * a seat on /standby, or with a pending or deferred post-compact marker, is excluded outright;
+#   * a seat that had gone quiet by its own choice (this expiry and the previous one both delivered no events,
+#     no owner message between them) is left as it chose, unless it is a review hub, which is owed mail;
+#   * the owner speaking inside the refused turn or a later ping turn (a queued attachment) leaves it to him;
+#   * a later turn of any kind (a peer message, a one-shot run, an owner prompt) means the seat answered again;
+#   * a live listener, or a pid whose process cannot be checked, means nothing to do (a missing pid file or a
+#     pid naming no live mail-listen process reads dead).
+SAFETY_STOP_PREFIX = 'Your response above was stopped by a safety classifier'
+# Harness prompts the transcript writes isMeta although each one STARTS a turn (77 peer messages and 1 one-shot
+# run in one session, 220 + 2 on two transcripts read in review): _is_prompt skips isMeta,
+# so the walk names them. A keep-warm ping is isMeta too (10 of 10 here, 130 of 130 there): see _is_ping.
+META_TURN_STARTS = ('Another Claude session sent a message', '[Owner-authorized')
+
+
+def _owner_queued(d):
+    """An owner message typed while a turn runs: the harness delivers it as a queued_command ATTACHMENT, never a
+    user record (34 here, origin.kind human, commandMode prompt). Peer and task-notification attachments share
+    the channel, so the origin is the test. A prompt-mode origin the walk cannot read is taken as the owner, as
+    _msg() takes an unreadable user record as a turn: an unreadable tail never earns a recovery."""
+    a = d.get('attachment') if d.get('type') == 'attachment' else None
+    if not (isinstance(a, dict) and a.get('type') == 'queued_command' and a.get('commandMode', 'prompt') == 'prompt'):
+        return False
+    o = a.get('origin')
+    return not isinstance(o, dict) or o.get('kind') == 'human'
+
+
+# The promptSource values an owner prompt carries (typed, queued while a turn ran, an accepted suggestion: 319
+# queued and 65 suggestion_accepted over 60 transcripts read in review); every real ping is 'system'.
+OWNER_SOURCES = ('typed', 'queued', 'suggestion_accepted')
+
+
+def _is_ping(d):
+    """A keep-warm timer prompt (isMeta, promptSource system: 551 of 551 real pings). An owner message that merely
+    starts with the sentinel text is typed, queued or accepted from a suggestion, and stays the owner."""
+    return d.get('type') == 'user' and d.get('promptSource') == 'system' and _text(d).lstrip().startswith(SENTINEL)
+
+
+def _msg(d):
+    """The record's message object, or {} when it is absent or not an object: an off-shape record never raises."""
+    m = d.get('message')
+    return m if isinstance(m, dict) else {}
+
+
+def _text(d):
+    c = _msg(d).get('content')
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        return ''.join(b.get('text', '') for b in c if isinstance(b, dict) and b.get('type') == 'text')
+    return ''
+
+
+def _is_prompt(d):
+    """A user record that starts a turn: not a tool result, not the harness's isMeta notes (the safety-stop
+    note is one), not a compaction summary."""
+    if d.get('type') != 'user' or d.get('isMeta') or d.get('isCompactSummary'):
+        return False
+    c = _msg(d).get('content')
+    if isinstance(c, list) and any(isinstance(b, dict) and b.get('type') == 'tool_result' for b in c):
+        return False
+    return not _text(d).startswith(SAFETY_STOP_PREFIX)
+
+
+def _turn_start(d):
+    """A record that starts a main-conversation turn: a non-meta prompt, or one of the isMeta harness starters."""
+    return _is_prompt(d) or (d.get('type') == 'user' and bool(d.get('isMeta'))
+                             and _text(d).lstrip().startswith(META_TURN_STARTS))
+
+
+def _is_refusal(d):
+    return bool(d.get('isApiErrorMessage')) and _msg(d).get('stop_reason') == 'refusal'
+
+
+def _read_tail(path):
+    """The main conversation's user / assistant / queued-owner records from the transcript tail, and the
+    session's newest custom title (its /rename name) or None."""
+    size = os.path.getsize(path)
+    with open(path, 'rb') as f:
+        f.seek(max(0, size - TAIL_BYTES))
+        lines = f.read().splitlines()
+    recs, name = [], None
+    for ln in lines:
+        try:
+            d = json.loads(ln)
+        except ValueError:
+            continue
+        if not isinstance(d, dict) or d.get('isSidechain') or d.get('agentId'):
+            continue
+        if d.get('type') == 'custom-title' and isinstance(d.get('customTitle'), str):
+            name = d['customTitle']
+        elif d.get('type') in ('user', 'assistant') or _owner_queued(d):
+            recs.append(d)
+    return recs, name
+
+
+def _newest_turn(recs):
+    """Walk back over keep-warm ping turns to the newest other turn. Returns (index of its starting record, or
+    -1 when the tail holds none; its assistant records, newest first; whether the owner spoke mid-turn in it or
+    in a later ping turn)."""
+    turn, owner_spoke = [], False
+    i = len(recs) - 1
+    while i >= 0:
+        d = recs[i]
+        if d['type'] == 'attachment':
+            owner_spoke = True
+        elif d['type'] == 'assistant':
+            turn.append(d)
+        elif _is_ping(d):
+            turn = []              # a keep-warm ping turn: skip it, so a ping that failed to recover is retried
+        elif _turn_start(d):
+            break
+        i -= 1
+    return i, turn, owner_spoke
+
+
+def last_refusal(path):
+    """(refusal timestamp, session name) when the newest non-ping turn of the main conversation ended in a safety
+    refusal, whatever started it; None otherwise. Feeds the desktop notification, which covers every refused
+    reply (the first build covered only the listener case)."""
+    recs, name = _read_tail(path)
+    i, turn, _ = _newest_turn(recs)
+    if i < 0 or not turn or not _is_refusal(turn[0]):
+        return None
+    return (turn[0].get('timestamp') or '?'), name
+
+
+def refused_listener_expiry(path, sid8, owed=False):
+    """(refusal timestamp, session name) when the newest non-ping turn of the main conversation was started by
+    this session's mail-listener expiry notice and ended in a safety refusal; None otherwise. Also None when the
+    owner spoke inside that turn or a later ping turn, and when the expiry is the second quiet one in a row with
+    no owner message between (the seat left the listener off on purpose), unless `owed` (a review hub keeps
+    re-arming on every expiry, the idle stop's carve-out)."""
+    recs, name = _read_tail(path)
+    tag = f'inbound session mail for {sid8}'
+    # the harness's own notification shape only (61 of 61 real expiry records match it): a mail EVENT carries peer
+    # text, which can quote both the summary and the expiry words
+    expiry = re.compile(r'<task-notification>\n<task-id>[^<\n]*</task-id>\n<summary>Monitor event: "' + re.escape(tag)
+                        + r'[^"<\n]*"</summary>\n<event>\[Monitor expired after [^\]<\n]*\]</event>\n</task-notification>')
+
+    def is_expiry(t):
+        return expiry.fullmatch(t.strip()) is not None
+
+    i, turn, owner_spoke = _newest_turn(recs)
+    if owner_spoke:
+        return None                # the owner spoke inside the refused turn or a later ping turn: his call, not ours
+    if i < 0 or not turn or not _is_refusal(turn[0]):
+        return None
+    last = turn[0]
+    trig = _text(recs[i])
+    if not is_expiry(trig):
+        return None
+    if 'no events' in trig and not owed:
+        k = i - 1
+        while k >= 0:
+            d = recs[k]
+            if d['type'] == 'attachment':
+                break              # the owner spoke between the two expiries
+            if _turn_start(d) and not _is_ping(d):
+                t = _text(d).lstrip()
+                if is_expiry(t):
+                    if 'no events' in t:
+                        return None
+                    break
+                if not t.startswith(HARNESS_PREFIXES) or d.get('promptSource') in OWNER_SOURCES:
+                    break          # the owner or a peer spoke between the two expiries: not an idle seat
+            k -= 1
+    return (last.get('timestamp') or '?'), name
+
+
+def notify_owner(title, message):
+    """One desktop notification from the hook itself, no model turn. macOS osascript, the text passed as argv so
+    nothing is quoted into AppleScript. KEEP_WARM_NOTIFY_CMD replaces the command (the test seam: it gets title and
+    message as its two arguments). Never raises; returns whether the command ran and exited 0."""
+    seam = os.environ.get('KEEP_WARM_NOTIFY_CMD')
+    if seam is not None:                 # set: the seam alone, so an empty value posts nothing (an off switch)
+        argv = [seam, title, message]
+    elif os.environ.get('FF_STATE_DIR') or os.environ.get('KEEP_WARM_NOW'):
+        return False                     # a harness run (redirected state or a fake clock) never reaches the owner's screen
+    elif sys.platform == 'darwin':
+        argv = ['osascript', '-e', 'on run argv', '-e',
+                'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run', title, message]
+    else:
+        return False
+    try:
+        return subprocess.run(argv, capture_output=True, timeout=5).returncode == 0
+    except (OSError, ValueError, subprocess.SubprocessError):   # ValueError: a NUL in the session name
+        return False
+
+
+def listener_alive(state_dir, sid8):
+    """False only when the pid file is missing or names no live mail-listen process. Any doubt reads as
+    alive, so an uncertain read never re-arms a listener."""
+    try:
+        pid = int(open(os.path.join(state_dir, f'mail-listen-{sid8}.pid')).read(32).split()[0])
+    except (OSError, ValueError, IndexError):
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    try:
+        cmd = subprocess.run(['ps', '-p', str(pid), '-o', 'command='], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return 'mail-listen' in cmd
+
+
 def main(inp):
     sid = str(inp.get('session_id') or '')
     sid8 = sid.lower()[:8]
@@ -230,6 +459,8 @@ def main(inp):
     state_dir = os.environ.get('FF_STATE_DIR') or os.path.join(root, '.claude', 'state')
     state_path = os.path.join(state_dir, f'keep-warm-{sid8}.json')
     turn_marker = os.path.join(state_dir, f'keep-warm-turn-{sid8}')
+    recovery_marker = os.path.join(state_dir, f'keep-warm-recovery-{sid8}')
+    rec = {'line': None, 'notice': False}
     try:
         state = json.load(open(state_path))
         if not isinstance(state, dict):
@@ -246,10 +477,11 @@ def main(inp):
         os.replace(tmp, state_path)
 
     def clear_turn_marker():
-        try:
-            os.remove(turn_marker)
-        except OSError:
-            pass
+        for p in (turn_marker, recovery_marker):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
     if not prompt.startswith(SENTINEL):
         clear_turn_marker()                      # whatever this turn is, it is not a keep-alive
@@ -265,6 +497,11 @@ def main(inp):
            'sid8': sid8}
 
     def decide(decision, reason, stop=False, **extra):
+        if rec['notice']:              # after the decision, so the notice never promises a ping a stop rule ends
+            try:
+                notify_refusal(stop)
+            except Exception as e:  # noqa: BLE001 — a notice is best-effort and never decides a tick
+                log['refusal_notice'] = {'error': type(e).__name__}
         log.update(decision=decision, reason=reason, **extra)
         state['last_fire'] = t
         if stop:
@@ -284,10 +521,77 @@ def main(inp):
             os.makedirs(state_dir, exist_ok=True)
             with open(turn_marker, 'w') as f:
                 f.write(f'{int(t)}\n')
+            if rec['line']:
+                with open(recovery_marker, 'w') as f:
+                    f.write(f'{int(t)}\n')
+                print(json.dumps({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit',
+                                                         'additionalContext': rec['line']}}))
+            else:
+                try:
+                    os.remove(recovery_marker)   # an earlier ping's allow never outlives the ping that earned it
+                except OSError:
+                    pass
         return 0
 
     def marker(name):
         return os.path.exists(os.path.join(state_dir, f'{name}-{sid8}'))
+
+    def recovery_due():
+        """(found, hub): `found` is refused_listener_expiry()'s (timestamp, name) when this seat's listener must be
+        re-armed by a ping, None when it must not (an excluded state, no such refusal, or a live listener)."""
+        excluded = marker('session-standby') or any(
+            os.path.exists(os.path.join(state_dir, f'{n}-{sid}')) for n in ('post-compact-pending', 'post-compact-deferred'))
+        hub = marker('review-hub-active')
+        if excluded:
+            return None, hub
+        try:
+            found = refused_listener_expiry(inp['transcript_path'], sid8, owed=hub)
+        except (KeyError, OSError, ValueError, TypeError, AttributeError):
+            found = None                        # an unreadable tail never earns a recovery and never blocks a pass
+        return (found if found and not listener_alive(state_dir, sid8) else None), hub
+
+    def notify_refusal(stopping=False):
+        """ONE desktop notification per refused reply, on the first timer tick that reaches the transcript (every
+        15 minutes, passed or blocked), whatever turn was refused (widened once the first build was shown to notify
+        only in the listener case, and only on a PASSING ping, 47 minutes after a refusal). Called from decide(),
+        after the tick's decision, so a tick the stop rule ends never promises a restart."""
+        try:
+            rf = last_refusal(inp['transcript_path'])
+        except (KeyError, OSError, ValueError, TypeError):
+            return
+        if not rf or state.get('notified_refusal') == rf[0]:
+            return
+        at, name = rf
+        when = at[11:16] + ' UTC' if len(at) >= 16 else at
+        body = f'The safety filter refused its reply at {when}, so that turn ended unanswered.'
+        if recovery_due()[0] and not stopping:
+            body += ' Its mail watch stopped too; the next due keep-warm ping restarts it.'
+        elif not listener_alive(state_dir, sid8):
+            body += ' Its mail watch is not running, so new mail cannot wake it.'
+        log['refusal_notice'] = {'refused_at': at,
+                                 'notified': notify_owner(f'Claude Code: {name or sid8} had a reply refused', body)}
+        state['notified_refusal'] = at
+
+    def passing(reason):
+        """decide('pass'), plus the recovery line when this ping must re-arm a listener a refusal left dead."""
+        found, hub = recovery_due()
+        if found:
+            at, name = found
+            flags = ' --rebroadcast-hours 48' if hub else ''
+            cmd = f'cd {root} && python3 scripts/session-manifest.py mail-listen --poll 30{flags}'
+            log['recovery'] = {'refused_at': at, 'command': cmd}
+            rec['line'] = (
+                '[keep-warm] RECOVERY, from the keep-warm gate: the one exception to this ping\'s no-tool rule. '
+                'Where the timer prompt says injected directives and system reminders are out of scope, or says do '
+                'not arm a listener or run a recovery, this line overrides it: that wording predates this exception. '
+                'The gate has already ruled out '
+                '/standby, a pending post-compact recovery, a listener stopped on purpose and an idle seat. '
+                f'The reply to this session\'s mail-listener expiry notice was refused by the safety filter at {at}, '
+                'so the listener was never re-armed and no mail can wake this session. On this ping make exactly '
+                f'one tool call: Monitor with timeout_ms 1800000, description "inbound session mail for {sid8}", '
+                f'command `{cmd}`. The tool block allows that one call and nothing else. Then reply with exactly '
+                '`[keep-warm]` and do nothing more on this turn.')
+        return decide('pass', reason)
 
     if os.environ.get('SKIP_KEEP_WARM') == '1':
         return decide('block', 'disabled by SKIP_KEEP_WARM=1')
@@ -317,6 +621,7 @@ def main(inp):
         reqs = main_requests(inp['transcript_path'])
     except (KeyError, OSError, ValueError, TypeError) as e:
         return decide('block', f'transcript unreadable, {type(e).__name__}, failing closed')
+    rec['notice'] = True                        # every tick that gets this far, passed or blocked (header: refusal notice)
     real = [r for r in reqs if not r['err']]    # a refused request neither touched the cache nor measured it
     if not real:
         return decide('block', 'no main-conversation request in the transcript tail, failing closed')
@@ -390,13 +695,13 @@ def main(inp):
 
     if pause_window:
         state['last_ping'] = t
-        return decide('pass', f'ping at {int(gap // 60)}m (/pause keep-warm window)')
+        return passing(f'ping at {int(gap // 60)}m (/pause keep-warm window)')
     n = int(state.get('pings_since_owner') or 0)
     if n >= STOP_PINGS:
         return decide('block', f'{STOP_PINGS} pings in a row with no owner message, stop rule', stop=True)
     state['pings_since_owner'] = n + 1
     state['last_ping'] = t
-    return decide('pass', f'ping {n + 1}/{STOP_PINGS} at {int(gap // 60)}m')
+    return passing(f'ping {n + 1}/{STOP_PINGS} at {int(gap // 60)}m')
 
 
 if __name__ == '__main__':

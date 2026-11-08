@@ -25,6 +25,9 @@ never restated here: `ts` at most MAX_AGE_S old, a finite share, a window not al
   * a share at or above THRESHOLD_PCT, or a wave of 0: STOP;
   * no trusted reading: the default size, and the line says the limit could not be read (the guard fails
     open the same way);
+  * a fresh reading with both five-hour fields null: the default size, and no state written. That is a plan
+    with no five-hour limit OR the minute of a five-hour reset on a plan with one (the feed drops both fields
+    then); nothing in the reading tells the two apart, the weekly fields included, so the line names both;
   * the window reset between two readings: that pair says nothing; the last measured cost is kept.
 
 The limit is the ACCOUNT's, so the difference also counts the seat's own work and any other session's
@@ -52,10 +55,12 @@ def _guard():
 _G = _guard()
 THRESHOLD_PCT = _G.THRESHOLD_PCT
 MAX_AGE_S = _G.MAX_AGE_S
+NO_FIVE_HOUR_FIGURE = "no-five-hour-figure"
 
 
 def read_limit(sid8, state_dir, now):
-    """(pct, resets_at) from a trusted reading, else None."""
+    """(pct, resets_at) from a trusted reading; NO_FIVE_HOUR_FIGURE from a fresh one with both five-hour fields null;
+    else None."""
     try:
         with open(os.path.join(state_dir, "statusline-%s.json" % sid8)) as fh:
             rec = json.load(fh)
@@ -67,6 +72,10 @@ def read_limit(sid8, state_dir, now):
     if not isinstance(ts, (int, float)) or isinstance(ts, bool) or not 0 <= now - ts <= MAX_AGE_S:
         return None
     pct, reset = rec.get("five_hour_pct"), rec.get("five_hour_resets_at")
+    if pct is None and reset is None:
+        # a fresh reading with both five-hour fields null: a plan with no five-hour limit (Max/Ultra since it was
+        # removed there), or the minute of a five-hour reset, when the feed drops both fields; not an unreadable limit
+        return NO_FIVE_HOUR_FIGURE
     if not _G.live(pct, reset, now):
         return None
     return float(pct), (reset if isinstance(reset, (int, float)) and not isinstance(reset, bool) else None)
@@ -149,6 +158,11 @@ def main(argv):
     except (OSError, ValueError):
         prev = None
     reading = read_limit(sid8, state_dir, time.time()) if len(sid8) == 8 else None
+    if reading == NO_FIVE_HOUR_FIGURE:
+        wave = max(0, min(cap, left))
+        print("DISPATCH %d — a fresh status-line reading carries no five-hour figure (a plan without a five-hour "
+              "limit, or the minute of a five-hour reset); default size" % wave)
+        return 0
     word, wave, line, new_state = decide(reading, prev, left, cap, ran)
     try:
         with open(state, "w") as fh:
@@ -228,6 +242,13 @@ def self_test():
         eq("a window already reset is not trusted", read_limit("abcd1234", d, now), None)
         put({"ts": now - 30, "five_hour_pct": True, "five_hour_resets_at": now + 3600})
         eq("a boolean share is not trusted", read_limit("abcd1234", d, now), None)
+        put({"ts": now - 30, "five_hour_pct": None, "five_hour_resets_at": None, "seven_day_pct": 19})
+        eq("a fresh reading with no five-hour fields is no limit, not unreadable",
+           read_limit("abcd1234", d, now), NO_FIVE_HOUR_FIGURE)
+        put({"ts": now - 30, "five_hour_pct": None, "five_hour_resets_at": now + 3600})
+        eq("a fresh reading with only the share null is still untrusted", read_limit("abcd1234", d, now), None)
+        put({"ts": now - MAX_AGE_S - 1, "five_hour_pct": None, "five_hour_resets_at": None})
+        eq("a stale reading with no five-hour fields is still untrusted", read_limit("abcd1234", d, now), None)
         eq("a missing file is not trusted", read_limit("ffff0000", d, now), None)
 
         # the CLI end to end: wave 1 then a stop, state carried in the file
@@ -235,6 +256,11 @@ def self_test():
         st = os.path.join(d, "dp-budget-x.json")
         rst = time.time() + 3600
         env = dict(os.environ, FF_STATE_DIR=d)
+        put({"ts": time.time(), "five_hour_pct": None, "five_hour_resets_at": None, "seven_day_pct": 19})
+        r0 = subprocess.run([sys.executable, os.path.abspath(__file__), "--state", st, "--left", "5", "--cap", "12",
+                             "--sid", "abcd1234"], capture_output=True, text=True, env=env)
+        eq("CLI with no five-hour figure", (r0.returncode, r0.stdout.split(" ")[:2],
+           "no five-hour figure" in r0.stdout, os.path.exists(st)), (0, ["DISPATCH", "5"], True, False))
         put({"ts": time.time(), "five_hour_pct": 70, "five_hour_resets_at": rst})
         r1 = subprocess.run([sys.executable, os.path.abspath(__file__), "--state", st, "--left", "20", "--cap", "12",
                              "--sid", "abcd1234"], capture_output=True, text=True, env=env)

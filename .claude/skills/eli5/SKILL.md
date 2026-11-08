@@ -74,7 +74,7 @@ September's outputs to 11% of October's).
     question with its choices, the way the praised message does it (*"an already-published lesson
     describes that same deleted screen. Same fix, or leave it?"*), then your recommendation in 1
     clause (the praised message has none; the preferred version attaches it to the
-    first option). 3 or more choices go under the question, 1 per line. When 2 of the choices can both be done, say so, or offer the pair as a choice (a fork written as either-or once drew the owner's question why not do all of them; not in the example, so optional on its Revisit trigger). Never a label followed by choices chained
+    first option). 3 or more choices go under the question, 1 per line. When 2 of the choices can both be done, say so, or offer the pair as a choice (a fork written as either-or once drew the owner's question why not do all of them; not in the example, so optional on its Revisit trigger). Pros and cons: `/explain` check 8's form. Never a label followed by choices chained
     with commas — *"Two words from you unlock the chain: the shape, fx-04 or the other fixture,
     and the extension, yes with up to three dollars, decide at the trigger, or no"* left the owner
     asking what exactly there was to rule on, and *"the sentence stays, goes, or

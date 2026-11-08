@@ -27,7 +27,7 @@ Verify the quality and completeness of a feature or flow audit. Catches the patt
 
 Run all 13 checks sequentially (Check 10 N/A for non-UI; Check 11 N/A for <7-expert panels; Check 12 N/A for FAIL verdicts; Check 13 N/A for fix-waves under the --code threshold AND not touching codified-policy copy — full-mode Check 13 is the Fix-Wave Review Gate; in --v3-drift mode Check 13 is the Workflow Integrity Gate). Each check produces a PASS/FAIL with specifics. The feature CANNOT be marked COMPLETE until all applicable checks pass. Check 9 (Test Run Gate) is the primary test gate — a feature with red tests is not COMPLETE regardless of prior checks. Check 12 (Verification-Before-Completion) confirms completion claims are backed by fresh proving-command output.
 
-**Deterministic-first ordering (adopted from guildhall).** Before dispatching a FIX-WAVE (Check 2 fixes / a `--code` fold), run `npx tsc --noEmit` as a cheap fast-fail — a diff that fails typecheck bounces to fix-first, don't spend the wave on it. **This does NOT reorder Check 9:** Check 9 (Test Run Gate) stays the MANDATORY *last* gate by design — it validates the POST-fix state; a cheap tsc-first fast-fail and an authoritative test-gate-last are complementary, not a reorder. The panel-dispatch pre-gate lives in `/expert-review --code` Step 1c; here it is just the tsc fast-fail before a fix-wave.
+**Deterministic-first ordering (adopted from guildhall).** Before dispatching a FIX-WAVE (Check 2 fixes / a `--code` fold), run `npx tsc --noEmit` as a cheap fast-fail — a diff that fails typecheck bounces to fix-first, don't spend the wave on it. It covers every `.ts`/`.tsx`/`.mts` the `tsconfig.json` include globs reach, minus its `exclude` list (read it there), so a red in an excluded dir is not this gate's. **This does NOT reorder Check 9:** Check 9 (Test Run Gate) stays the MANDATORY *last* gate by design — it validates the POST-fix state; a cheap tsc-first fast-fail and an authoritative test-gate-last are complementary, not a reorder. The panel-dispatch pre-gate lives in `/expert-review --code` Step 1c; here it is just the tsc fast-fail before a fix-wave.
 
 ### `--v3-drift` mode (added 2026-05-25 after a v3 audit shipped without a verification gate)
 
@@ -114,7 +114,7 @@ If a test file has 0 source-grep cases, write `0`, not `—` or `❌`. If you ca
 4b. **Test-validity (oracle) checks — behavioral ≠ valid (added 2026-06-14).** A test can invoke the function (clearing the behavioral bar above) yet still be FICTIONAL. For each test covering a P0/P1 finding, ALSO verify: (a) **arg-assertion** — a `vi.mock` on a vendor SDK (payments, email, model API, database) that asserts only "was called" (not the EXACT expected args) validates control flow, not correctness → flag it; (b) **literal-in-src (assert the literal the code reads)** — any asserted literal value/copy/constant (`.toBe(N)`, `toContain("…")`) must currently exist in `src/` and be live (not stale/dead-code) → grep it; (c) **mutation check — MANDATORY for P0/P1 fixes (2026-06-14):** actually REVERT the fix hunk and re-run its test — a test that stays GREEN with the bug back is fictional (it does not pin the behavior). The few blocking fixes per audit justify the manual revert+rerun; this is the single highest-confidence test-validity check. The AUTOMATED revert→RED harness (a `scripts/` mutation runner that auto-selects hunk+test) is the deferred deeper gate — trigger: build it if the manual check ever catches a fictional test the behavioral gate passed, OR when audit volume makes the manual step a bottleneck. Final Audit's coverage gate checks test PRESENCE; this checks test VALIDITY — the same `.filter(Boolean)` "green digest hides the failure" class, one layer down.
 5. Check that integration tests exist for:
    - Usage-allowance handling paths (reservation, refund, leak prevention)
-   - Auth/security gates (suspension, IDOR, contentSafe)
+   - Auth/security gates (account suspension, object-level authorization, the content-safety flag)
    - Error recovery paths (failure + refund, retry logic)
 
 6. **Docker integration enforcement:** For P0/P1 findings involving usage-allowance handling, auth gates, or content safety:
@@ -232,12 +232,12 @@ Evidence this is needed: a flow's final-audit COMPLETE commit (2026-04-17) did N
 
 **Steps:**
 1. Identify any new system entries added by this audit's fixes:
-   - New email type → must be in `PREF_MAP` in `src/lib/email/send.ts` AND `src/app/api/email/unsubscribe/route.ts`
+   - New email type → must be in the email-preference map the send path reads AND in the unsubscribe handler
    - New cron job → must be registered in the deployment platform's scheduled-jobs config AND authenticate with the shared cron secret
    - New analytics event → must have consent gating (if non-transactional)
    - New API endpoint → must have auth middleware + rate limiting
    - New DB table → must have RLS enabled
-   - New preference column → must match default in schema AND `DEFAULT_PREFS` in `src/services/account.ts`
+   - New preference column → must match default in schema AND the matching default in the service code
 2. For each new entry, verify it appears in ALL required registries
 3. Present findings:
 
@@ -336,7 +336,7 @@ Evidence (one flow's v2 audit, 2026-04-15): `/audit-check` signed off 7/7 while 
 
 **Goal:** Confirm feature's e2e specs pass, since unit + integration (Check 9) can't catch UI-layer regressions like cookie-banner overlap, hydration races, or framework-level routing bugs. Complements Check 9 — together they form the feature-level test gate.
 
-Evidence (one flow's audit, 2026-04-16): Check 9 signed off (4074 unit + 1748 integration green), but the e2e suite had 5 real fails (cookie-banner intercepting sticky-CTA clicks, a rate-limiter-migration regression in a form submission, rating-card hydration race) — ALL UI-layer. Only surfaced after commit, on a manual playwright run. Check 10 catches these before COMPLETE.
+Evidence (one flow's audit, 2026-04-16): Check 9 signed off (4074 unit + 1748 integration green), but the e2e suite had 5 real fails (cookie-banner intercepting sticky-CTA clicks, a regression in a form submission, rating-card hydration race) — ALL UI-layer. Only surfaced after commit, on a manual playwright run. Check 10 catches these before COMPLETE.
 
 **Steps:**
 
@@ -346,7 +346,7 @@ Evidence (one flow's audit, 2026-04-16): Check 9 signed off (4074 unit + 1748 in
    ```bash
    ./scripts/run-changed-e2e.sh
    ```
-   The script auto-selects affected specs via direct match (modified `.spec.ts`) + indirect match (spec files referencing changed component/app paths — conservative, may include false positives), then forwards to `scripts/e2e-local.sh` for always-isolated execution (mock auth + Docker DB + cached `.next-e2e/` build). Typical runtime: ~20-30s steady-state (cached build hit), ~90s on cold cache (first run after source-change). Pre-2026-05-19 the script ran against the dev `.next` build directly and was gated by a live-database guard; the refactor to an always-isolated flow eliminates the needs-prod-data bounce + manual escalation pattern that fired on every audit-check invocation.
+   The script auto-selects affected specs via direct match (modified `.spec.ts`) + indirect match (spec files referencing changed component/app paths — conservative, may include false positives), then forwards to `scripts/e2e-local.sh` for always-isolated execution (mock auth + Docker DB + cached `.next-e2e/` build). Typical runtime: ~20-30s steady-state (cached build hit), ~90s on cold cache (first run after source-change). Because the run is always isolated, it never needs a live database.
 
 3. If failures surface, categorize:
 
@@ -384,7 +384,7 @@ Evidence (one flow's audit, 2026-04-16): Check 9 signed off (4074 unit + 1748 in
 
 **Escape hatch:** if this audit explicitly does not touch UI (e.g., pure backend refactor, ops-register item), mark Check 10 as `N/A — non-UI audit` and skip.
 
-**Where Check 10 moved from:** originally landed as `/wrap` Step 1a (2026-04-16 first codification). Relocated to `/audit-check` Check 10 the same day after meta design-decision review concluded test gating belongs at feature-boundary (where a feature is marked COMPLETE), not session-boundary. `/wrap` now reports per-audit Check 10 outcomes in its session summary but doesn't itself run e2e.
+**Where Check 10 moved from:** originally landed as `/wrap` Step 1a (2026-04-16 first codification). Relocated to `/audit-check` Check 10 the same day after a design-decision review concluded test gating belongs at feature-boundary (where a feature is marked COMPLETE), not session-boundary. `/wrap` now reports per-audit Check 10 outcomes in its session summary but doesn't itself run e2e.
 
 ### Check 11: Process-Log Existence Gate (conditional — 7+ expert panels only)
 
@@ -595,7 +595,7 @@ This skill exists because of patterns discovered during audits:
 **In one feature audit:**
 - 15 fixes were initially deferred as lesser-severity "later" items — all were <15 lines
 - 79% of the feature's tests were source-grep (readFileSync)
-- The auth gatekeeper had zero behavioral tests
+- A gate had zero behavioral tests
 - A fully-built component was loaded but never rendered
 - "No obvious deferrals" was stated without checking
 

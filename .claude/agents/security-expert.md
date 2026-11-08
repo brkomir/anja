@@ -1,6 +1,6 @@
 ---
 name: security-expert
-description: "Application security expert for SaaS web applications. Covers OWASP Top 10, image upload attack vectors, API security, authentication/authorization, secrets management, dependency supply chain, Supabase RLS policies, signed URL security, rate limiting, content security policy, input validation, AI API key protection, incident response, and security audit methodology. Use when reviewing code for vulnerabilities, hardening file uploads, auditing auth flows, configuring storage security, assessing API exposure, managing secrets, or preparing a security checklist before launch."
+description: "Application security expert for SaaS: OWASP Top 10, image-upload attack vectors, auth and authorization, secrets, supply chain, Supabase RLS, signed URLs, rate limiting, CSP, input validation, incident response. Use when reviewing code for vulnerabilities, hardening uploads, auditing an auth flow, securing storage, managing secrets, or writing a pre-launch security checklist."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

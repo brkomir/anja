@@ -171,16 +171,18 @@ Example from `haines-paywall-upgrade-cro`:
 
 Domain-expert skills get a companion `.claude/agents/<slug>.md` file for invocation via `Agent(subagent_type: "<slug>")`. Auto-generated from `scripts/generate-expert-agents.mjs`.
 
+The agent's `description:` is read from the skill's frontmatter `description:` for every generated expert (since 2026-11-02), with a YAML parser and no fallback: `EXPERTS` in the generator is a list of names, and a missing, empty or unparseable description stops the generator naming the skill. Write it as the role, the Use-when triggers a session would type, and at most one pointer to a sibling, with no byte cap. The cap is on "Pairs with" lists; a hand-off that names the topic routing to each sibling (saas-launch-marketing's `Cancel flows: haines-churn-prevention`) is a set of triggers and stays. `skill-lint` warns `AGENT_DESCRIPTION_LONG` when an agent file's description is above 500 B, above every description as cut: it measures `.claude/agents/<name>.md`, the text the harness re-sends, and a return to the pre-cut style (before the cut, 17 of 58 were over 500 B, the largest 1,549 B) shows at the commit that regenerates the agent file. It is what the harness shows the main session when it picks a helper, and every byte of it is re-sent at each restart.
+
 **When to regen:** after adding/removing a domain-expert skill, OR after editing a domain-expert SKILL.md description.
 
 ```bash
 node scripts/generate-expert-agents.mjs
-# Should write N agent files (N = entries in the generator's EXPERTS object)
+# Should write N agent files (N = names in the generator's EXPERTS list)
 ```
 
-**Which skills get agents:** see the hardcoded `EXPERTS` object in `scripts/generate-expert-agents.mjs`. Adding a new domain expert requires:
+**Which skills get agents:** see the `EXPERTS` name list in `scripts/generate-expert-agents.mjs`. Adding a new domain expert requires:
 1. Create `.claude/skills/<slug>/` with SKILL.md + MEMORY.md
-2. Add entry to `EXPERTS` object in `generate-expert-agents.mjs` (alphabetically sorted)
+2. Add the name to the `EXPERTS` list in `generate-expert-agents.mjs` (alphabetically sorted)
 3. Run `node scripts/generate-expert-agents.mjs`
 
 **Orchestration skills have NO agent.** See Section 1 for the list — these operate in the main conversation.
@@ -271,7 +273,7 @@ New skill:
 Spec edit to existing skill:
 - [ ] Edit SKILL.md
 - [ ] Add entry to CHANGELOG.md same commit
-- [ ] If description changed + domain expert: update `EXPERTS` in generator + run `node scripts/generate-expert-agents.mjs`
+- [ ] If description changed + domain expert: run `node scripts/generate-expert-agents.mjs` (it reads the frontmatter)
 - [ ] Run `node scripts/skill-lint.mjs` before and after — no finding your change introduced, and `Unscanned units: 0` (a count you moved — ARCH_DOC_DRIFT, COMPARISON_BANNER_DRIFT — is yours)
 - [ ] Cross-skill lint: grep sibling skills for the same pattern (per meta cross-skill linting principle)
 - [ ] Commit explicit files

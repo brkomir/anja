@@ -13,7 +13,7 @@ Read/maintain interface over **`IDEAS.md`** (repo root) — the unranked idea pi
 
 - **`IDEAS.md`** — what we've thought of + what we decided about it (states: 💡 raw · 🔬 refined · 🅿️ gated · ⬆️ PROMOTED · ❌ REJECTED/KILLED). Includes the **Ideation-run corpora** index (bulk runs live in `plans/*.md`; the register indexes them).
 - **`BACKLOG.md`** — ranked build queue. Ranking is a **founder decision**; nothing here auto-promotes.
-- **Promotion mechanics belong to `/backlog promote`** — it prompts for tier/effort/trigger/tracker-home. On promotion, the `IDEAS.md` row flips to `⬆️ PROMOTED → P#` and STAYS (re-proposal guard); the BACKLOG entry cites `Source: IDEAS.md I#`.
+- **Promotion mechanics belong to `/backlog promote`** — it prompts for tier/effort/trigger/tracker-home. On promotion, the `IDEAS.md` row flips to `⬆️ PROMOTED → P#` and STAYS (re-proposal guard); the BACKLOG entry cites `Source: IDEAS.md I#`. Work the tracker carries rather than the ranked queue takes the file's other form, `⬆️ PROMOTED → <`todo.txt` row>`, with the owner's words beside it.
 
 ## Usage
 

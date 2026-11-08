@@ -1,6 +1,6 @@
 ---
 name: saas-launch-marketing
-description: "SaaS launch marketing strategist for indie founders and small teams. Covers pre-launch, launch day, post-launch growth, and go-to-market strategy. Use when planning a product launch, writing marketing copy, building a waitlist, preparing a Product Hunt launch, crafting landing page messaging, or developing channel strategy. For cancel flows and dunning, see haines-churn-prevention."
+description: "SaaS launch marketing strategist for indie founders: pre-launch, launch day, post-launch growth, go-to-market. Use when planning a launch, writing marketing copy, building a waitlist, preparing Product Hunt, crafting landing-page messaging, or choosing channels. Cancel flows: haines-churn-prevention."
 tools: Read, Glob, Grep, Bash, WebFetch, WebSearch
 disallowedTools: Write, Edit
 model: inherit

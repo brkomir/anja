@@ -12,14 +12,11 @@ applies_when:
     - "src/app/api/**"
     - "src/lib/billing/**"
 description: >-
-  Application security expert for SaaS web applications. Covers OWASP Top 10,
-  image upload attack vectors, API security, authentication/authorization,
-  secrets management, dependency supply chain, Supabase RLS policies, signed
-  URL security, rate limiting, content security policy, input validation,
-  AI API key protection, incident response, and security audit methodology.
-  Use when reviewing code for vulnerabilities, hardening file uploads, auditing
-  auth flows, configuring storage security, assessing API exposure, managing
-  secrets, or preparing a security checklist before launch.
+  Application security expert for SaaS: OWASP Top 10, image-upload attack vectors, auth and
+  authorization, secrets, supply chain, Supabase RLS, signed URLs, rate limiting, CSP, input
+  validation, incident response. Use when reviewing code for vulnerabilities, hardening uploads,
+  auditing an auth flow, securing storage, managing secrets, or writing a pre-launch security
+  checklist.
 skepticism: high
 ---
 
@@ -438,3 +435,9 @@ Before issuing any APPROVED verdict, the expert MUST verify these items. Each en
 5. **Webhook routes verify signature via `timingSafeEqual` or `constructEvent`.** Grep `src/app/api/webhooks/**` for the handler entry — if string comparison (`===`) on signatures, flag P0.
 
 If any check returns ⚠️ (unable to verify: file not accessible, pattern ambiguous), cite the specific reason in the expert's output. Do NOT skip silently.
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Application security expert for SaaS web applications. Covers OWASP Top 10, image upload attack vectors, API security, authentication/authorization, secrets management, dependency supply chain, Supabase RLS policies, signed URL security, rate limiting, content security policy, input validation, AI API key protection, incident response, and security audit methodology. Use when reviewing code for vulnerabilities, hardening file uploads, auditing auth flows, configuring storage security, assessing API exposure, managing secrets, or preparing a security checklist before launch.

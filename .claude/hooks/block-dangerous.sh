@@ -46,6 +46,10 @@
 #   - `> /dev/sd*` — direct disk writes
 #   - `pkill` / `pgrep` / `killall` with an option AFTER the pattern (arm `kill-option-order`,
 #     2026-10-05) — not catastrophic but measured destructive: see that arm's own block
+#   - a session's own command CREATING the always-loaded door (arm `door-create`, 2026-10-29) — not
+#     destructive, but the door is the owner's to open: see that arm's own block
+#   - `git apply` / `patch` writing an always-loaded file while the session's door is not live (arm
+#     `patch-always-loaded`, 2026-10-30) — see that arm's own block
 #
 # What this hook does NOT block (warn-mode is sufficient):
 #   - `git stash` / `git checkout <file>` / `git reset --hard` — recoverable from reflog (bash-safety-warn covers)
@@ -320,9 +324,10 @@ fi
 # $( ), backticks, `sh -c`, eval, sudo/env/xargs. Corpus replay before shipping: 908 real invocations
 # across every transcript on this box, 4 fires, all 4 the true shape (the incident + 3 deliberate
 # reproductions), 0 on the 203 commands that only mention a kill tool.
-# ⚠️ FAILS OPEN ON A HELPER FAILURE — and records it. Any rc other than 0/3 (python3 missing, a crash,
-# or rc 4: a line naming a kill tool that the parser could not read, or text too large to parse)
-# lets the command through with an `arm=kill-option-order-helper-failed` record: this class is
+# ⚠️ FAILS OPEN ON A HELPER FAILURE — and records it. rc 4 (a line naming a kill tool that the parser
+# could not read, or text too large to parse) lets the command through with an
+# `arm=kill-option-order-parse-gap` record, and any other rc but 0/3 (python3 missing, a crash) with an
+# `arm=kill-option-order-helper-failed` record (split 2026-10-29): this class is
 # destructive but recoverable, and failing closed would deny every `pgrep` wait loop in the fleet on a
 # broken helper. The pre-filter below means only commands containing a tool name pay the python spawn.
 case "$cmd" in
@@ -336,10 +341,99 @@ case "$cmd" in
       _bd_fire arm kill-option-order cmd "${cmd:-}"
       printf '%s\n' "${_bd_koo_out:-}"
       exit 2
+    elif [ "$_bd_koo_rc" -eq 4 ]; then
+      _bd_fire arm kill-option-order-parse-gap cmd "${cmd:-}"
     elif [ "$_bd_koo_rc" -ne 0 ]; then
       _bd_fire arm kill-option-order-helper-failed rc "${_bd_koo_rc:-}" cmd "${cmd:-}"
     fi
     ;;
 esac
+
+# === door-create (2026-10-29) — a session's own command creating the always-loaded door ===
+# The door (/tmp/claude-always-loaded-allow.<session id>) is the owner's to open: since 2026-10-25 only his
+# `! touch` line does it, and his `!` lines never pass through PreToolUse hooks (a probe on 2026-10-29 left
+# no line in the Bash safety hook's fires log, where the same text through the Bash tool left one on 2026-10-28), so this
+# arm cannot lock him out. It was built on the condition that the probe showed those lines pass by, to close the
+# doors a session walks through by habit or accident and to write down the deliberate ones.
+# A PARSER, like kill-option-order: lib/door-create.py reuses that walker, so a mail, grep, echo or commit
+# message QUOTING the door line is a mention and passes, and rm, reads and tests of the door pass (a session
+# removes its own door after the commit). Its header lists what it does not see.
+# ⚠️ FAILS OPEN ON A HELPER FAILURE, and records it: rc 4 (a line naming the door that it could not parse)
+# records `door-create-parse-gap`, any other rc but 0/3 records `door-create-helper-failed`; the same trade as kill-option-order: a broken helper must not deny every command
+# that names the door, the cleanup `rm -f` among them. Only a command naming the door pays the python spawn.
+case "$cmd" in
+  *claude-always-loaded-allow*)
+    [ "$JQ_USED" = 1 ] || _bd_fire arm door-create-unparsed cmd "${cmd:-}"
+    _bd_dc_out=$(printf '%s' "$cmd" | python3 "$(dirname "${BASH_SOURCE[0]}")/lib/door-create.py" 2>/dev/null)
+    _bd_dc_rc=$?
+    if [ "$_bd_dc_rc" -eq 3 ] && [ -n "${_bd_dc_out:-}" ]; then
+      _bd_fire arm door-create cmd "${cmd:-}"
+      printf '%s\n' "${_bd_dc_out:-}"
+      exit 2
+    elif [ "$_bd_dc_rc" -eq 4 ]; then
+      _bd_fire arm door-create-parse-gap cmd "${cmd:-}"
+    elif [ "$_bd_dc_rc" -ne 0 ]; then
+      _bd_fire arm door-create-helper-failed rc "${_bd_dc_rc:-}" cmd "${cmd:-}"
+    fi
+    ;;
+esac
+
+# === patch-always-loaded (2026-10-30) — git apply / patch writing an always-loaded file, door closed ===
+# Built as recommended: twice a
+# session wrote .claude/orchestrator/*.md with `git apply <patchfile>` while its door was closed or expired, and the
+# always-loaded write guard, wired on the file tools only, never saw it. HERE, not in that guard: a Bash arm there
+# was decided against, and this hook is already the Bash matcher with the parser arms.
+# lib/patch-always-loaded.py reads the patch (a file operand, a < redirect, a heredoc, a cat or printf pipe), takes
+# every file it names, and asks THAT guard about them as one synthetic MultiEdit in this call's session_id, so the
+# protected set, the door and its window stay one definition. It is handed the whole payload: it needs session_id,
+# agent_id and cwd, and parses the JSON itself, so a broken jq does not blind it.
+# ⚠️ FAILS OPEN ON A HELPER FAILURE, and records it: rc 4 (a run whose patch it could not read) records
+# patch-always-loaded-parse-gap, rc 5 (the guard gave no verdict) patch-always-loaded-guard-failed, any other rc
+# but 0/3 patch-always-loaded-helper-failed. The commit gate stays the backstop. Pre-filter: only a command naming
+# git ... apply, or the word patch standing alone, pays the python spawn.
+# ⛔ THE PRE-FILTER READS WHAT THE SHELL WILL RUN, NOT THE RAW BYTES (2026-10-30 review, a silent bypass):
+# macOS finds `Git` / `PATCH` on its case-insensitive PATH, and the shell removes quotes and backslashes before it
+# runs `git ap\ply`, `git "ap"ply`, `git ap''ply` or `pa\tch`. So the test runs case-blind (nocasematch, restored
+# below) over the raw text AND over a copy with every backslash, double and single quote removed. No process is
+# spawned for this; a call that names neither verb still costs nothing. Residual: an ANSI-C word with an escape
+# inside (`git $'\x61pply'`) carries no apply and passes unseen; a plain `$'apply'` reaches the helper.
+# With no working jq, $cmd is the grep fallback, cut at the first escaped quote, so the same test also
+# reads the normalised raw payload: `echo "hi" ; git apply p` is seen either way.
+# ⚠️ ONE VERB LIST, SPELLED TWICE: these two tests decide whether the helper runs; the helper's VERB_WORD_RE
+# decides which unparseable lines it records. A verb the helper learns must be added here too, or it never runs.
+_bd_pal_re='(^|[^[:alnum:]_.-])g?patch([^[:alnum:]_.-]|$)'
+# ⛔ NEVER ${cmd//x/} HERE: bash 3.2 pattern substitution is quadratic, measured > 120 s on a 360 KB command, which
+# would hang every large Bash call fleet-wide. One `tr -d` (linear) instead, spawned only when the text carries a
+# backslash or a quote at all (\047 is the single quote, spelled so this file holds none inside the body).
+_bd_pal_q=$'\x27'
+_bd_pal_n=""
+case "$cmd" in *\\*|*\"*|*"$_bd_pal_q"*) _bd_pal_n=$(printf '%s' "$cmd" | tr -d '\\"\047') ;; esac
+_bd_pal_i=""
+if [ "$JQ_USED" != 1 ]; then
+  _bd_pal_i=$(printf '%s' "$input" | tr -d '\\"\047')
+fi
+_bd_pal_hit=0
+shopt -s nocasematch
+if [[ "$cmd" == *git*apply* ]] || [[ "$cmd" =~ $_bd_pal_re ]] \
+   || [[ "$_bd_pal_n" == *git*apply* ]] || [[ "$_bd_pal_n" =~ $_bd_pal_re ]] \
+   || [[ "$_bd_pal_i" == *git*apply* ]] || [[ "$_bd_pal_i" =~ $_bd_pal_re ]]; then
+  _bd_pal_hit=1
+fi
+shopt -u nocasematch
+if [ "$_bd_pal_hit" = 1 ]; then
+  _bd_pal_out=$(printf '%s' "$input" | python3 "$(dirname "${BASH_SOURCE[0]}")/lib/patch-always-loaded.py" 2>/dev/null)
+  _bd_pal_rc=$?
+  if [ "$_bd_pal_rc" -eq 3 ] && [ -n "${_bd_pal_out:-}" ]; then
+    _bd_fire arm patch-always-loaded cmd "${cmd:-}"
+    printf '%s\n' "${_bd_pal_out:-}"
+    exit 2
+  elif [ "$_bd_pal_rc" -eq 4 ]; then
+    _bd_fire arm patch-always-loaded-parse-gap detail "${_bd_pal_out:-}" cmd "${cmd:-}"
+  elif [ "$_bd_pal_rc" -eq 5 ]; then
+    _bd_fire arm patch-always-loaded-guard-failed detail "${_bd_pal_out:-}" cmd "${cmd:-}"
+  elif [ "$_bd_pal_rc" -ne 0 ]; then
+    _bd_fire arm patch-always-loaded-helper-failed rc "${_bd_pal_rc:-}" cmd "${cmd:-}"
+  fi
+fi
 
 exit 0

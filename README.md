@@ -79,7 +79,7 @@ One example from this repository's own history. Several sessions commit to one b
 
 **Guards are safety checks, not security boundaries.** A hook checks what a command looks like. A push to `main` is refused unless the command carries an approval prefix, and the agent is instructed to add that prefix only after you say yes; the hook cannot verify your consent, and an agent could construct the prefix. The guards catch mistakes and make an unwanted act deliberate. They are not a cryptographic or procedural guarantee, and your word stays the real gate.
 
-**It costs context.** As shipped, the lead session receives about 120 KB of rules at every start, resume, clear and compaction. The two rule files every session and specialist loads add about 54 KB. A session's first commit command brings about 67 KB more, and so does the first one after a compaction or clear; that command is refused once, so the rules arrive before it runs. `SKIP_ORCHESTRATOR_INJECT=1` and `SKIP_COMMIT_DOCTRINE_INJECT=1` in the settings' `env` block turn off the 120 KB and the 67 KB. [Saving the cache](docs/saving-the-cache.md) is the practical guide to the prompt cache.
+**It costs context.** As shipped, the lead session receives about 124 KB of rules at every start, resume, clear and compaction. The two rule files every session and specialist loads add about 51 KB. A session's first commit command brings about 68 KB more, and so does the first one after a compaction or clear; that command is refused once, so the rules arrive before it runs. `SKIP_ORCHESTRATOR_INJECT=1` and `SKIP_COMMIT_DOCTRINE_INJECT=1` in the settings' `env` block turn off the 124 KB and the 68 KB. [Saving the cache](docs/saving-the-cache.md) is the practical guide to the prompt cache.
 
 **What you supply.** A `CLAUDE.md` (start from [the starter](docs/starters/CLAUDE.starter.md)), a project memory directory that [`setup-project-memory.sh`](scripts/setup-project-memory.sh) links into place, the product context file the specialists read, and the trackers (`todo.txt`, `DECISIONS.md`, `BACKLOG.md`, `plans/`) once you use the commands that read them. Some scripts, domain specialists, test entry points and paths still describe the source project. [The start page](docs/start-a-new-project.md#what-you-supply) lists what to replace.
 
@@ -93,7 +93,7 @@ One example from this repository's own history. Several sessions commit to one b
 
 **The lead session leads.** (The copy's own files call it the main session.) It plans, builds and commits. Rules that only it can act on reach it alone, through a [session-start hook](.claude/hooks/orchestrator-inject.sh), so specialists start without rules they cannot use.
 
-**Commands run the work.** 53 commands cover the session rhythm (`/orient`, `/summary`, `/wrap`), review (`/expert-review`, `/review-hub`), hand-offs (`/mail`, `/spinoff`), recovery (`/post-compact`, `/circuit-break`) and the system's own upkeep (`/meta`). `/help` maps a task to its command.
+**Commands run the work.** 54 commands cover the session rhythm (`/orient`, `/summary`, `/wrap`), review (`/expert-review`, `/review-hub`), hand-offs (`/mail`, `/spinoff`), recovery (`/post-compact`, `/circuit-break`) and the system's own upkeep (`/meta`). `/help` maps a task to its command.
 
 **33 specialists bring the depth, and 1 more models an outside system.** Security, accessibility, performance, QA, architecture, code design, UX design, UX copy, prompt engineering, context and memory architecture, pricing, SEO, launch, legal and more; the outside-system one is the worked example of an external expert. Each has its own knowledge file and builds a memory as you use it; the copy ships the knowledge, and the memories are yours. Specialists hand their work back to the lead session, which commits it; their primer tells them not to commit, and the lead session writes their memory for them, since [a hook](.claude/hooks/block-subagent-memory-write.sh) refuses a specialist's direct edit of a memory file.
 
@@ -110,23 +110,23 @@ One example from this repository's own history. Several sessions commit to one b
 - **Mail.** 15,472 of 16,754 direct mails (92.3%) were delivered to a running session between 16 August and 20 October 2026. That is delivery, not reading: whether each was read was not measured.
 - **The memory read guard.** When it refuses an oversized read and says where to page, agents paged 68.1% of the time, against 12.7% after a plain size error. An observational comparison, not a randomized one.
 
-The copy's own smoke suite, run in a fresh repository holding only this copy, passed 2,128 arms and failed 170. The red arms are expected on a fresh copy: 126 drive tooling the copy does not ship, and 44 drive what your project supplies: its own files, the git hooks setting, and history; [the start page](docs/start-a-new-project.md#first-run) says what each group needs and which passes hold only because something is missing.
+The copy's own smoke suite, run in a fresh repository holding only this copy, passed 2,269 arms and failed 174. The red arms are expected on a fresh copy: 126 drive tooling the copy does not ship, and 48 drive what your project supplies: its own files, the git hooks setting, history, and size pins for its own rules files; [the start page](docs/start-a-new-project.md#first-run) says what each group needs and which passes hold only because something is missing.
 
 ## What is in the copy
 
-466 files:
+477 files:
 
 - **[`.claude/agents/`](.claude/agents/)**: 34 agent definitions (33 specialists and 1 that models an outside system) and [the primer](.claude/agents/_agent-primer.md) each one reads first.
-- **[`.claude/skills/`](.claude/skills/)**: 87 folders, holding the 53 commands and the knowledge files of the 34 agents.
+- **[`.claude/skills/`](.claude/skills/)**: 88 folders, holding the 54 commands and the knowledge files of the 34 agents.
 - **[`.claude/commands/`](.claude/commands/)**: 4 older command files (`/status`, `/verify`, `/external-audit` and one alias).
-- **[`.claude/hooks/`](.claude/hooks/)**: 65 hook scripts that refuse, warn, log or inject on the harness's events. [The settings file](.claude/settings.json) wires 58 of them, and 2 more run when another hook calls them. It has 112 hook entries for them: Claude Code caps what one hook entry adds to the context at 10,000 characters, so the two hooks that deliver the lead session's rules are listed once per part, with spare entries for the rules to grow into: `orchestrator-inject.sh` 25 times and `commit-doctrine-inject.sh` 17 times, one of them the entry that refuses the first commit command.
-- **[`.claude/rules/`](.claude/rules/)**: 9 rule files, about 327 KB in all; 7 carry `paths:` and load only when a session reads, writes or edits a matching file.
+- **[`.claude/hooks/`](.claude/hooks/)**: 66 hook scripts that refuse, warn, log or inject on the harness's events. [The settings file](.claude/settings.json) wires 58 of them, and 2 more run when another hook calls them. It has 112 hook entries for them: Claude Code caps what one hook entry adds to the context at 10,000 characters, so the two hooks that deliver the lead session's rules are listed once per part, with spare entries for the rules to grow into: `orchestrator-inject.sh` 25 times and `commit-doctrine-inject.sh` 17 times, one of them the entry that refuses the first commit command.
+- **[`.claude/rules/`](.claude/rules/)**: 9 rule files, about 312 KB in all; 7 carry `paths:` and load only when a session reads, writes or edits a matching file.
 - **[`.claude/orchestrator/`](.claude/orchestrator/)**: 4 files of rules for the lead session alone. Two arrive at every start, one with the first commit command, and the fourth only through a hook the shipped settings switch off.
 - **[`scripts/`](scripts/)**: the commit tool, sessions and mail, the smoke suite and mutation matrix, self-tests and drift checks.
-- **[`.githooks/`](.githooks/)**: the pre-commit and prepare-commit-msg hooks and the notes on wiring git hooks; the pre-push hook is yours to write.
+- **[`.githooks/`](.githooks/)**: the pre-commit, prepare-commit-msg and pre-applypatch hooks and the notes on wiring git hooks; the pre-push hook is yours to write.
 - **[`docs/starters/`](docs/starters/)**: a `CLAUDE.md` starter and four blank audit registers.
 
-Of the 466, 33 files written for the copy: this readme, the licence, notice, trademark, contributing and code-owner files, the `.claude/.gitignore` that keeps run-time state out of git, the smoke suite's list of expected failures, the 9 pages under `docs/`, the 5 starters and the 11 images. [The repository map](docs/repository-map.md) says what each file holds. The counts describe the tree; they are not the point.
+Of the 477, 33 files written for the copy: this readme, the licence, notice, trademark, contributing and code-owner files, the `.claude/.gitignore` that keeps run-time state out of git, the smoke suite's list of expected failures, the 9 pages under `docs/`, the 5 starters and the 11 images. [The repository map](docs/repository-map.md) says what each file holds. The counts describe the tree; they are not the point.
 
 ## Where the ideas came from
 

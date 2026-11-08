@@ -674,28 +674,214 @@ def cost_only(data):
 # !fullscreen to the badge hook, the banner passes fullscreen), so this marker is the indicator that stays on screen.
 # The state is the newest "bridge-session" record in this session's transcript: its bridgeSessionId is the remote
 # session id while Remote Control is on and "" once it is turned off. Those records can sit 60 MB back (measured
-# 2026-10-13 over 40 transcripts), so the file is read once backward in growing windows up to RC_SCAN_CAP and then
-# only its new bytes, with the offset kept in ~/.claude/statusline-cache/<sid8>-rc.json.
+# 2026-10-13 over 40 transcripts), so the file is read once backward in RC_BLOCK blocks, as far as it takes, and then
+# only its new bytes, with the offset kept in ~/.claude/statusline-cache/<sid8>-rc.json. A scan still running
+# after RC_SCAN_BUDGET_S keeps its place in that cache and resumes on the next refresh: Claude Code cancels an
+# in-flight status-line run when a new update arrives, and the cache is written only at the end of a run.
+#
+# A disconnect (2026-11-03: "● remote on" shown after the signed-in account changed) is a system record
+# whose content starts "Remote Control disconnected — <reason> — run /remote-control …", and after it the harness
+# KEEPS writing the old bridgeSessionId, so the newest-record rule read it as on. A read-only scan of this repo's
+# transcripts that day found 240 such records in 111 transcripts (212 account changed, 26 server rejected the
+# request (HTTP 404), 1 session creation failed, 1 connection kept dropping): after 232 of them the next record
+# carried the old id again, and where Remote Control came back it came back under a NEW id. So a disconnect turns
+# the marker off, records still carrying the id it left behind (the "dead" id) keep it off, and a different id
+# turns it back on. The cache carries the newest id and the dead id so an incremental read can tell them apart.
+# The cold read has no byte budget. Its first version stopped at 64 MB, and a review measured a false
+# "remote on" in 9 of 76 transcripts over 64 MB (a disconnect further back, no new id since); memory is one block
+# whatever the depth, and RC_SCAN_BUDGET_S bounds each refresh. A cold read of a session that has had Remote Control
+# on under ONE id since it started walks to the transcript's start, since only a different id or a disconnect ends
+# the walk earlier (timed on the 1,284 MB transcript: 3 refreshes, the slowest 461 ms, 22 MB RSS, page cache
+# warm); revisit if a status-line refresh is ever logged above 1 s.
 RC_NEEDLE = b'"type":"bridge-session"'
-RC_SCAN_CAP = 64 * 1024 * 1024
+RC_DROP_NEEDLE = b"Remote Control disconnected"
+# The harness's own disconnect, and /remote-control's "disconnect" choice, which writes a system local_command record
+# "<local-command-stdout>Remote Control disconnected.</local-command-stdout>": after 2 of the 92 of those in this
+# repo's transcripts the old id was written again before any "" record (found in review, 2026-11-03).
+RC_DROP_PREFIXES = (RC_DROP_NEEDLE.decode(), "<local-command-stdout>" + RC_DROP_NEEDLE.decode())
+RC_START = (None, None, None)  # the (on, id, dead) before any record: what precedes the transcript's start
 
 
-def rc_state_in(buf):
-    """On (True) / off (False) from the LAST bridge-session record in buf, or None when buf holds none."""
-    end = len(buf)
-    while True:
-        i = buf.rfind(RC_NEEDLE, 0, end)
-        if i < 0:
-            return None
-        s = buf.rfind(b"\n", 0, i) + 1
-        e = buf.find(b"\n", i)
+RC_BLOCK = 4 * 1024 * 1024  # backward read size; a line longer than this widens its own read (the longest seen ~1.8 MB)
+RC_LINE_MAX = 16 * 1024 * 1024  # a longer line is skipped unread: no Remote Control record is (~270 B; the longest line seen is 6.2 MB)
+RC_SCAN_BUDGET_S = 0.4  # per refresh, as AGENT_PARSE_BUDGET_S: a scan still running then resumes on the next refresh
+RC_CACHE_V = 3  # the cache format; a cache with any other "v" (or none) is re-read whole (3: a scan has no byte budget)
+RC_PHASES = ("newest", "run", "before")
+
+
+def _rc_hits_back(buf, lo, hi):
+    """("id", bridgeSessionId) or ("drop", None) for each Remote Control record in buf[lo:hi], newest first.
+
+    buf[lo:hi] holds whole lines; the only slice taken is a hit's own line."""
+    end = hi
+    i, j = buf.rfind(RC_NEEDLE, lo, end), buf.rfind(RC_DROP_NEEDLE, lo, end)
+    while i >= 0 or j >= 0:
+        k = max(i, j)
+        n = buf.rfind(b"\n", lo, k)
+        s = n + 1 if n >= 0 else lo
+        e = buf.find(b"\n", k, hi)
         try:
-            rec = json.loads(buf[s:e if e >= 0 else len(buf)])
-            if isinstance(rec, dict) and rec.get("type") == "bridge-session":
-                return bool(rec.get("bridgeSessionId"))
+            rec = json.loads(buf[s:e if e >= 0 else hi])
         except (ValueError, RecursionError):  # RecursionError: a pathologically nested line, as main() handles stdin
-            pass
+            rec = None
+        if isinstance(rec, dict):
+            if rec.get("type") == "bridge-session":
+                rid = rec.get("bridgeSessionId")
+                yield "id", (rid if isinstance(rid, str) else str(rid)) if rid else ""
+            elif rec.get("type") == "system" and str(rec.get("content") or "").startswith(RC_DROP_PREFIXES):
+                yield "drop", None  # a user or assistant line QUOTING the text is not this record type
         end = s
+        # each needle is searched again only once this line has used its hit, so a long run of one record kind
+        # never re-scans the whole block for the other
+        if i >= s:
+            i = buf.rfind(RC_NEEDLE, lo, end)
+        if j >= s:
+            j = buf.rfind(RC_DROP_NEEDLE, lo, end)
+
+
+def _rc_blocks_back(fh, lo, hi):
+    """(buf, a, frontier, last) for each block of whole lines in [lo, hi) of fh, newest first, RC_BLOCK at a time.
+
+    buf[a:] is the block's whole lines, and `frontier` (their first byte) is where the next block ends. Each read takes
+    one byte before the block, so a block that starts on a line start keeps its first line; the partial line a block
+    starts inside is read again with the next block, and a block holding no line start at all (a line longer than a
+    block) widens the read until one is in. `last` marks the block that reaches lo, which is always a line start."""
+    f = hi
+    while f > lo:
+        want = RC_BLOCK
+        while True:
+            b0 = max(lo, f - want)
+            r0 = b0 - 1 if b0 > 0 else 0
+            fh.seek(r0)
+            buf = fh.read(f - r0)
+            if b0 == lo:
+                yield buf, 1 if b0 > 0 else 0, lo, True  # lo is a line start: the byte before it is a newline
+                return
+            n = buf.find(b"\n", 0, len(buf) - 1)  # the last byte is the newline ending the block's last line
+            if n >= 0 or want >= RC_LINE_MAX:
+                break
+            want *= 2
+        if n < 0:  # the line ending at f is longer than RC_LINE_MAX: find its start without holding it, and skip it
+            buf, f = None, _rc_line_start(fh, lo, f - 1)
+            continue
+        yield buf, n + 1, r0 + n + 1, False
+        f = r0 + n + 1
+
+
+def _rc_line_start(fh, lo, e):
+    """The start of the line holding byte e - 1 (lo when none starts later), read back RC_BLOCK at a time."""
+    while e > lo:
+        b0 = max(lo, e - RC_BLOCK)
+        fh.seek(b0)
+        n = fh.read(e - b0).rfind(b"\n")
+        if n >= 0:
+            return b0 + n + 1
+        e = b0
+    return lo
+
+
+class _RcResolve:
+    """The Remote Control state, fed records newest first.
+
+    `answer` is set once older records cannot change it; `settle(before)` gives the state when the records run out,
+    from what precedes them (RC_START: nothing). phase "newest" has seen no record; "run" has seen only records of
+    id `rid`; "before" has seen a disconnect and is looking for the id attached when it happened (`first` says
+    whether the newest record was that disconnect or a run of `rid` after it)."""
+
+    def __init__(self, phase="newest", rid=None, first=None):
+        self.phase, self.rid, self.first, self.answer = phase, rid, first, None
+
+    def feed(self, kind, val):
+        if self.phase == "newest":
+            if kind == "drop":
+                self.phase, self.first = "before", "drop"
+            elif not val:
+                self.answer = (False, "", None)
+            else:
+                self.phase, self.rid = "run", val
+        elif self.phase == "run":
+            if kind == "drop":
+                self.phase, self.first = "before", "run"  # a disconnect before this run: is rid the id it left behind?
+            elif val != self.rid:
+                self.answer = (True, self.rid, None)  # attached after a different id: a fresh remote session
+        elif kind == "id":
+            self.answer = self._after_drop(val)
+        return self.answer
+
+    def _after_drop(self, prev):
+        if self.first == "drop":
+            return (False, prev, prev or None)
+        return (False, self.rid, self.rid) if prev == self.rid else (True, self.rid, None)
+
+    def settle(self, before):
+        if self.answer is not None:
+            return self.answer
+        if self.phase == "newest":
+            return before
+        if self.phase == "run":
+            return (False, self.rid, self.rid) if before[2] == self.rid else (True, self.rid, None)
+        return self._after_drop(before[1])
+
+
+def _rc_scan(fh, res, lo, f, deadline):
+    """Feed res the records of [lo, f) newest first until it answers, the region runs out, or the deadline passes
+    (checked between blocks, so at least one block is read). Returns the new frontier, lo once the region is read."""
+    for buf, a, frontier, last in _rc_blocks_back(fh, lo, f):
+        for kind, val in _rc_hits_back(buf, a, len(buf)):
+            if res.feed(kind, val) is not None:
+                return lo
+        if last:
+            return lo
+        if time.monotonic() > deadline:
+            return frontier
+    return lo
+
+
+def _rc_line_end(fh, size, lo):
+    """The offset just past the last newline in [lo, size), or lo: a half-written last line is read next time."""
+    want = 64 * 1024
+    while True:
+        b0 = max(lo, size - want)
+        fh.seek(b0)
+        n = fh.read(size - b0).rfind(b"\n")
+        if n >= 0:
+            return b0 + n + 1
+        if b0 == lo:
+            return lo
+        want *= 4
+
+
+def _rc_triple(t):
+    """t as an (on, id, dead) state, or None when it is not one; RC_START (no record yet) is one."""
+    if not isinstance(t, (list, tuple)) or len(t) != 3:
+        return None
+    on, rid, dead = t
+    if (on, rid, dead) == RC_START:
+        return RC_START
+    if not isinstance(on, bool) or not (rid is None or isinstance(rid, str)) or not (dead is None or isinstance(dead, str)):
+        return None
+    return (on, rid, dead)
+
+
+def _rc_offset(v, size):
+    return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= size else None
+
+
+def _rc_cached_scan(cache, size):
+    """The cache's pending scan as (lo, hi, f, resolver, before), None when it has none, or False when it is unusable."""
+    s = cache.get("scan")
+    if s is None:
+        return None
+    if not isinstance(s, dict):
+        return False
+    lo, hi, f = (_rc_offset(s.get(k), size) for k in ("lo", "hi", "f"))
+    before = _rc_triple(s.get("before"))
+    phase, rid, first = s.get("phase"), s.get("rid"), s.get("first")
+    if None in (lo, hi, f) or not lo <= f <= hi or before is None or phase not in RC_PHASES:
+        return False
+    if not (rid is None or isinstance(rid, str)) or first not in (None, "drop", "run"):
+        return False
+    return lo, hi, f, _RcResolve(phase, rid, first), before
 
 
 def remote_control_on(data):
@@ -711,50 +897,60 @@ def remote_control_on(data):
             cache = json.load(fh)
     except (OSError, ValueError):
         cache = {}
-    start = cache.get("offset") if isinstance(cache, dict) and cache.get("path") == tp else None
-    if isinstance(start, bool):  # a bool is an int to isinstance; never a byte offset
-        start = None
-    state, offset = None, None
+    deadline = time.monotonic() + RC_SCAN_BUDGET_S
+    # A cache of another format, another transcript, an offset past the end (the file shrank) or an unusable state
+    # is re-read whole: its offset alone would treat the bytes already read as holding nothing.
+    ok = isinstance(cache, dict) and cache.get("v") == RC_CACHE_V and cache.get("path") == tp
+    off = _rc_offset(cache.get("offset"), size) if ok else None
+    pending = _rc_cached_scan(cache, size) if off is not None else False
+    prior = _rc_triple(cache.get("state_t")) if off is not None and pending is None else None
+    if pending is False or (pending is None and prior is None):
+        off = None
     with open(tp, "rb") as fh:
-        if isinstance(start, int) and 0 <= start <= size and size - start <= RC_SCAN_CAP:
-            state = cache.get("state") if cache.get("state") in (True, False) else None
-            fh.seek(start)
-            buf = fh.read(size - start)
-            end = buf.rfind(b"\n") + 1           # whole lines only; a half-written last line is read next time
-            found = rc_state_in(buf[:end])
-            if found is not None:
-                state = found
-            offset = start + end
-        else:
-            for win in sorted({min(w, RC_SCAN_CAP) for w in (1 << 20, 1 << 22, 1 << 24, RC_SCAN_CAP)}):
-                lo = max(0, size - win)
-                fh.seek(lo)
-                buf = fh.read(size - lo)
-                skip = buf.find(b"\n") + 1 if lo > 0 else 0   # drop the window's partial first line
-                end = buf.rfind(b"\n") + 1
-                state = rc_state_in(buf[skip:end]) if end > skip else None
-                offset = lo + end
-                if state is not None or lo == 0:
-                    break
+        end = _rc_line_end(fh, size, off or 0)
+        if off is None:  # a cold read, back to the transcript's start
+            pending = (0, end, end, _RcResolve(), RC_START)
+        elif pending is None:  # an incremental read of the bytes since the last refresh
+            pending = (off, end, end, _RcResolve(), prior)
+        lo, hi, f, res, before = pending
+        newer = None
+        if hi < end:  # the file grew while a scan was pending: its new bytes are the newest records
+            newer = _RcResolve()
+            _rc_scan(fh, newer, hi, end, float("inf"))
+        if newer is None or newer.answer is None:
+            f = _rc_scan(fh, res, lo, f, deadline)
+    done = res.answer is not None or f <= lo
+    state = res.settle(before)  # while a scan is pending this is the provisional answer: the unread part as nothing
+    if newer is not None:
+        state = newer.settle(state)
+        done = done or newer.answer is not None
+    rec = {"v": RC_CACHE_V, "path": tp, "state_t": list(state)}
+    if done:
+        rec.update(offset=end, scan=None)
+    else:
+        rec.update(offset=hi, scan={"lo": lo, "hi": hi, "f": f, "phase": res.phase, "rid": res.rid,
+                                     "first": res.first, "before": list(before)})
     try:
         os.makedirs(AGENT_CACHE_DIR, exist_ok=True)
         tmp = f"{cpath}.{os.getpid()}.tmp"  # per process, as agents_line does: two overlapping refreshes never share one
         with open(tmp, "w") as fh:
-            json.dump({"path": tp, "offset": offset, "state": state}, fh)
+            json.dump(rec, fh)
         os.replace(tmp, cpath)
     except OSError:
         pass
-    return state
+    return state[0]
 
 
 def remote_marker(data):
     """"● remote on" while Remote Control is TURNED ON for this session, else None; placed by place_right.
 
     It cannot show the link's health, so it says "on", never "connected". Measured 2026-10-13 over the 60 newest
-    transcripts: 50,256 bridge-session records (the attached remote id, or "" when off) and 63 "is active" notes,
-    and not one reconnecting / disconnected / error record; the status-line input carries no link state either.
-    Claude Code's own badge reads that state from memory, so after a network drop it says reconnecting while this
-    marker still says on.
+    transcripts: 50,256 bridge-session records (the attached remote id, or "" when off) and 63 "is active" notes;
+    the status-line input carries no link state either. That reading also said there was no disconnected record,
+    which was wrong: a "Remote Control disconnected — <reason>" system record exists (one is dated 2026-08-13) and
+    is read since 2026-11-03 (see _RcResolve). That day's scan found no reconnecting record among the Remote
+    Control system records, so after a network drop Claude Code's own badge can say reconnecting while this marker
+    still says on.
     """
     if remote_control_on(data) is not True:
         return None
@@ -769,7 +965,8 @@ FOOTER_INSET = 4
 
 
 def place_right(lines, marker, cols=None):
-    """Put `marker` at the right end of the TOP line. Right-aligned to the terminal edge when Claude Code passes
+    """Put `marker` at the right end of the layout's TOP line, the cache row; stack_rows puts the now row above it
+    afterwards. Right-aligned to the terminal edge when Claude Code passes
     COLUMNS (FOOTER_INSET + 1 columns short of it, so the footer box never cuts the marker), else to the widest line; on its own right-aligned
     line when the top line has no room, as in a narrow, stacked layout."""
     if not marker:
@@ -898,6 +1095,66 @@ def agents_line(data, now):
     return row("cost", f"{len(files)} agents".ljust(BAR_W), session_cost(data) or "", text)
 
 
+# "NOW" as the first word of a Status cell. Not ▶: /pause writes "▶ resumed …" rows into plans
+# (3 plans carried one on 2026-11-04), which would have shown a pause line as the current work.
+NOW_MARK = re.compile(r"NOW\b")
+NOW_STALE_S = 30 * 60
+NOW_FALLBACK_W = 110
+PLAN_NAME = re.compile(r"session-([0-9a-f]{8})-(\d{4}-\d{2}-\d{2})\.md")
+CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # C0, DEL and C1 (U+009B is a one-character CSI)
+
+
+def plan_now_item(text):
+    """The row of a working plan's tables whose Status cell (the 2nd) starts with the word NOW, as plain
+    "item · status" text, or None. A reader loses track of where a session is while it keeps replying,
+    so the status line names the one thing in progress. The plan is written
+    by a session, so control characters are stripped before it reaches the terminal."""
+    for line in text.split("\n"):
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        mark = NOW_MARK.match(cells[1]) if len(cells) >= 2 else None
+        if not mark:
+            continue
+        clean = lambda s: CONTROL.sub("", s).replace("**", "").replace("`", "").strip()
+        item, status = clean(cells[0]), clean(cells[1][mark.end():])
+        if item:
+            return f"{item} · {status}" if status else item
+    return None
+
+
+def now_line(data, now):
+    """`now` row: this session's newest plans/session-<sid8>-<date>.md, its NOW row, and the plan's age
+    when it has not been touched for NOW_STALE_S (a stale plan is named as stale, never shown as now)."""
+    # sid8 only ever meets PLAN_NAME's hex group by equality, so a non-hex id matches no file;
+    # a separate hex check was mutated out with all arms green (2026-11-04) and was removed.
+    sid8 = str(data.get("session_id") or "").lower()[:8]
+    project = (data.get("workspace") or {}).get("project_dir") or data.get("cwd") or ""
+    plans = os.path.join(project, "plans")
+    try:
+        names = [n for n in os.listdir(plans) if (m := PLAN_NAME.fullmatch(n)) and m.group(1) == sid8]
+    except OSError:
+        return None
+    if not names:
+        return None
+    path = os.path.join(plans, max(names, key=lambda n: PLAN_NAME.fullmatch(n).group(2)))
+    if not os.path.isfile(path):  # a FIFO or dir named like a plan would block open()
+        return None
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        item = plan_now_item(fh.read(400_000))
+    if not item:
+        return None
+    age = now - os.path.getmtime(path)
+    # Yellow, never red: the age is the file's mtime, which any plan edit
+    # refreshes, so it under-fires; it marks a plan nobody has touched, not a mark nobody moved.
+    tail = (YELLOW + f" · plan {duration(age)} old" + RESET) if age >= NOW_STALE_S else ""
+    cols = term_columns()
+    room = (cols if cols else NOW_FALLBACK_W) - LABEL_W - visible(tail)
+    if len(item) > room:
+        item = item[: max(room - 1, 0)] + "…"
+    return dim("now".ljust(LABEL_W)) + item + tail
+
+
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 COLUMN_GAP = "    "
 LEFT_DETAIL_FLOOR = 36  # the left column is at least this wide in detail text, so the right one rarely shifts
@@ -934,6 +1191,22 @@ def layout(left, right):
     return lines
 
 
+def with_now_row(lines, current):
+    """The `now` row goes FIRST (it was first shown as the last row and moved to the top); placed after
+    place_right, so the remote marker stays on the cache row."""
+    return [current] + list(lines) if current else list(lines)
+
+
+def stack_rows(lines, marker, current, cols):
+    """The marker is placed BEFORE the now row goes on top: placed after, it would land on the now row, or drop to a
+    line of its own when the now row fills the width."""
+    try:
+        lines = place_right(lines, marker, cols)
+    except Exception:
+        pass
+    return with_now_row(lines, current)
+
+
 def main():
     if sys.argv[1:] == ["--refresh-usage"]:
         try:
@@ -967,11 +1240,7 @@ def main():
         lines = layout(left, right)
     except Exception:
         lines = [s for s in left + right if s]
-    marker = safe(lambda: remote_marker(data))
-    try:
-        lines = place_right(lines, marker, term_columns())
-    except Exception:
-        pass
+    lines = stack_rows(lines, safe(lambda: remote_marker(data)), safe(lambda: now_line(data, now)), term_columns())
     if lines:
         try:  # write UTF-8 whatever the locale says, so a non-UTF-8 LANG cannot raise
             sys.stdout.buffer.write(("\n".join(lines) + "\n").encode("utf-8", "replace"))

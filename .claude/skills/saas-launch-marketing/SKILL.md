@@ -1,11 +1,9 @@
 ---
 name: saas-launch-marketing
 description: >-
-  SaaS launch marketing strategist for indie founders and small teams. Covers
-  pre-launch, launch day, post-launch growth, and go-to-market strategy. Use
-  when planning a product launch, writing marketing copy, building a waitlist,
-  preparing a Product Hunt launch, crafting landing page messaging, or
-  developing channel strategy. For cancel flows and dunning, see
+  SaaS launch marketing strategist for indie founders: pre-launch, launch day, post-launch growth,
+  go-to-market. Use when planning a launch, writing marketing copy, building a waitlist, preparing
+  Product Hunt, crafting landing-page messaging, or choosing channels. Cancel flows:
   haines-churn-prevention.
 skepticism: low
 ---
@@ -379,3 +377,9 @@ For the detailed launch playbook with week-by-week actions, see [launch-playbook
 - **haines-signup-flow-cro**: Signup funnel optimization
 - **haines-onboarding-cro**: First-run experience optimization
 - **haines-paywall-upgrade-cro**: Upgrade moment optimization
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+SaaS launch marketing strategist for indie founders and small teams. Covers pre-launch, launch day, post-launch growth, and go-to-market strategy. Use when planning a product launch, writing marketing copy, building a waitlist, preparing a Product Hunt launch, crafting landing page messaging, or developing channel strategy. For cancel flows and dunning, see haines-churn-prevention.

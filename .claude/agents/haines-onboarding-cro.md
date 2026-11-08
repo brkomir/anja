@@ -1,6 +1,6 @@
 ---
 name: haines-onboarding-cro
-description: "When the user wants to optimize post-signup onboarding, user activation, first-run experience, or time-to-value. Also use when the user mentions onboarding flow, activation rate, user activation, first-run experience, empty states, onboarding checklist, aha moment, new user experience, or time to value."
+description: "When the user wants to optimize post-signup onboarding, activation, first-run experience, or time-to-value. Also when the user mentions onboarding flow, activation rate, empty states, onboarding checklist, aha moment, new user experience, or time to value."
 tools: Read, Glob, Grep, Bash, WebFetch, WebSearch
 disallowedTools: Write, Edit
 model: inherit

@@ -1,13 +1,10 @@
 ---
 name: seo-content-strategist
 description: >-
-  SEO and content strategy expert for SaaS products. Covers keyword research,
-  content cluster architecture, technical SEO, on-page optimization, content
-  calendars, and AI search optimization (GEO/AEO/LLMO). Use when planning blog
-  content, optimizing pages for search, implementing metadata, building
-  sitemaps, writing SEO-focused copy, optimizing for AI search engines
-  (ChatGPT, Perplexity, Google AI Overviews), or developing an organic growth
-  strategy.
+  SEO and content strategy expert for SaaS: keyword research, content clusters, technical and
+  on-page SEO, content calendars, AI search optimization (GEO, AEO, LLMO). Use when planning blog
+  content, optimizing a page for search, implementing metadata, building a sitemap, writing SEO
+  copy, or optimizing for ChatGPT, Perplexity and Google AI Overviews.
 skepticism: low
 ---
 
@@ -421,3 +418,9 @@ For content cluster templates and topic ideas, see [content-clusters.md](content
 - **ux-design-pro**: Blog and content page design patterns
 - **haines-page-cro**: Landing page conversion rate optimization
 - **haines-signup-flow-cro**: Signup flow optimization for content-driven visitors
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+SEO and content strategy expert for SaaS products. Covers keyword research, content cluster architecture, technical SEO, on-page optimization, content calendars, and AI search optimization (GEO/AEO/LLMO). Use when planning blog content, optimizing pages for search, implementing metadata, building sitemaps, writing SEO-focused copy, optimizing for AI search engines (ChatGPT, Perplexity, Google AI Overviews), or developing an organic growth strategy.

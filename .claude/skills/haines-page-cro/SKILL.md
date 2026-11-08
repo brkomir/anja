@@ -1,6 +1,6 @@
 ---
 name: haines-page-cro
-description: When the user wants to optimize, improve, or increase conversions on any marketing page — including homepage, landing pages, pricing pages, feature pages, or blog posts. Also use when the user says "CRO," "conversion rate optimization," "this page isn't converting," "improve conversions," "why isn't this page working," "my landing page sucks," "nobody's converting," "low conversion rate," "bounce rate is too high," "people leave without signing up," or "this page needs work." Use this even if the user just shares a URL and asks for feedback — they probably want conversion help. For signup/registration flows, see haines-signup-flow-cro. For post-signup activation, see haines-onboarding-cro.
+description: "When the user wants to optimize, improve, or increase conversions on any marketing page — homepage, landing pages, pricing pages, feature pages, or blog posts. Also use when the user says CRO, conversion rate optimization, improve conversions, low conversion rate, or bounce rate is too high."
 metadata:
   version: 1.1.0
 skepticism: medium
@@ -211,3 +211,9 @@ When recommending experiments, consider tests for:
 
 - **haines-signup-flow-cro**: If the issue is in the signup process itself
 - **ux-copywriter**: If the page needs a complete copy rewrite
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+When the user wants to optimize, improve, or increase conversions on any marketing page — including homepage, landing pages, pricing pages, feature pages, or blog posts. Also use when the user says "CRO," "conversion rate optimization," "this page isn't converting," "improve conversions," "why isn't this page working," "my landing page sucks," "nobody's converting," "low conversion rate," "bounce rate is too high," "people leave without signing up," or "this page needs work." Use this even if the user just shares a URL and asks for feedback — they probably want conversion help. For signup/registration flows, see haines-signup-flow-cro. For post-signup activation, see haines-onboarding-cro.

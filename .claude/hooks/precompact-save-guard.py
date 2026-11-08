@@ -114,7 +114,7 @@ def self_test():
     ])
     t("the request is this session's newest pre-compact record of any source (typed, fleet, AUTO), never a peer's or another skill's",
       newest_request(log, sid) == parse_ts("2026-10-16T20:04:00Z"))
-    plan = "## PRE-COMPACT — 2026-10-16T19:00:00Z (AUTO)\ntext\n## PRE-COMPACT — 2026-10-16T20:01:00Z\n  ## PRE-COMPACT — 2026-10-16T23:00:00Z\n"
+    plan = "## PRE-COMPACT — 2026-10-16T19:00:00Z (AUTO)\ntext\n## PRE-COMPACT — 2026-10-16T20:01:00Z (--wait, first save; 2 helpers and 1 background jobs outstanding)\n  ## PRE-COMPACT — 2026-10-16T23:00:00Z\n"
     t("the save is the newest bank heading at line start; an indented mention does not count",
       newest_bank([plan]) == parse_ts("2026-10-16T20:01:00Z"))
     print("\nself-test: ALL PASS" if ok else "\nself-test: FAILURES")

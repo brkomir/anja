@@ -141,7 +141,7 @@
 // codified ways all ask whether a probe could have returned the OTHER answer, and this
 // one asks whether the POPULATION could have contained the phenomenon at all.
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -778,9 +778,38 @@ const hdr = (t, k) => (t.match(new RegExp(`^${k}:\\s*(.+)$`, "mi")) || [, ""])[1
 // re-deriving "answered" (the two disagreed on 1 of 4 flagged shas for
 // one hub at one minute). The default text report is byte-unchanged: every print below goes through
 // `log`, a no-op under --json, and the three exits emit the document with their own `control`.
+// The review ledger this scan reads: FF_REVIEW_LEDGER when set (a fixture), else the tracked file found
+// from THIS script's own location, never the cwd. Module scope so the cross-thread test can check the
+// default path in-process instead of spawning the script (a CI run on main timed that spawn out).
+export const DEFAULT_LEDGER_FILE = fileURLToPath(new URL("../.claude/docs/review-ledger.md", import.meta.url));
+export function ledgerFileFor(env) {
+  return env.FF_REVIEW_LEDGER || DEFAULT_LEDGER_FILE;
+}
+
+// process.stdout on a pipe sets O_NONBLOCK and queues what the pipe will not take, and process.exit
+// drops the queue: a 300,000 B write reached the reader cut at 65,536 B on macOS and on Linux, so
+// review-queue.py printed no queue once the document passed that size (measured 2026-11-02 at
+// 66,788 B), and a text report read by a lagging reader was cut the same way. All output comes here.
+// On the blocking pipe every caller hands down, writeSync waits in the kernel. EAGAIN arrives only
+// from a parent that made the pipe non-blocking, where the sleep stops a stalled reader costing a
+// core. EPIPE means the reader left, as `| head` does: stop writing and keep the scan's exit code.
+const SLEEP_CELL = new Int32Array(new SharedArrayBuffer(4));
+const writeAllToStdout = (text) => {
+  const bytes = Buffer.from(text);
+  for (let sent = 0; sent < bytes.length; ) {
+    try {
+      sent += writeSync(1, bytes, sent);
+    } catch (e) {
+      if (e.code === "EPIPE") return;
+      if (e.code !== "EAGAIN") throw e;
+      Atomics.wait(SLEEP_CELL, 0, 0, 5);
+    }
+  }
+};
+
 function main({ sid = ENV_ME, json = false } = {}) {
 const me = sid;
-const log = json ? () => {} : (...a) => console.log(...a);
+const log = json ? () => {} : (line) => writeAllToStdout(`${line}\n`);
 if (!me) { console.error("closure-scan: no CLAUDE_CODE_SESSION_ID and no --sid; refusing to guess identity."); process.exit(2); }
 const { inbound, outbound, foreign } = parseMailDir(MAIL, me);
 const answered = buildAnsweredIndex(outbound);
@@ -892,8 +921,7 @@ for (const f of stateFiles.filter(n => /^closure-scan-dismissed-.+\.txt$/.test(n
 // end-to-end test runs this script with the three newest real commits as its fixture shas, so
 // against the LIVE ledger it went red whenever one of them had a finished review row: a flake that
 // tracked what the ledger said about recent commits, not anything in this file.
-const LEDGER_FILE = process.env.FF_REVIEW_LEDGER
-  || fileURLToPath(new URL("../.claude/docs/review-ledger.md", import.meta.url));
+const LEDGER_FILE = ledgerFileFor(process.env);
 let ledgerIdx = new Map();
 let ledgerStatus = "NOT FOUND";
 try {
@@ -971,7 +999,7 @@ for (const r of rows) {
 const ledgerRowOf = (s) => { const v = lookupSha(ledgerIdx, s); return v ? { ...v } : null; };
 const emitJson = (control, code) => {
   const closedN = rows.filter((r) => !r.open.length).length;
-  process.stdout.write(`${JSON.stringify({
+  writeAllToStdout(`${JSON.stringify({
     seat: me, control,
     ledger: { path: LEDGER_FILE, status: ledgerStatus },
     counts: { requests: rows.length, closed: closedN, withUnanswered: rows.length - closedN, closedVia: pathCounts },

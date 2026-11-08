@@ -230,16 +230,38 @@ fi
 # three), name the doctrine files that changed since launch; they must be re-read. Inert for every session not
 # launched that way (the variable is unset). A label that is not a commit here is reported, never silent, and
 # never reaches git as an option (a value starting "--output=" truncated a file through `git diff`).
+# A RESUME KEEPS THE OLDER COPY. Claude Code 2.1.316 records a conversation's system prompt at its first request
+# and re-sends that record on every later request AND after a --resume, until the next compaction
+# (--system-prompt-snapshot, default on). Measured 2026-11-02: a resumed headless session launched with a new
+# append file still answered from the first file, and answered from the new one only with the snapshot off. So
+# the doctrine a conversation holds is the one rendered at its last startup, clear or compaction, which a resume
+# need not share with this launch: record the launch commit per session at those three, and on a resume compare
+# against the recorded one; with none recorded, freshness is unknown.
+_rd_rec="${FF_STATE_DIR:-$DIR/.claude/state}/resident-doctrine-commit-${SID8}"
+# A plain (non-launcher) startup, clear or compaction re-records the system prompt WITHOUT the doctrine, so it drops
+# any record a launcher left for this conversation: a later launcher resume then reads UNKNOWN, never a stale commit.
+# The braces matter: a failed `>` reports before a trailing 2>/dev/null applies.
+if [ -n "$SID8" ] && [ "${SRC:-startup}" != "resume" ]; then
+  if [ -n "${CLAUDE_RESIDENT_DOCTRINE_COMMIT:-}" ]; then
+    { printf '%s\n' "$CLAUDE_RESIDENT_DOCTRINE_COMMIT" > "$_rd_rec"; } 2>/dev/null || true
+  else
+    rm -f "$_rd_rec" 2>/dev/null || true
+  fi
+fi
 if [ "${SRC:-startup}" != "startup" ] && [ -n "${CLAUDE_RESIDENT_DOCTRINE_COMMIT:-}" ]; then
   _rd_c="$CLAUDE_RESIDENT_DOCTRINE_COMMIT"
-  if [[ "$_rd_c" =~ ^[0-9a-f]{7,40}$ ]] && git -C "$DIR" cat-file -e "${_rd_c}^{commit}" 2>/dev/null; then
+  [ "${SRC:-}" = "resume" ] && { _rd_c=""; [ -n "$SID8" ] && _rd_c="$(head -1 "$_rd_rec" 2>/dev/null || true)"; }
+  if [ -z "$_rd_c" ]; then
+    _rd_changed="(a resumed conversation keeps the system prompt recorded at its last startup, clear or compaction, and no launch commit is recorded for this one, so freshness is UNKNOWN until its next compaction: treat both .claude/orchestrator/{conventions,session-doctrine}.md as changed) "
+  elif [[ "$_rd_c" =~ ^[0-9a-f]{7,40}$ ]] && git -C "$DIR" cat-file -e "${_rd_c}^{commit}" 2>/dev/null; then
     _rd_changed=$(git -C "$DIR" diff --name-only "$_rd_c" -- \
       .claude/orchestrator/conventions.md .claude/orchestrator/session-doctrine.md 2>/dev/null | tr '\n' ' ')
   else
     _rd_changed="(launch label '${_rd_c:0:12}' is not a commit in this clone, so freshness is UNKNOWN: treat both .claude/orchestrator/{conventions,session-doctrine}.md as changed) "
   fi
+  _rd_show="${_rd_c:0:9}"; _rd_show="${_rd_show:-an unrecorded commit}"
   if [ -n "${_rd_changed// /}" ]; then
-    echo "📜 DOCTRINE CHANGED SINCE LAUNCH (main session launched by scripts/claude-main.sh; a dispatched sub-agent or a nested claude ignores this line): this session's system prompt holds the orchestrator doctrine as it was at ${_rd_c:0:9}; these files have changed since: ${_rd_changed}— Read them now (the working tree is current), and relaunch through scripts/claude-main.sh at a natural break to refresh the cached copy."
+    echo "📜 DOCTRINE CHANGED SINCE LAUNCH (main session launched by scripts/claude-main.sh; a dispatched sub-agent or a nested claude ignores this line): this session's system prompt holds the orchestrator doctrine as it was at ${_rd_show}; these files have changed since: ${_rd_changed}— Read them now (the working tree is current), and relaunch through scripts/claude-main.sh at a natural break to refresh the cached copy (a fresh launch: a --resume keeps the recorded copy until the next compaction)."
   fi
 fi
 
@@ -311,14 +333,14 @@ fi
 # LC_ALL=C = byte order = JS default sort.
 WP_FILE=$(ls "$DIR"/plans/session-"${SID8}"-*.md 2>/dev/null | LC_ALL=C sort | tail -1)
 if [ -n "$SID8" ] && [ -n "$WP_FILE" ]; then
-  echo "📋 WORKING PLAN (exists): ${WP_FILE#$DIR/} — it is the re-read path after a compaction and the source /wrap reads its closability verdict FROM. Update it AT the state change, not at the next commit; corrections REPLACE the text they correct."
+  echo "📋 WORKING PLAN (exists): ${WP_FILE#$DIR/} — it is the re-read path after a compaction and the source /wrap reads its closability verdict FROM. Update it AT the state change, not at the next commit; corrections REPLACE the text they correct. Working on a BACKLOG item? Name it under ## Backlog items in the plan (#N and one line) when the work starts, so /wrap closes or updates it from what the session actually did."
 elif [ -n "$SID8" ] && [ "$SRC" = "compact" ]; then
   # A COMPACTION with no plan file means the first-message directive (and its per-turn nag) was
   # missed for the whole pre-compaction span, so whatever the session held is only in the
   # summary now — the session a compaction hurts most. Unconditional create-now arm.
-  echo "📋 WORKING PLAN (compaction, none exists — create it NOW): this session just compacted with no plan file, so whatever it was holding is only in the summary. Open plans/session-${SID8}-\$(date +%Y-%m-%d).md THIS turn — live items, the closability block, the REVIEW LEDGER (reviewed / pending / NOT SENT per work unit) — reconstructing from /post-compact rather than from recall. It is the re-read path for every compaction after this one."
+  echo "📋 WORKING PLAN (compaction, none exists — create it NOW): this session just compacted with no plan file, so whatever it was holding is only in the summary. Open plans/session-${SID8}-\$(date +%Y-%m-%d).md THIS turn — live items, the closability block, the REVIEW LEDGER (reviewed / pending / NOT SENT per work unit), a ## Backlog items section (empty until work on a BACKLOG entry starts) — reconstructing from /post-compact rather than from recall. It is the re-read path for every compaction after this one."
 elif [ -n "$SID8" ]; then
-  echo "📋 WORKING PLAN (standing directive): on your FIRST turn — before the user's task, exactly like the mail-listener — open plans/session-${SID8}-\$(date +%Y-%m-%d).md: the arc, the live item table, the REVIEW LEDGER (reviewed / pending / NOT SENT per work unit), and the closability block. Update it at every state change thereafter, including events you did not author. working-plan-reminder.sh re-injects this every turn until the file exists. Skip only in a genuine one-shot / non-interactive run (SKIP_WORKING_PLAN_REMINDER=1 in the LAUNCH environment — a session export cannot reach a hook)."
+  echo "📋 WORKING PLAN (standing directive): on your FIRST turn — before the user's task, exactly like the mail-listener — open plans/session-${SID8}-\$(date +%Y-%m-%d).md: the arc, the live item table, the REVIEW LEDGER (reviewed / pending / NOT SENT per work unit), a ## Backlog items section (empty until work on a BACKLOG entry starts), and the closability block. Update it at every state change thereafter, including events you did not author. working-plan-reminder.sh re-injects this every turn until the file exists. Skip only in a genuine one-shot / non-interactive run (SKIP_WORKING_PLAN_REMINDER=1 in the LAUNCH environment — a session export cannot reach a hook)."
 fi
 
 # Recurring-blindspot prime (dynamic, ranked) — load the top firing owner-pushback

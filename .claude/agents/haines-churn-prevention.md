@@ -1,6 +1,6 @@
 ---
 name: haines-churn-prevention
-description: "When the user wants to reduce churn, build cancellation flows, set up save offers, recover failed payments, or implement retention strategies. Also use when the user mentions churn, cancel flow, offboarding, save offer, dunning, failed payment recovery, win-back, retention, exit survey, pause subscription, involuntary churn, or customers leaving."
+description: "When the user wants to reduce churn, build a cancellation flow, set up save offers, recover failed payments, or implement retention. Also when the user mentions churn, cancel flow, offboarding, save offer, dunning, win-back, retention, exit survey, pause subscription, involuntary churn, or customers leaving."
 tools: Read, Glob, Grep, Bash, WebFetch, WebSearch
 disallowedTools: Write, Edit
 model: inherit

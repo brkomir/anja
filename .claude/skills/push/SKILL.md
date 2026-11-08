@@ -168,6 +168,17 @@ run file and `W`, so a run that outlives its session (a `/wrap` push) can still 
 **D3. Verify it landed, by ancestry:** `git fetch origin && git merge-base --is-ancestor <H> origin/dev && echo LANDED || echo NOT-LANDED`
 (never an `ls-remote == HEAD` equality — a peer pushing on top breaks it within seconds).
 
+**D3b. Act on what the push fired — once D3 reads LANDED.** Run `python3 scripts/defer-trigger-scan.py`
+(Bash `timeout: 180000`: the bare scan took 85 s on 2026-10-31, against the tool's 120 s default, past which
+the call moves to the background and this step gets no answer this turn) and take every fired row whose
+trigger is `on-ref <sha> origin/dev`: do what the row says, the same turn, and name each in D5. **A fired row
+whose action moves, deletes, prunes or rewrites anything outside the tracker (files, folders, worktrees,
+branches, refs, database rows) is never run in this step, whatever its own text says:** show its list or dry
+run in D5 and leave it for the owner's word in a later turn. `/promote` does the same after its merge for rows on `origin/main`. `/wrap` scans at step 7h, BEFORE
+this optional last step, so without this step the pushing session never sees a row fire and the next
+session's `/orient` is the first to (the step was added after a row deferred until a push ran past that push
+unseen).
+
 **D4. Wait for the staging build, then read its state** — `<your deploy host>` builds every `dev` push at the
 branch alias `<your deploy host's staging URL>`:
 ```bash
@@ -181,7 +192,8 @@ Error ⇒ `<your deploy host's build-log command>` and treat it as a red gate. C
 
 **D5. Report** — one plain message: the staging link, what changed since the last dev push (the commit count
 from git's own `<old>..<new>` line, all sessions'), the build state from D4, anything the hook flagged, and
-D2b's browser run: still running, `N passed`, or what failed and what happens next.
+D2b's browser run: still running, `N passed`, or what failed and what happens next; and each row D3b fired, with
+what was done or what waits on his word.
 Say what to look at and where, as a click path: which page, which control, what correct looks like.
 
 ### Promote route — MOVED to `/promote`
@@ -338,7 +350,7 @@ which the hook does not; an inherited `PREPUSH_LIGHT=1` would make it the light 
 - Read **COUNTS, not exit code** (wrappers pipe; the exit code is the last stage's).
 
 ### 3. Re-freeze
-Re-derive `origin/main..HEAD` + re-run the step-1 classification against the pre-verified SHA. Zero gate-input matches → re-run 0b's source block AND its migration gate (`--head hotfix/<topic>`) against that sha, and only on both passing is it `H`: ask step 0's question naming it, and step 4 pushes exactly `H`; any match → back to step 2. A new hotfix commit can bring a migration the first 0b never saw, so the loop back never skips the gate. (The old "docs-only → push" shorthand here predated step 1's 2026-07-27 correction — the safe-list is earned per path, never assumed from file type.) (Across the 2026-06-25 pushes the target SHA went stale ~5× as peers settled memories — each re-freeze caught it.)
+Re-derive `origin/main..HEAD` + re-run the step-1 classification against the pre-verified SHA. Zero gate-input matches → re-run 0b's source block AND its migration gate (`--head hotfix/<topic>`) against that sha, and only on both passing is it `H`: ask step 0's question naming it, and step 4 pushes exactly `H`; any match → back to step 2. A new hotfix commit can bring a migration the first 0b never saw, so the loop back never skips the gate. (The old "docs-only → push" shorthand here predated step 1's 2026-07-27 correction — the safe-list is earned per path, never assumed from file type.) (Across the 2026-06-25 pushes the target SHA went stale ~5× as peers settled memories, and each time it was caught before the push.)
 
 ### 4. Push — AND VERIFY IT LANDED, IN THE SAME BASH CALL
 
@@ -501,7 +513,7 @@ Steps 6–8 and `/promote` § 9 run from the SHARED checkout (on `dev`): `<your 
 - **Auth change** (OAuth callback / login flow) → confirm `<your auth provider's PRODUCTION site URL and redirect allowlist>`. Owner-dashboard glance or a real prod login.
 - **Native-dep / runtime change** (sharp re-add, `edge→node`, `outputFileTracingIncludes`) → confirm the route renders on `<your deploy host's production runtime>`.
 - **Migration in the push** → confirm it's applied to staging+prod: `<your migration-status command>`.
-- **ALWAYS — post-deploy config flips** → read `<your post-deploy config-flip list>` and action or explicitly defer each entry. This branch is unconditional because the flips are `trigger-type: manual`: nothing else in the system surfaces them at the moment a push lands (`active-recall.md` — fireable ≠ consequential; a gate whose only mechanism is a human re-reading a row is waived by absence). This step IS their firing mechanism; deleting it silently reverts them to manual-only.
+- **ALWAYS — post-deploy config flips** → read `<your post-deploy config-flip list>` and action or explicitly defer each entry, with a dated line on that entry. This branch is unconditional because the flips are `trigger-type: manual`: nothing else in the system surfaces them at the moment a push lands (`active-recall.md` — fireable ≠ consequential; a gate whose only mechanism is a human re-reading a row is waived by absence). This step IS their firing mechanism; deleting it silently reverts them to manual-only.
   - ⛔ **Verify prod env state with `<your deploy host's production env listing>`, NEVER by grepping `<your local production env file>`.** The wrong instrument fails to a plausible zero in the permissive direction.
   - ⛔ **AND `<your deploy host's production env listing>` PROVES PRESENCE, NEVER VALUE.** So the clause above answers *"which vars exist?"* and cannot answer *"is the feature on?"* — two different questions, and only the first has a CLI answer. **When an instrument can only prove presence, obtain certainty by WRITING a known value, not by reading harder.**
 

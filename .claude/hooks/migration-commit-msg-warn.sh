@@ -17,6 +17,22 @@
 #
 # Wire-up: invoked from .githooks/pre-push after CHANGED + BASE_REF computed.
 # Args: $1 = BASE_REF (e.g. origin/main or remote SHA)
+#
+# INTENDED SCOPE: the
+# `exit 0` when the push range holds NO migration commit also skips Layer 3 below, so the Shape-B nudge
+# fires only on a push that carries migration work. That is the intended scope, not a defect:
+#   (a) Layer 3 cannot tell applied-but-unrecorded from legitimately pending (created, waiting for its
+#       approving review before either applier will run it), so on every push it would warn through each
+#       whole pending window. Measured 2026-11-01: Layer 3 alone over this repo printed a migration whose
+#       commit says "created" and which is pending by design.
+#   (b) The authoritative Shape-B reader already runs more often than pushes do:
+#       scripts/migration-notation-reconcile.mjs at /orient Step 6 and /wrap Step 6, schema-probing both
+#       DBs. .claude/rules/migrations.md lists this hook as the Shape-A layer of the three-layer closure.
+#   (c) A dev push now happens only as /wrap's last step or on the owner's ask, i.e. right after the
+#       /wrap that ran the reconcile.
+# Reopen it only with (a) solved. Running Layer 3 on every push ALSO changes what this hook's clean-row smoke arm
+# in scripts/smoke-test-hooks.sh reads: it runs this hook against the live repo with BASE_REF=HEAD and
+# asserts outcome=clean, which would then depend on repo state (red today, on that migration).
 
 set -u
 
@@ -75,6 +91,8 @@ fi
 # so it points at the authoritative classifier, scripts/migration-notation-reconcile.mjs
 # (schema-probes both DBs; run at /orient or /wrap). Bounded to the last ~25 by number
 # (won't list pre-notation-convention migrations). Warn-only. Phrase mirrors the reconcile.
+# ⚠️ Reached only when the push range holds a migration commit (the early exit above; intended, as
+# the header explains), so "surfaces RECENT migrations" means on a push carrying migration work, not on every push.
 ALL_NUMS=$(ls supabase/migrations/[0-9][0-9][0-9][0-9]_*.sql 2>/dev/null \
   | sed -E 's|.*/([0-9]{4})_.*|\1|' | sort -u)
 if [ -n "$ALL_NUMS" ]; then

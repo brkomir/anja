@@ -1,6 +1,6 @@
 ---
 name: haines-onboarding-cro
-description: When the user wants to optimize post-signup onboarding, user activation, first-run experience, or time-to-value. Also use when the user mentions "onboarding flow," "activation rate," "user activation," "first-run experience," "empty states," "onboarding checklist," "aha moment," "new user experience," "users aren't activating," "nobody completes setup," "low activation rate," "users sign up but don't use the product," "time to value," or "first session experience." Use this whenever users are signing up but not sticking around. For signup/registration optimization, see haines-signup-flow-cro. For ongoing email sequences, see saas-launch-marketing.
+description: "When the user wants to optimize post-signup onboarding, activation, first-run experience, or time-to-value. Also when the user mentions onboarding flow, activation rate, empty states, onboarding checklist, aha moment, new user experience, or time to value."
 metadata:
   version: 1.1.0
 skepticism: medium
@@ -248,3 +248,9 @@ When recommending experiments, consider tests for:
 - **haines-signup-flow-cro**: For optimizing the signup before onboarding
 - **saas-launch-marketing**: For onboarding email series
 - **haines-paywall-upgrade-cro**: For converting to paid during/after onboarding
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+When the user wants to optimize post-signup onboarding, user activation, first-run experience, or time-to-value. Also use when the user mentions "onboarding flow," "activation rate," "user activation," "first-run experience," "empty states," "onboarding checklist," "aha moment," "new user experience," "users aren't activating," "nobody completes setup," "low activation rate," "users sign up but don't use the product," "time to value," or "first session experience." Use this whenever users are signing up but not sticking around. For signup/registration optimization, see haines-signup-flow-cro. For ongoing email sequences, see saas-launch-marketing.

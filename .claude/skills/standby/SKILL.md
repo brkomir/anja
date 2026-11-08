@@ -9,13 +9,13 @@ The command is for a session that is held open but should not wake on mail turns
 
 ## The state — why a marker and not a flag on the listener
 
-Three lifecycle states existed: `ACTIVE`, `WRAPPED` / `CHECKPOINT` (done-for-now, STILL receives mail), `EXITED` (terminal). None said *alive, holding its work, deliberately deaf* — and the gap had a measured cost: two standing directives (the SessionStart arm line and post-compact Step 5) re-armed a hand-disarmed listener at the next resume or compaction, silently undoing the park. So the state is a marker every consumer reads, derived by the lifecycle SSOT (`scripts/session_status.py`) as `STANDBY`:
+Three lifecycle states existed: `ACTIVE`, `WRAPPED` / `CHECKPOINT` (done-for-now, STILL receives mail), `EXITED` (terminal) — since 2026-11-01 `WRAPPING` (a wrap running) and `WRAPPED` (a wrap completed), `CHECKPOINT` retired. None said *alive, holding its work, deliberately deaf* — and the gap had a measured cost: two standing directives (the SessionStart arm line and post-compact Step 5) re-armed a hand-disarmed listener at the next resume or compaction, silently undoing the park. So the state is a marker every consumer reads, derived by the lifecycle SSOT (`scripts/session_status.py`) as `STANDBY`:
 
 `.claude/state/session-standby-<sid8>` — body `<epoch> <HEAD-sha>` — written by `session-lifecycle.py standby`, removed by `session-lifecycle.py resume`.
 
 **Who reads it.** `who` / `/peers`, `read`, the overlap gate, `hub-discover`, `parallel-session-scan.py` and `/whoami` render `⏸ standby` with the words *listener disarmed, mail queues until the owner resumes it*; `mail-send --to <you>` warns the sender; `session-start.sh` prints the STANDBY line and does NOT emit the arm directive; `mail-listen-arm-reminder.sh` stays silent; `/post-compact` Step 5 leaves the dead listener alone; `standby-resume-check.sh` (UserPromptSubmit) injects the resume directive on every prompt until the marker is cleared — the same persistent-net shape as the post-compact marker, because a one-shot line can be lost behind a compaction and a per-prompt net cannot.
 
-**Ordering.** `EXITED` wins (a parked seat can still die). `STANDBY` beats `WRAPPED` / `CHECKPOINT` in either marker order — the marker is the state, exactly as the three hooks read it; the wrap marker stays on disk for `mail-await --peer-done`. A transcript record does NOT demote it: the owner's own message is a record, and the marker must outlive it until `resume` clears it. The seat stays IN the overlap gate (it holds uncommitted work). The marker ages out at 30 days (`STANDBY_GC_DAYS`, `session-lifecycle.py`); past that the seat reads `ACTIVE` and re-arms through the standard path on the owner's next message.
+**Ordering.** `EXITED` wins (a parked seat can still die). `STANDBY` beats `WRAPPING` / `WRAPPED` in either marker order — the marker is the state, exactly as the three hooks read it; the wrap marker stays on disk for `mail-await --peer-done`. A transcript record does NOT demote it: the owner's own message is a record, and the marker must outlive it until `resume` clears it. The seat stays IN the overlap gate (it holds uncommitted work). The marker ages out at 30 days (`STANDBY_GC_DAYS`, `session-lifecycle.py`); past that the seat reads `ACTIVE` and re-arms through the standard path on the owner's next message.
 
 ## Process — `/standby [--resume <when>]` (enter)
 
@@ -48,7 +48,7 @@ Fires on the owner's next message: `standby-resume-check.sh` injects the directi
 ## Boundaries
 
 - **Owner-invoked only.** A seat never parks itself: the rule for a seat that has stopped working is to STOP the listener and SAY so; the park is the owner's word, and so is the resume.
-- **Not `/wrap`:** a wrap persists and keeps listening; standby persists nothing and stops listening. **Not exit:** the process stays up, the work stays held, the overlap gate still counts the seat.
+- **Not `/wrap`:** a wrap persists and keeps listening (the `/review-hub` line in `.claude/orchestrator/conventions.md`: never at `/wrap` start); standby persists nothing and stops listening. **Not exit:** the process stays up, the work stays held, the overlap gate still counts the seat.
 - **Survives a terminal close.** `session-end.sh` leaves the marker alone, so a parked seat closed with the window and later `--resume`d is still parked until the owner's message clears it (EXITED speaks only until the seat takes a turn, then STANDBY speaks again).
 - **Read-only state-query for peers:** they see the badge; nothing they send changes the state. Only the owner's message to THIS seat does.
 

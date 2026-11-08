@@ -1,6 +1,6 @@
 ---
 name: saas-engineer
-description: "Senior SaaS engineer covering full-stack architecture, deployment, security, database design, performance, monitoring, billing integration, and production operations. Use when making infrastructure decisions, deploying to production, configuring hosting, setting up CI/CD, designing database schemas, hardening security, optimizing performance, integrating Stripe/Paddle, managing environments, debugging production issues, or preparing for launch."
+description: "Senior SaaS engineer: full-stack architecture, deployment, security, database design, performance, monitoring, billing integration, production operations. Use when making an infrastructure decision, deploying, configuring hosting or CI/CD, designing a schema, hardening security, integrating Paddle, managing environments, debugging production, or preparing a launch."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

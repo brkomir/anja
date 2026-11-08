@@ -23,14 +23,14 @@ WHY THIS EXISTS
 
 WHAT THIS MEASURES
   transcript  : raw bytes, base64 bytes, request-copy bytes, stripped bytes, widest residual line
-  slicing     : slices at 2MB, after the hard clamp, bytes per agent
+  slicing     : slices at 9MB (the digest default; 10MB under --light, 2MB under --full), after the hard clamp, bytes per agent
   machine     : free+inactive RAM, swap free, resident `claude` count + RSS
   projection  : agents x observed mean context vs available headroom
 
   Emits GO / CAUTION / ABORT. Read-only: measures, never kills or edits.
 
 USAGE
-  python3 scripts/wrap-preflight.py [--sid <session-id>] [--agents N] [--json]
+  python3 scripts/wrap-preflight.py [--sid <session-id>] [--agents N] [--light | --full] [--json]
   python3 scripts/wrap-preflight.py --self-test
 """
 import argparse, json, os, re, subprocess, sys
@@ -39,8 +39,10 @@ import argparse, json, os, re, subprocess, sys
 # digit turned into a dash; the repository is the directory above scripts/, or CLAUDE_PROJECT_DIR when set.
 _ROOT = os.environ.get("CLAUDE_PROJECT_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_DIR = os.path.expanduser("~/.claude/projects/" + re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(_ROOT)))
-SLICE_TARGET = 2_000_000      # spec: ~2 MB NET window-fit slice (wrap SKILL.md)
-AGENT_CLAMP = 10              # spec: concurrency ceiling 10 (raised from 6; this constant once sat stale at 6)
+SLICE_TARGET = 9_000_000      # spec: the ~9 MB digest slice, the /wrap default since 2026-11-03 (wrap SKILL.md § When to Use)
+LIGHT_SLICE_TARGET = 10_000_000  # spec: the raw ~10 MB slice under /wrap --light
+FULL_SLICE_TARGET = 2_000_000 # spec: ~2 MB NET window-fit slice under /wrap --full
+AGENT_CLAMP = 12              # spec: concurrency ceiling 12 (this constant once sat stale at 10)
 GB = 1073741824
 
 
@@ -250,6 +252,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sid", default=os.environ.get("CLAUDE_CODE_SESSION_ID"))
     ap.add_argument("--agents", type=int, default=None)
+    depth = ap.add_mutually_exclusive_group()  # the usage line says [--light | --full]; both would silently size --full
+    depth.add_argument("--full", action="store_true", help="size the opt-in ~2 MB /wrap --full pass")
+    depth.add_argument("--light", action="store_true", help="size the opt-in raw ~10 MB /wrap --light pass")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
@@ -267,7 +272,8 @@ def main():
 
     raw, b64, req, widest = transcript_bytes(tx)
     stripped = raw - b64 - req
-    slices = -(-stripped // SLICE_TARGET)
+    target = FULL_SLICE_TARGET if a.full else LIGHT_SLICE_TARGET if a.light else SLICE_TARGET
+    slices = -(-stripped // target)
     agents = a.agents if a.agents else min(slices, AGENT_CLAMP)
     total, avail, sfree, stotal = machine()
     n_claude, rss_claude, mean_ctx = claude_processes()
@@ -293,7 +299,7 @@ def main():
     print(f"  stripped       {stripped/1048576:8.1f} MB  <- the deep-pass input")
     print(f"  widest line    {widest/1048576:8.2f} MB  (post-strip residual)")
     print("\n=== SLICING ===")
-    print(f"  slices @{SLICE_TARGET/1e6:g}MB  {slices}")
+    print(f"  slices @{target/1e6:g}MB  {slices}")
     print(f"  agents (clamp {AGENT_CLAMP})  {agents}")
     print(f"  slice/agent    {stripped/agents/1048576:8.1f} MB")
     print("\n=== MACHINE ===")

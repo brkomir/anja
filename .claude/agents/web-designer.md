@@ -1,6 +1,6 @@
 ---
 name: web-designer
-description: "Visual web design specialist for Tailwind CSS v4, shadcn/ui (base-ui), and Next.js App Router. Focuses on layout composition, visual rhythm, pricing pages, landing pages, dark mode polish, and SaaS page design. Complements ux-design-pro with implementation-level design decisions."
+description: "Visual web design specialist for Tailwind CSS v4, shadcn/ui (base-ui), and Next.js App Router. Focuses on layout composition, visual rhythm, pricing pages, landing pages, dark mode polish, and SaaS page design. Complements ux-design-pro with implementation-level design decisions. Use when laying out a page or a card, designing a pricing or landing page, or polishing dark mode."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

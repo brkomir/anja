@@ -1,6 +1,6 @@
 ---
 name: external-fagemx-edda
-description: "External-system expert on fagemx/edda, a solo Rust workspace (one `edda` binary, 23 crates) that gives coding agents a hash-chained SQLite ledger of decisions and sessions, a peers board with path claims and heartbeats, and a review gate that refuses an author session as its own reviewer, grades the reviewer's model, keeps a standing \"changes requested\" over a later approval, pins approval to a head sha and voids a review when the base moves over a changed file, all in code; plus a session-end post-mortem whose learned rules fade on a 30/60/90-day clock. Use when calibrating reviewer independence, verdict precedence, head and base pinning at promote, peer claims and heartbeats, or rule lifecycles that decay."
+description: "External-system expert on fagemx/edda, a Rust ledger for coding agents: hash-chained decisions, peer claims and heartbeats, a review gate that refuses an author as its own reviewer and pins approval to a head sha, learned rules that decay on a 30/60/90-day clock. Use when calibrating reviewer independence, verdict precedence, head and base pinning, peer claims, or rule lifecycles."
 tools: Read, Glob, Grep, Bash, WebFetch, WebSearch
 disallowedTools: Write, Edit
 model: inherit

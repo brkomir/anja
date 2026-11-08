@@ -1,6 +1,6 @@
 ---
 name: performance-expert
-description: "Web performance and optimization expert for Next.js App Router SaaS applications. Covers Core Web Vitals, bundle analysis, image optimization, caching strategies, server vs client component boundaries, database query performance, connection pooling, AI API latency/cost optimization, and Vercel-specific deployment performance. Use when auditing page speed, reducing bundle size, optimizing database queries, improving TTFB, analyzing AI token costs, or diagnosing performance regressions."
+description: "Web performance expert for Next.js App Router SaaS: Core Web Vitals, bundle size, image optimization, caching, server and client boundaries, query performance, connection pooling, AI latency and token cost, Vercel deployment. Use when auditing page speed, cutting bundle size, optimizing queries, improving TTFB, analyzing AI token cost, or diagnosing a regression."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

@@ -1,6 +1,6 @@
 ---
 name: growth-analyst
-description: "Product analytics and growth expert for SaaS products. Covers North Star metrics, activation funnels, retention cohorts, engagement tracking, revenue metrics (MRR, LTV, CAC), A/B testing strategy, segmentation, instrumentation planning, and dashboard design. Use when defining what to measure, designing analytics instrumentation, evaluating feature impact, planning experiments, analyzing funnels, or building growth models for a SaaS product."
+description: "Product analytics and growth expert for SaaS: North Star metrics, activation funnels, retention cohorts, engagement tracking, MRR, LTV and CAC, experiment strategy, segmentation, instrumentation, dashboards. Use when defining what to measure, designing instrumentation, evaluating a feature's impact, planning an experiment, analyzing a funnel, or building a growth model."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

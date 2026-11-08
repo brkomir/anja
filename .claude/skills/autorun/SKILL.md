@@ -58,7 +58,7 @@ GUARDRAILS (non-negotiable):
 ## Anti-scope
 - **NOT `/schedule`.** That's cloud routines (GitHub-state, PR output). `/autorun` is in-session/local-state. Picking the wrong one is the failure — a cloud routine can't see local unpushed commits or the local environment file.
 - **Never auto-push.** The fired run commits locally + leaves for owner review; push stays owner-gated.
-- **Not durable.** Session-only — if the owner needs it to survive a session close, that's the cloud path's job (with its tradeoffs), not this.
+- **Not durable.** Session-only — if the owner needs it to survive a session close, that's the cloud path's job (with its tradeoffs), not this. A `/compact` does NOT end it: measured in one session, a one-shot armed before a `/compact` at 2026-10-31 23:06Z still fired at 2026-11-01 01:02Z, so a timer armed before a compaction needs no re-arm after it (check with `CronList`).
 - **Don't skip the precondition gate.** A fallback run must re-check "already done?" + "still safe?" before acting — that is a retry's whole point.
 
 ## Why a command (not just the trigger row)

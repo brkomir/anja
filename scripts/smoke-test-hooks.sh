@@ -319,19 +319,20 @@ FAILS=()
 # is NEVER touched by a suite run — otherwise every run (and the suite runs on every push) would briefly
 # disable the subagent-memory guard fleet-wide. Exported so the hook subprocess inherits it.
 export FF_MEM_ALLOW_MARKER="$(mktemp -u)"
-# Same discipline for the ALWAYS-LOADED guard's bypass marker (2026-08-16). Its live default is
-# /tmp/claude-always-loaded-allow; the suite must NEVER touch that one, because a suite run (and
-# the suite runs on every push) would otherwise disable the always-loaded write guard fleet-wide
-# for the duration — on the one file class every seat reloads next turn.
+# Same discipline for the ALWAYS-LOADED guard's door (2026-08-16). Until 2026-10-25 the door was one
+# machine-global marker, /tmp/claude-always-loaded-allow, so a suite run touching it (the suite runs
+# on every push) would have opened the guard fleet-wide for the duration. Since 2026-10-25 the door is
+# per session, /tmp/claude-always-loaded-allow.<session id>, which only the owner opens; the bare
+# marker opens nothing. The export still keeps every arm off any real door.
 export FF_ALWAYS_LOADED_ALLOW_MARKER="$(mktemp -u)"
-# ⛔ SNAPSHOT THE LIVE MARKER'S PRE-EXISTENCE (2026-08-18). The arm further down asserts the suite
+# ⛔ SNAPSHOT THE BARE MARKER'S PRE-EXISTENCE (2026-08-18). The arm further down asserts the suite
 # never touches /tmp/claude-always-loaded-allow — correct intent, but it was a BARE PRESENCE check
-# on a MACHINE-GLOBAL path, and `.githooks/pre-push` runs this suite and exits 1 on failure. So a
-# seat legitimately holding that sanctioned orchestrator bypass open mid-edit failed the assertion
-# for EVERY OTHER SEAT, with a message blaming the suite for something the suite had not done.
-# Measured 2026-08-18: this seat armed and removed that marker three times in one session while
-# editing always-loaded rules — any concurrent peer push in those windows would have been blocked.
-# The property the arm actually wants is "did the SUITE create it", which needs a before-reading.
+# on what was then a MACHINE-GLOBAL door, and `.githooks/pre-push` runs this suite and exits 1 on
+# failure. So a seat holding that door open mid-edit failed the assertion for EVERY OTHER SEAT, with
+# a message blaming the suite for something the suite had not done (measured 2026-08-18: one seat
+# opened and closed it three times in one session). The door is per session now and that path opens
+# nothing. The arm became a static check of this file's source (the STATIC CHECK block below,
+# 2026-08-18), so nothing reads LIVE_ALLOW_MARKER_PRE any more.
 LIVE_ALLOW_MARKER_PRE=0
 [ -f /tmp/claude-always-loaded-allow ] && LIVE_ALLOW_MARKER_PRE=1
 # Guarantee bypass marker cleanup even on early exit, and remove the
@@ -867,9 +868,10 @@ assert_empty "SAFE Bash read through a PIPE → silent (per-segment verb check)"
 out=$(_alwb 'truncate -s 0 .claude/rules/copy.md' | bash "$ALW")
 assert_contains "FIRE Bash unprovable-verb deny names the VERB, not a phantom redirect" "$out" "truncate"
 
-# ── MARKER TTL. A marker bypass that is a bare `[ -f ]` on a
-# machine-global path with no expiry stays up until someone removes it, and while it is up the
-# guard is OFF for every seat and every sub-agent, so the marker needs a TTL. The
+# ── MARKER TTL. A marker bypass that was a bare `[ -f ]` on a
+# machine-global path with no expiry stayed up until someone removed it, and while it was up the
+# guard was OFF for every seat and every sub-agent (one shared file until 2026-10-25; a sub-agent is
+# refused the door since 2026-10-10), so the marker needs a TTL. The
 # STALE arm is the one that matters — it is the only one that fails if the TTL is ever removed,
 # because absent/fresh behave identically with or without it.
 _alw_ttl_m=$(mktemp); rm -f "$_alw_ttl_m"
@@ -931,6 +933,67 @@ out=$(echo '{"tool_name":"Edit","tool_input":{"file_path":".claude/rules/x/../co
 assert_contains "FIRE traversal .claude/rules/x/../copy.md → deny (normpath canonicalization)" "$out" '"permissionDecision": "deny"'
 out=$(echo '{"tool_name":"Write","tool_input":{"file_path":"'"$REPO_ROOT"'/claude.md","content":"x"}}' | bash "$ALW")
 assert_contains "FIRE case-variant claude.md → deny (macOS FS is case-insensitive)" "$out" '"permissionDecision": "deny"'
+
+# ── EDIT/WRITE ARM: EVERY SPELLING THAT LANDS (2026-10-30).
+# is_protected met ROOT by inode but read the path BELOW it lexically, and its grep -i folds ASCII
+# only, so these were measured ALLOWED on the live guard: a symlinked dir (in-repo or outside) onto .claude/rules,
+# a link/.. traversal, and U+017F (long s, which APFS folds to s) in a dir or a file name. al_lands (CONTAIN_PY) now
+# asks the realpath, the realpath of the parent plus the name, and the NFC casefold of each repo-relative form.
+# Each verdict reads the hook rc AND its stdout. Mutation 2026-10-30 on a scratch copy: realpath leg removed -> the
+# four door-closed link arms red; casefold leg removed -> the two door-closed U+FB06 arms red, while the four U+017F
+# arms stay green because Python re.I folds U+017F by itself (the old ASCII grep -iE did not, which is the bug they pin);
+# every door-live arm and every SAFE control green under both.
+_alwe_v() {  # $1 project dir (cwd + CLAUDE_PROJECT_DIR), $2 file_path, $3 marker path (absent = door closed)
+  local _o _rc
+  _o=$(python3 -c 'import json,sys; print(json.dumps({"session_id":"deadbeef-0000-0000-0000-0000","tool_name":"Edit","tool_input":{"file_path":sys.argv[1],"old_string":"a","new_string":"b"}}))' "$2" \
+    | (cd "$1" && CLAUDE_PROJECT_DIR="$1" FF_ALWAYS_LOADED_ALLOW_MARKER="$3" bash "$REPO_ROOT/$ALW" 2>/dev/null)); _rc=$?
+  case "$_o" in *'"permissionDecision": "deny"'*) printf 'DENY rc=%s' "$_rc" ;; '') printf 'ALLOW rc=%s' "$_rc" ;; *) printf 'OTHER rc=%s' "$_rc" ;; esac
+}
+_alwe_P=$(cd "$(mktemp -d)" && pwd -P); _alwe_O=$(cd "$(mktemp -d)" && pwd -P); _alwe_live=$(mktemp); _alwe_shut="$_alwe_live.closed"
+mkdir -p "$_alwe_P/.claude/rules" "$_alwe_P/.claude/orchestrator" "$_alwe_O/.claude/rules"
+echo x > "$_alwe_P/.claude/rules/security.md"; echo x > "$_alwe_P/AGENTS.md"; echo x > "$_alwe_O/.claude/rules/foo.md"
+ln -s .claude/rules "$_alwe_P/lnk"; ln -s .claude/orchestrator "$_alwe_P/lnkO"; ln -s "$_alwe_P/.claude/rules" "$_alwe_O/lnk"
+# FILE links, which only realpath(raw) sees, and a rules entry that links OUT, which only the parent-realpath leg sees.
+ln -s "$_alwe_P/AGENTS.md" "$_alwe_O/agents-link.md"; ln -s "$_alwe_P/.claude/rules/not-yet.md" "$_alwe_O/dangling.md"
+echo x > "$_alwe_O/out.md"; ln -s "$_alwe_O/out.md" "$_alwe_P/.claude/rules/linked-out.md"
+_alwe_s=$(printf '\305\277')   # U+017F LATIN SMALL LETTER LONG S, spelled as bytes (never carry the character)
+_alwe_st=$(printf '\357\254\206')   # U+FB06 LATIN SMALL LIGATURE ST, same
+_alwe_shapes() {  # $1 door label, $2 marker path, $3 the verdict the FIXTURE expects (fixed by the caller, never by the SUT)
+  assert_eq "EWSP door $1: .claude/rules/security.md (control) → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_P/.claude/rules/security.md" "$2")"
+  assert_eq "EWSP door $1: in-repo symlink dir lnk -> .claude/rules, lnk/x.md → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_P/lnk/x.md" "$2")"
+  assert_eq "EWSP door $1: OUTSIDE-repo symlink dir -> .claude/rules, <outside>/lnk/security.md → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_O/lnk/security.md" "$2")"
+  assert_eq "EWSP door $1: lnkO/../rules/x.md (link to .claude/orchestrator, then ..) → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_P/lnkO/../rules/x.md" "$2")"
+  assert_eq "EWSP door $1: relative lnkO/../rules/x.md from the project cwd → $3" "$3" "$(_alwe_v "$_alwe_P" "lnkO/../rules/x.md" "$2")"
+  assert_eq "EWSP door $1: OUTSIDE file symlink -> AGENTS.md, <outside>/agents-link.md → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_O/agents-link.md" "$2")"
+  assert_eq "EWSP door $1: OUTSIDE dangling symlink -> a NEW .claude/rules file → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_O/dangling.md" "$2")"
+  assert_eq "EWSP door $1: lnk/linked-out.md (a rules entry that links out, reached through lnk) → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_P/lnk/linked-out.md" "$2")"
+  assert_eq "EWSP door $1: U+017F in a DIR name, .claude/rule<U+017F>/x.md → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_P/.claude/rule$_alwe_s/x.md" "$2")"
+  assert_eq "EWSP door $1: U+017F in a FILE name, AGENT<U+017F>.md → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_P/AGENT$_alwe_s.md" "$2")"
+  assert_eq "EWSP door $1: THIS repo .claude/rule<U+017F>/security.md (the measured shape) → $3" "$3" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/.claude/rule$_alwe_s/security.md" "$2")"
+  assert_eq "EWSP door $1: THIS repo AGENT<U+017F>.md (the measured shape) → $3" "$3" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/AGENT$_alwe_s.md" "$2")"
+  # U+FB06 (LATIN SMALL LIGATURE ST): APFS folds .claude/orche<U+FB06>rator onto .claude/orchestrator (measured 2026-10-30),
+  # and Python re.I does NOT (simple case folding), so only the casefold leg sees these two. U+017F above is caught by re.I too.
+  assert_eq "EWSP door $1: U+FB06 ligature in a DIR name, .claude/orche<U+FB06>rator/x.md → $3" "$3" "$(_alwe_v "$_alwe_P" "$_alwe_P/.claude/orche${_alwe_st}rator/x.md" "$2")"
+  assert_eq "EWSP door $1: THIS repo .claude/orche<U+FB06>rator/conventions.md → $3" "$3" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/.claude/orche${_alwe_st}rator/conventions.md" "$2")"
+}
+_alwe_shapes closed "$_alwe_shut" "DENY rc=0"
+_alwe_shapes live "$_alwe_live" "ALLOW rc=0"
+# BLAST RADIUS: a false deny here blocks Edit/Write for every seat, so the ordinary writes are pinned with the door CLOSED.
+assert_eq "EWSP SAFE door closed: src/app/page.tsx → ALLOW" "ALLOW rc=0" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/src/app/page.tsx" "$_alwe_shut")"
+assert_eq "EWSP SAFE door closed: todo.txt → ALLOW" "ALLOW rc=0" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/todo.txt" "$_alwe_shut")"
+assert_eq "EWSP SAFE door closed: a new file under plans/ → ALLOW" "ALLOW rc=0" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/plans/ewsp-not-a-real-file-zz9.md" "$_alwe_shut")"
+assert_eq "EWSP SAFE door closed: src/lib/claude-x.ts (name merely contains claude) → ALLOW" "ALLOW rc=0" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/src/lib/claude-x.ts" "$_alwe_shut")"
+assert_eq "EWSP SAFE door closed: another repo <other>/.claude/rules/foo.md (exists) → ALLOW" "ALLOW rc=0" "$(_alwe_v "$REPO_ROOT" "$_alwe_O/.claude/rules/foo.md" "$_alwe_shut")"
+assert_eq "EWSP SAFE door closed: plans/caf<U+00E9>.md (non-ASCII, folds onto nothing protected) → ALLOW" "ALLOW rc=0" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/plans/caf$(printf '\303\251').md" "$_alwe_shut")"
+assert_eq "EWSP SAFE door closed: plans/cafe<U+0301>.md (decomposed form of the same name) → ALLOW" "ALLOW rc=0" "$(_alwe_v "$REPO_ROOT" "$REPO_ROOT/plans/cafe$(printf '\314\201').md" "$_alwe_shut")"
+# 2026-10-30: a python3 that exits 3 on every call must not open the provably-outside carve; the carve needs
+# the AL_OUTSIDE token on stdout too. The payload is built with the real python3; only the hook sees the shim.
+_alwe_shim=$(cd "$(mktemp -d)" && pwd -P); printf '#!/bin/sh\nexit 3\n' > "$_alwe_shim/python3"; chmod +x "$_alwe_shim/python3"
+_alwe_e3=$(python3 -c 'import json,sys; print(json.dumps({"session_id":"deadbeef-0000-0000-0000-0000","tool_name":"Edit","tool_input":{"file_path":sys.argv[1],"old_string":"a","new_string":"b"}}))' "$REPO_ROOT/.claude/rules/security.md" \
+  | (cd "$REPO_ROOT" && PATH="$_alwe_shim:$PATH" CLAUDE_PROJECT_DIR="$REPO_ROOT" FF_ALWAYS_LOADED_ALLOW_MARKER="$_alwe_shut" bash "$REPO_ROOT/$ALW" 2>/dev/null))
+case "$_alwe_e3" in *'"permissionDecision": "deny"'*) _alwe_e3v=DENY ;; '') _alwe_e3v=ALLOW ;; *) _alwe_e3v=OTHER ;; esac
+assert_eq "EWSP door closed: a python3 shim exiting 3 does not open .claude/rules/security.md → DENY" "DENY" "$_alwe_e3v"
+rm -rf "$_alwe_P" "$_alwe_O"; rm -f "$_alwe_live"
 
 # ── SAFE. The negative controls carry the real risk of over-block, so each names a file class
 # that is deliberately OUT of the always-loaded set and must stay writable.
@@ -1020,7 +1083,7 @@ rm -f "$_alw_ps_pfx"
 # fail if (present AND pre=0); elif pre=1 -> pass. The elif fired on pre=1 BEFORE any post-run
 # reading, so in that state the arm asserted NOTHING while printing a sentence claiming it had — and
 # a leaked marker makes pre=1 on EVERY later run, so a real leak would certify its own absence
-# forever, silently, while that leaked file disables the always-loaded write guard fleet-wide. My
+# forever, silently, while that leaked file disabled the always-loaded write guard fleet-wide (one shared door until 2026-10-25). My
 # first fix traded a LOUD wrong answer (false push-blocks for peers) for a SILENT one that never
 # self-clears. The property actually wanted -- did THE SUITE create it -- is a fact about the suite's
 # SOURCE: no shared-state read, no window, no vacuity, immune to every peer.
@@ -1039,7 +1102,57 @@ _alw_p="/tmp/claude-always-""loaded-allow"
 _alw_w1=$(grep -cF "touch ${_alw_p}" "${_SMOKE_FILTER_SELF:-$0}"); _alw_w1=${_alw_w1:-0}
 _alw_w2=$(grep -cF "> ${_alw_p}" "${_SMOKE_FILTER_SELF:-$0}");     _alw_w2=${_alw_w2:-0}
 _alw_w3=$(grep -cF ">>${_alw_p}" "${_SMOKE_FILTER_SELF:-$0}");     _alw_w3=${_alw_w3:-0}
-_alw_writes=$(( _alw_w1 + _alw_w2 + _alw_w3 ))
+# Three more spellings, and a write THROUGH a variable (2026-10-29: each stayed green
+# as a mutant). The no-space `>` pass also counts the `>>` form, which only adds to a count that must be 0.
+_alw_w4=$(grep -cF "tee ${_alw_p}" "${_SMOKE_FILTER_SELF:-$0}");   _alw_w4=${_alw_w4:-0}
+_alw_w5=$(grep -cF ">${_alw_p}" "${_SMOKE_FILTER_SELF:-$0}");      _alw_w5=${_alw_w5:-0}
+_alw_w6=$(grep -cF ">| ${_alw_p}" "${_SMOKE_FILTER_SELF:-$0}");    _alw_w6=${_alw_w6:-0}
+# A variable holding the live prefix (_alw_p here, _dc_p in the door-create arms) may appear only as a
+# printf payload argument, a grep -cF needle (these passes) or a case pattern; any other occurrence on a
+# non-comment line is counted, judged per OCCURRENCE (a printf and a write on one line is a write;
+# 2026-10-29). The same holds for the house-split literal, which may also only be assigned
+# to one of the two names (a new alias is counted). Brace operators (${_dc_p:-x}) are read, and a whole-literal
+# write by any creating verb, quoted or not. A word boundary keeps `$_alw_ps_pfx` (a fixture prefix under a
+# temp root, used above) from reading as `$_alw_p`; a fixed-string needle cannot tell them apart, hence python.
+_alw_py=$(mktemp)
+cat > "$_alw_py" <<'PY'
+import re, sys
+# Each OCCURRENCE is judged, never the line: a printf and a write on one line is a write.
+lit = "/tmp/claude-always-" + "loaded-allow"
+var = r"\$(?:\{(?:_alw_p|_dc_p)(?:[:#%/^,][^}]*)?\}|(?:_alw_p|_dc_p)\b)"
+split = re.escape('"/tmp/claude-always-' + '""' + 'loaded-allow')
+use = re.compile(var + "|" + split)
+allowed = [re.compile(r) for r in (
+    r"printf '[^']*' +(?:\"" + var + "\"|" + split + "\")",               # a payload argument
+    r"grep -c ?-?F \"[^\"$]*" + var + "\"",                               # a count needle
+    r"(?:^\s*|\bin\s+)\"" + var + "\"\\*?\\)",                             # a case pattern
+    r"^\s*(?:_alw_p|_dc_p)=" + split + "\"\\s*$",                         # the two assignments (a new alias is counted)
+)]
+write = re.compile(r"(?:\b(?:touch|tee|truncate|mkfifo|cp|mv|ln|install|rsync|ditto|rm)\b[^|;&#]*?|>\|?\s*|\bof=)[\"']?" + re.escape(lit))
+n = 0
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    if line.lstrip().startswith("#"):
+        continue
+    rest = line
+    for r in allowed:
+        rest = r.sub(" ", rest)
+    n += bool(use.search(rest)) or bool(write.search(line))
+print(n)
+PY
+_alw_w7=$(python3 "$_alw_py" "${_SMOKE_FILTER_SELF:-$0}")
+# Its control: a fixture built from pieces, 3 writes and 2 honest lines. A pass that crashed or stopped
+# counting prints nothing or 0, and a `${_alw_w7:-0}` default read that as clean.
+_alw_fx=$(mktemp)
+{ printf 'touch "$%s.x"\n' _dc_p
+  printf 'printf %sx%s "$%s" > "$%s.x"\n' "'" "'" _dc_p _dc_p
+  printf 'cp f %s.x\n' "$_alw_p"
+  printf 'printf %s{}%s "$%s" | cat\n' "'" "'" _dc_p
+  printf '# touch "$%s.x"\n' _alw_p; } > "$_alw_fx"
+_alw_ctl=$(python3 "$_alw_py" "$_alw_fx")
+rm -f "$_alw_py" "$_alw_fx"
+case "$_alw_w7" in ''|*[!0-9]*) _alw_w7=1; fail "the variable pass of the marker-write check printed no count" ;; esac
+[ "$_alw_ctl" = 3 ] || fail "the variable pass of the marker-write check counted '$_alw_ctl' of the 3 writes in its fixture"
+_alw_writes=$(( _alw_w1 + _alw_w2 + _alw_w3 + _alw_w4 + _alw_w5 + _alw_w6 + _alw_w7 ))
 if [ "$_alw_writes" -ne 0 ]; then
   fail "the suite's own source contains $_alw_writes write(s) to the live default marker path — it must only ever use FF_ALWAYS_LOADED_ALLOW_MARKER"
 else
@@ -2214,6 +2327,185 @@ assert_eq "block-dangerous: a kill-option-order DENY records its arm; a crashed 
   "rc=2 records=1 arm=kill-option-order sid=smoke-sid-ko agent_id= | crashed-helper rc=0 records=2 arm=kill-option-order-helper-failed sid=smoke-sid-ko agent_id=" "$_bdko_got"
 unset _bdko_root _bdko_rc _bdko_rc2 _bdko_got ko_out ko_ec
 
+# --- block-dangerous: door-create (2026-10-29) ---
+# A session's own command creating the always-loaded door (/tmp/claude-always-loaded-allow.<session id>),
+# which since 2026-10-25 only the owner opens, with `! touch`; his `!` lines never pass through PreToolUse
+# hooks (a probe on 2026-10-29 left no line in the Bash safety hook's fires log), so this arm cannot lock him out.
+# A PARSER (lib/door-create.py, reusing kill-option-order's walker): the SAFE arms pin the cleanup `rm` and
+# a quoted mention. The payloads are printf formats, so a command carries no single quote, and the door path
+# is ASSEMBLED (`_dc_p`), never written whole: the suite's static check on writes to the live marker path
+# (grep `_alw_writes`) reads a whole `touch <path>` or `> <path>` here as a write and fails the run. These
+# payloads are only strings fed to the guard, which refuses them; nothing here creates a door.
+_dc_p="/tmp/claude-always-""loaded-allow"
+assert_eq "door-create.py --self-test passes (its arms call scan(), the function the hook runs)" "0" \
+  "$(python3 .claude/hooks/lib/door-create.py --self-test >/dev/null 2>&1; echo $?)"
+dc_out=$(printf '{"tool_name":"Bash","tool_input":{"command":"touch %s.$CLAUDE_CODE_SESSION_ID"}}' "$_dc_p" | bash .claude/hooks/block-dangerous.sh 2>/dev/null); dc_ec=$?
+assert_eq "FIRE a session touching its own always-loaded door (the habit before 2026-10-25) → exit 2" "2" "$dc_ec"
+assert_one_json_doc "PARSE: door-create deny → ONE parseable doc naming the arm" "$dc_out" 'door-create'
+dc_out=$(printf '{"tool_name":"Bash","tool_input":{"command":"cd /tmp && date >> %s.abc"}}' "$_dc_p" | bash .claude/hooks/block-dangerous.sh 2>/dev/null); dc_ec=$?
+assert_eq "FIRE a write redirect onto the door after && → exit 2" "2" "$dc_ec"
+dc_out=$(printf '{"tool_name":"Bash","tool_input":{"command":"rm -f %s.$CLAUDE_CODE_SESSION_ID"}}' "$_dc_p" | bash .claude/hooks/block-dangerous.sh 2>&1); dc_ec=$?
+assert_eq "SAFE removing the door after the commit (the prescribed cleanup) → exit 0" "0" "$dc_ec"
+assert_empty "SAFE removing the door → silent" "$dc_out"
+dc_out=$(printf '{"tool_name":"Bash","tool_input":{"command":"mail-send --to x <<EOF\\n! touch %s.abc\\nEOF"}}' "$_dc_p" | bash .claude/hooks/block-dangerous.sh 2>&1); dc_ec=$?
+assert_eq "SAFE the owner's ! touch line quoted in a heredoc mail body → exit 0 (a mention, not a run)" "0" "$dc_ec"
+# A deny records arm=door-create; a CRASHED helper lets the command through and records
+# arm=door-create-helper-failed (the documented fail-open). The second half runs a COPY of the hook beside a
+# stub helper that exits 1, so it measures that branch rather than this tree's healthy helper.
+_bddc_root=$(_hfl_fresh_root)
+_bddc_got="fixture root refused (mktemp did not yield a fresh empty dir)"
+if [ -n "$_bddc_root" ]; then
+  printf '{"session_id":"smoke-sid-dc","tool_name":"Bash","tool_input":{"command":"touch %s.abc"}}' "$_dc_p" \
+    | env -u HOOK_FIRES_LOG_DIR CLAUDE_PROJECT_DIR="$_bddc_root" bash .claude/hooks/block-dangerous.sh >/dev/null 2>&1
+  _bddc_rc=$?
+  _bddc_got="rc=$_bddc_rc $(_hfl_records "$_bddc_root/.claude/logs/block-dangerous-fires.jsonl")"
+  mkdir -p "$_bddc_root/hooks/lib"
+  cp .claude/hooks/block-dangerous.sh "$_bddc_root/hooks/"
+  cp .claude/hooks/lib/fires-log.sh "$_bddc_root/hooks/lib/"
+  printf 'import sys\nsys.exit(1)\n' > "$_bddc_root/hooks/lib/door-create.py"
+  printf '{"session_id":"smoke-sid-dc","tool_name":"Bash","tool_input":{"command":"touch %s.abc"}}' "$_dc_p" \
+    | env -u HOOK_FIRES_LOG_DIR CLAUDE_PROJECT_DIR="$_bddc_root" bash "$_bddc_root/hooks/block-dangerous.sh" >/dev/null 2>&1
+  _bddc_rc2=$?
+  _bddc_got="$_bddc_got | crashed-helper rc=$_bddc_rc2 $(_hfl_records "$_bddc_root/.claude/logs/block-dangerous-fires.jsonl")"
+  rm -rf "$_bddc_root"
+fi
+assert_eq "block-dangerous: a door-create DENY records its arm; a crashed helper ALLOWS and records helper-failed" \
+  "rc=2 records=1 arm=door-create sid=smoke-sid-dc agent_id= | crashed-helper rc=0 records=2 arm=door-create-helper-failed sid=smoke-sid-dc agent_id=" "$_bddc_got"
+_bddc_root=$(_hfl_fresh_root)
+_bddc_got="fixture root refused (mktemp did not yield a fresh empty dir)"
+if [ -n "$_bddc_root" ]; then
+  printf '{"session_id":"smoke-sid-dc4","tool_name":"Bash","tool_input":{"command":"echo $\x27it\\\\\x27s\x27; touch %s.abc"}}' "$_dc_p" \
+    | env -u HOOK_FIRES_LOG_DIR CLAUDE_PROJECT_DIR="$_bddc_root" bash .claude/hooks/block-dangerous.sh >/dev/null 2>&1
+  _bddc_rc=$?
+  _bddc_n=$(grep -c -F '"arm":"door-create-parse-gap"' "$_bddc_root/.claude/logs/block-dangerous-fires.jsonl" 2>/dev/null); _bddc_n=${_bddc_n:-0}
+  _bddc_got="rc=$_bddc_rc parse-gap-records=$_bddc_n"
+  rm -rf "$_bddc_root"
+fi
+assert_eq "block-dangerous: a door-naming line door-create.py cannot parse (its exit 4) is ALLOWED and recorded as door-create-parse-gap, not as a crash" "rc=0 parse-gap-records=1" "$_bddc_got"
+# The kill-option-order arm splits the same way (2026-10-29): its exit 4 is a parse gap too.
+_bddc_root=$(_hfl_fresh_root)
+_bddc_got="fixture root refused (mktemp did not yield a fresh empty dir)"
+if [ -n "$_bddc_root" ]; then
+  printf '{"session_id":"smoke-sid-ko4","tool_name":"Bash","tool_input":{"command":"echo $\x27it\\\\\x27s\x27; pkill -f node -n"}}' \
+    | env -u HOOK_FIRES_LOG_DIR CLAUDE_PROJECT_DIR="$_bddc_root" bash .claude/hooks/block-dangerous.sh >/dev/null 2>&1
+  _bddc_rc=$?
+  _bddc_n=$(grep -c -F '"arm":"kill-option-order-parse-gap"' "$_bddc_root/.claude/logs/block-dangerous-fires.jsonl" 2>/dev/null); _bddc_n=${_bddc_n:-0}
+  _bddc_got="rc=$_bddc_rc parse-gap-records=$_bddc_n"
+  rm -rf "$_bddc_root"
+fi
+assert_eq "block-dangerous: a kill-tool line kill-option-order.py cannot parse (its exit 4) is ALLOWED and recorded as kill-option-order-parse-gap" "rc=0 parse-gap-records=1" "$_bddc_got"
+unset _bddc_root _bddc_rc _bddc_rc2 _bddc_got _bddc_n dc_out dc_ec _dc_p
+
+# --- block-dangerous: patch-always-loaded (2026-10-30) ---
+# `git apply` / `patch` writing an always-loaded file while the session's door is not live.
+# lib/patch-always-loaded.py reads the patch and asks
+# block-subagent-always-loaded-write.sh about every file it names, so the door here is the guard's own: each arm
+# runs with FF_ALWAYS_LOADED_ALLOW_MARKER unset (the suite exports it) and FF_ALWAYS_LOADED_ALLOW_PREFIX moved
+# under a temp dir, with a session id no live session has, so no arm creates or reads a real door. The targets are
+# this repo's own .claude/orchestrator/conventions.md and CLAUDE.md, resolved from cwd = REPO_ROOT; nothing is
+# applied (the hook only reads the patch). Each verdict reads rc AND stdout: DENY = rc 2 with one deny document,
+# ALLOW = rc 0 with empty stdout, anything else is reported as an instrument failure, never a verdict.
+_pal_t=$(_hfl_fresh_root)
+# A refused fixture root becomes a path that cannot exist, so every arm below fails loud instead of being skipped.
+[ -n "$_pal_t" ] || _pal_t=/nonexistent-pal-fixture-root
+_pal_sid=0badc0de0-5a1e-4000-8000-000000000a11
+printf 'diff --git a/.claude/orchestrator/conventions.md b/.claude/orchestrator/conventions.md\n--- a/.claude/orchestrator/conventions.md\n+++ b/.claude/orchestrator/conventions.md\n@@ -1 +1 @@\n-x\n+y\n' > "$_pal_t/al.patch"
+printf -- '--- a/src/x.ts\n+++ b/src/x.ts\n@@ -1 +1 @@\n-x\n+y\n' > "$_pal_t/plain.patch"
+_pal_pl() {  # $1 command · $2 extra JSON members (e.g. ,"agent_id":"a1") — a JSON payload on stdout
+  python3 -c 'import json,sys; d={"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_name":"Bash","tool_input":{"command":sys.argv[3]}}; d.update(json.loads("{"+sys.argv[4].lstrip(",")+"}")); print(json.dumps(d))' "$_pal_sid" "$REPO_ROOT" "$1" "${2:-}"
+}
+_pal_v() {  # $1 command · $2 extra payload members · $3 hook path (default this tree) · $4 a dir put first on PATH — prints DENY | ALLOW | INSTRUMENT(...)
+  local out rc
+  out=$(_pal_pl "$1" "${2:-}" | env -u FF_ALWAYS_LOADED_ALLOW_MARKER ${4:+"PATH=$4:$PATH"} HOOK_FIRES_LOG_DIR="$_pal_t/logs" CLAUDE_PROJECT_DIR="$REPO_ROOT" FF_ALWAYS_LOADED_ALLOW_PREFIX="$_pal_t/door" /bin/bash "${3:-$REPO_ROOT/.claude/hooks/block-dangerous.sh}" 2>/dev/null); rc=$?
+  _pal_last="$out"
+  if [ "$rc" = 2 ] && printf '%s' "$out" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); sys.exit(0 if d["hookSpecificOutput"]["permissionDecision"]=="deny" else 1)' 2>/dev/null; then echo DENY
+  elif [ "$rc" = 0 ] && [ -z "$out" ]; then echo ALLOW
+  else echo "INSTRUMENT(rc=$rc out=${out:0:80})"; fi
+}
+_pal_n() { local n; n=$(grep -c -F "\"arm\":\"$1\"" "$_pal_t/logs/block-dangerous-fires.jsonl" 2>/dev/null); echo "${n:-0}"; }
+assert_eq "patch-always-loaded.py --self-test passes (its arms call scan(), the function the hook runs)" "0" \
+  "$(python3 .claude/hooks/lib/patch-always-loaded.py --self-test >/dev/null 2>&1; echo $?)"
+: > "$_pal_t/door.$_pal_sid"
+assert_eq "PAL-a door LIVE + git apply of a patch onto .claude/orchestrator/conventions.md → ALLOW" "ALLOW" "$(_pal_v "git apply $_pal_t/al.patch")"
+rm -f "$_pal_t/door.$_pal_sid"
+assert_eq "PAL-b door CLOSED + git apply onto .claude/orchestrator/conventions.md → DENY" "DENY" "$(_pal_v "git apply $_pal_t/al.patch")"
+_pal_v "git apply $_pal_t/al.patch" >/dev/null
+assert_one_json_doc "PAL-b the deny is ONE document naming the arm" "$_pal_last" 'patch-always-loaded'
+assert_contains "PAL-b the deny names this session's own door line, to be run by the owner" "$_pal_last" "! touch $_pal_t/door.$_pal_sid"
+assert_contains "PAL-b the deny says to remove the door after the commit" "$_pal_last" 'rm -f it after you COMMIT'
+assert_eq "PAL-b each of the two denies above recorded arm=patch-always-loaded" "2" "$(_pal_n patch-always-loaded)"
+assert_eq "PAL-c door CLOSED + git apply onto src/x.ts (unprotected) → ALLOW" "ALLOW" "$(_pal_v "git apply $_pal_t/plain.patch")"
+assert_eq "PAL-d a commit message naming git apply → ALLOW (a mention)" "ALLOW" "$(_pal_v "git commit -m \"fix git apply $_pal_t/al.patch bug\"")"
+assert_eq "PAL-d grep for git apply over the patch → ALLOW (a mention)" "ALLOW" "$(_pal_v "grep -n 'git apply' $_pal_t/al.patch")"
+assert_eq "PAL-d a mail heredoc quoting the apply → ALLOW (a mention)" "ALLOW" "$(_pal_v "mail-send --to x <<'EOF'
+git apply $_pal_t/al.patch
+EOF")"
+assert_eq "PAL-e door CLOSED + an inline heredoc patch onto CLAUDE.md → DENY" "DENY" "$(_pal_v "git apply <<'EOF'
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -1 +1 @@
+-x
++y
+EOF")"
+assert_eq "PAL-e2 door CLOSED + a printf patch piped into git apply → DENY" "DENY" "$(_pal_v "printf -- '--- a/AGENTS.md\\n+++ b/AGENTS.md\\n@@ -1 +1 @@\\n-x\\n+y\\n' | git apply")"
+assert_eq "PAL-g door CLOSED + patch -p1 < f onto .claude/orchestrator/conventions.md → DENY" "DENY" "$(_pal_v "cd $REPO_ROOT && patch -p1 < $_pal_t/al.patch")"
+assert_eq "PAL-h door CLOSED + git apply --cached onto it → DENY (decision: the commit needs the door anyway)" "DENY" "$(_pal_v "git apply --cached $_pal_t/al.patch")"
+assert_eq "PAL-i door CLOSED + git apply --check (read-only) → ALLOW" "ALLOW" "$(_pal_v "git apply --check $_pal_t/al.patch")"
+: > "$_pal_t/door.$_pal_sid"
+assert_eq "PAL-j the parent's door LIVE but the call carries agent_id (a sub-agent) → DENY (the guard refuses it the door)" "DENY" "$(_pal_v "git apply $_pal_t/al.patch" ',"agent_id":"smoke-agent-pal"')"
+touch -t "$(date -v-2H +%Y%m%d%H%M 2>/dev/null || date -d '2 hours ago' +%Y%m%d%H%M)" "$_pal_t/door.$_pal_sid"
+assert_eq "PAL-k an EXPIRED door (2 h old, the 2026-10-30 hub shape) → DENY" "DENY" "$(_pal_v "git apply $_pal_t/al.patch")"
+_pal_v "git apply $_pal_t/al.patch" >/dev/null
+assert_contains "PAL-k the deny passes on the guard's EXPIRED reason" "$_pal_last" 'EXPIRED'
+rm -f "$_pal_t/door.$_pal_sid"
+assert_eq "PAL-l a patch named through a variable set earlier in the command (the 2026-10-28 shape) → DENY" "DENY" "$(_pal_v "R=$_pal_t; git apply \$R/al.patch")"
+assert_eq "PAL-m cd into a worktree path read at run time, then git apply → ALLOW (a recorded gap, never resolved against the main repo)" "ALLOW" "$(_pal_v "W=\$(cat $_pal_t/wt.txt); cd \"\$W\" && git apply $_pal_t/al.patch")"
+# Found in a 2026-10-30 review, the top-severity finding: macOS runs a capitalised verb, and the shell strips quotes and backslashes the
+# raw-byte pre-filter saw. Each of these landed the write with no record before the fold.
+assert_eq "PAL-n1 Git apply (capitalised verb) → DENY" "DENY" "$(_pal_v "Git apply $_pal_t/al.patch")"
+assert_eq "PAL-n2 GIT APPLY → DENY" "DENY" "$(_pal_v "GIT APPLY $_pal_t/al.patch")"
+assert_eq "PAL-n3 Patch -p1 < f → DENY" "DENY" "$(_pal_v "Patch -p1 < $_pal_t/al.patch")"
+assert_eq "PAL-n4 git ap\\ply (a backslash inside the verb) → DENY" "DENY" "$(_pal_v "git ap\\ply $_pal_t/al.patch")"
+assert_eq "PAL-n5 git \"ap\"ply (quotes inside the verb) → DENY" "DENY" "$(_pal_v "git \"ap\"ply $_pal_t/al.patch")"
+assert_eq "PAL-n6 git ap''ply → DENY" "DENY" "$(_pal_v "git ap''ply $_pal_t/al.patch")"
+assert_eq "PAL-n7 pa\\tch -p1 < f → DENY" "DENY" "$(_pal_v "pa\\tch -p1 < $_pal_t/al.patch")"
+assert_eq "PAL-n8 git \$'apply' (plain ANSI-C) → DENY" "DENY" "$(_pal_v "git \$'apply' $_pal_t/al.patch")"
+assert_eq "PAL-n9 ENV A=1 git apply (a wrapper that is a program on PATH, capitalised) → DENY" "DENY" "$(_pal_v "ENV A=1 git apply $_pal_t/al.patch")"
+assert_eq "PAL-n10 a capitalised mention in a commit message → ALLOW" "ALLOW" "$(_pal_v "git commit -m \"fix Git Apply bug in Patch -p1\"")"
+# A serious finding of the same review: a U+017F long s folds onto .claude/rules on APFS; the guard's grep -i folds ASCII only.
+printf -- '--- a/.claude/rule\305\277/security.md\n+++ b/.claude/rule\305\277/security.md\n@@ -1 +1 @@\n-x\n+y\n' > "$_pal_t/longs.patch"
+printf -- '--- a/AGENT\305\277.md\n+++ b/AGENT\305\277.md\n@@ -1 +1 @@\n-x\n+y\n' > "$_pal_t/longs2.patch"
+assert_eq "PAL-o1 a patch naming .claude/rule(U+017F)/security.md → DENY" "DENY" "$(_pal_v "git apply $_pal_t/longs.patch")"
+assert_eq "PAL-o2 a patch naming AGENT(U+017F).md → DENY" "DENY" "$(_pal_v "git apply $_pal_t/longs2.patch")"
+# A moderate-to-minor finding of the same review: a symlinked directory resolves onto .claude/orchestrator; the guard's match is lexical.
+ln -s "$REPO_ROOT/.claude/orchestrator" "$_pal_t/lnk"
+assert_eq "PAL-p patch -d <symlink to .claude/orchestrator> -p3 < f → DENY" "DENY" "$(_pal_v "patch -d $_pal_t/lnk -p3 < $_pal_t/al.patch")"
+# A moderate finding of the same review: an absolute header; git and patch strip the root as the first -p component.
+printf -- '--- /.claude/orchestrator/conventions.md\n+++ /.claude/orchestrator/conventions.md\n@@ -1 +1 @@\n-x\n+y\n' > "$_pal_t/abs.patch"
+assert_eq "PAL-q git apply of a patch with absolute headers (-p1 strips the root) → DENY" "DENY" "$(_pal_v "git apply $_pal_t/abs.patch")"
+# A moderate finding of the same review: -g takes an argument in Apple patch, so its 0 is not the origfile.
+assert_eq "PAL-r patch -g 0 -p1 < f → DENY" "DENY" "$(_pal_v "patch -g 0 -p1 < $_pal_t/al.patch")"
+# With no working jq, $cmd is cut at the first escaped quote; the pre-filter also reads the raw payload.
+mkdir -p "$_pal_t/nojq"; printf '#!/bin/sh\nexit 1\n' > "$_pal_t/nojq/jq"; chmod +x "$_pal_t/nojq/jq"
+assert_eq "PAL-s a broken jq + echo \"hi\" ; git apply f → DENY" "DENY" "$(_pal_v "echo \"hi\" ; git apply $_pal_t/al.patch" '' '' "$_pal_t/nojq")"
+assert_eq "PAL-s a broken jq + echo \"hi\" ; ls → ALLOW (control)" "ALLOW" "$(_pal_v "echo \"hi\" ; ls" '' '' "$_pal_t/nojq")"
+_pal_g0=$(_pal_n patch-always-loaded-parse-gap)
+assert_eq "PAL-f door CLOSED + an unreadable patch file → ALLOW (fail open)" "ALLOW" "$(_pal_v "git apply $_pal_t/no-such.patch")"
+assert_eq "PAL-f ... and arm=patch-always-loaded-parse-gap is recorded" "$((_pal_g0 + 1))" "$(_pal_n patch-always-loaded-parse-gap)"
+# A crashed helper and a guard that gives no verdict: a COPY of the hook beside stubs, so each measures its branch.
+mkdir -p "$_pal_t/h1/lib" "$_pal_t/h2/lib"
+cp .claude/hooks/block-dangerous.sh "$_pal_t/h1/"; cp .claude/hooks/lib/fires-log.sh "$_pal_t/h1/lib/"
+printf 'import sys\nsys.exit(1)\n' > "$_pal_t/h1/lib/patch-always-loaded.py"
+assert_eq "PAL-f2 a CRASHED helper → ALLOW (fail open)" "ALLOW" "$(_pal_v "git apply $_pal_t/al.patch" '' "$_pal_t/h1/block-dangerous.sh")"
+assert_eq "PAL-f2 ... and arm=patch-always-loaded-helper-failed is recorded" "1" "$(_pal_n patch-always-loaded-helper-failed)"
+cp .claude/hooks/block-dangerous.sh "$_pal_t/h2/"; cp .claude/hooks/lib/fires-log.sh .claude/hooks/lib/patch-always-loaded.py .claude/hooks/lib/kill-option-order.py "$_pal_t/h2/lib/"
+printf '#!/bin/bash\ncat >/dev/null\nexit 1\n' > "$_pal_t/h2/block-subagent-always-loaded-write.sh"
+assert_eq "PAL-f3 a guard that gives no verdict → ALLOW (fail open; the commit gate is the backstop)" "ALLOW" "$(_pal_v "git apply $_pal_t/al.patch" '' "$_pal_t/h2/block-dangerous.sh")"
+assert_eq "PAL-f3 ... and arm=patch-always-loaded-guard-failed is recorded" "1" "$(_pal_n patch-always-loaded-guard-failed)"
+rm -rf "$_pal_t"
+unset _pal_t _pal_sid _pal_last _pal_g0
+unset -f _pal_pl _pal_v _pal_n
+
 # --- block-dangerous: THE SAME jq FAIL-OPEN CLASS AS THE PUSH GUARD ---
 # ⛔ `block-push-without-approval.sh` "Mirrors block-dangerous.sh's jq-first extraction", so the two
 # guards share one obligation: an unconditional parse flag and an ABSENCE-keyed tripwire would let a
@@ -2251,6 +2543,18 @@ if [ -n "$_bdjq_root" ]; then
   rm -rf "$_bdjq_root"
 fi
 assert_eq "block-dangerous, jq BROKEN + a quoted mis-ordered pkill → allowed, and arm=kill-option-order-unparsed recorded" "rc=0 unparsed=1" "$_bdjq_got"
+unset _bdjq_root _bdjq_rc _bdjq_n _bdjq_got
+_bdjq_root=$(_hfl_fresh_root)
+_bdjq_got="fixture root refused (mktemp did not yield a fresh empty dir)"
+if [ -n "$_bdjq_root" ]; then
+  printf '{"session_id":"smoke-sid-dcjq","tool_name":"Bash","tool_input":{"command":"touch %s.abc"}}' "/tmp/claude-always-""loaded-allow" \
+    | env -u HOOK_FIRES_LOG_DIR PATH="$_bdjq_rig/bin" CLAUDE_PROJECT_DIR="$_bdjq_root" /bin/bash "$REPO_ROOT/.claude/hooks/block-dangerous.sh" >/dev/null 2>&1
+  _bdjq_rc=$?
+  _bdjq_n=$(grep -c -F '"arm":"door-create-unparsed"' "$_bdjq_root/.claude/logs/block-dangerous-fires.jsonl" 2>/dev/null); _bdjq_n=${_bdjq_n:-0}
+  _bdjq_got="rc=$_bdjq_rc unparsed=$_bdjq_n"
+  rm -rf "$_bdjq_root"
+fi
+assert_eq "block-dangerous, jq BROKEN + an unquoted door touch → still denied (the fallback reads it whole), and arm=door-create-unparsed recorded" "rc=2 unparsed=1" "$_bdjq_got"
 unset _bdjq_root _bdjq_rc _bdjq_n _bdjq_got
 rm -rf "$_bdjq_rig"
 unset _bdjq_rig _bdjq_p _bdjq_s
@@ -4504,12 +4808,15 @@ print(json.dumps(p))' "$_nflal_root" "$_nflal_case")
     # ⛔ `env -i` MUST CARRY FF_ALWAYS_LOADED_ALLOW_MARKER — ADDED 2026-09-13 AFTER THIS ARM WAS
  # MEASURED RE-OPENING A FLEET-WIDE PUSH BLOCK.
     # The suite exports that variable at its prologue to a NON-EXISTENT mktemp path precisely so no
-    # arm ever reads the live machine-global default. `env -i` erases the export, so the hook's
-    # `marker_live()` fell back to /tmp/claude-always-loaded-allow — and `marker_live && exit 0` sits
-    # directly on the fail-closed branch this arm exercises. Consequence: while ANY seat on this
-    # machine holds the sanctioned 900-second bypass open, the hook exits 0, this arm goes RED, and
-    # `.githooks/pre-push` runs this suite as a HARD GATE — so every seat's push fails, on an arm
-    # whose message blames the fires log. The prologue's own self-check (grep
+    # arm ever reads a real door. `env -i` erased the export, so the hook's `marker_live()` fell back
+    # to what was then the machine-global /tmp/claude-always-loaded-allow — and `marker_live && exit 0`
+    # sits directly on the fail-closed branch this arm exercises. Consequence then: while ANY seat on
+    # this machine held the 900-second door open, the hook exited 0, this arm went RED, and
+    # `.githooks/pre-push` runs this suite as a HARD GATE — so every seat's push failed, on an arm
+    # whose message blamed the fires log. Since 2026-10-25 the fallback is the door named by the
+    # payload's session id, and this arm's id (smoke-sid-al) is not the harness's hex-and-dash shape,
+    # so no marker can open it; its agent_id is refused the door anyway (2026-10-10). The
+    # export keeps the arm on the suite's own path if either ever changes. The prologue's own self-check (grep
     # FF_ALWAYS_LOADED_ALLOW_MARKER above) exists for exactly this incident; this re-opened it
     # through a new door.
     # ⚠️ DELIBERATE DEVIATION FROM THE PRESCRIBED REMEDY, which was to delete this branch and let all
@@ -5976,6 +6283,12 @@ src/generated/pad${_i}.ts"; done
   else
     fail "cert-freshness: shipped awk vs REAL manifest MISMATCH — declared '$_cfw_declared', parsed '$_cfw_parsed'"
   fi
+  # The wire-deps pseudo entry (package-lock.json#<the wire packages>) must parse to the file a push names.
+  if printf '%s\n' "$_cfw_mf" | awk "$_cfw_awk" | grep -qx 'package-lock.json'; then
+    pass "cert-freshness: the shipped awk maps the wire-deps entry to package-lock.json"
+  else
+    fail "cert-freshness: the shipped awk does not yield package-lock.json, so a lockfile-only push of the wire packages never reaches --check-fresh"
+  fi
 fi
 
 echo "=== pre-deploy eslint ERROR gate disposition (scripts/lib/predeploy-lint-verdict.sh) ==="
@@ -7168,6 +7481,72 @@ out=$(python3 scripts/session-lifecycle.py status --session "smkwrap1cc" 2>&1)
 assert_contains "WRAPPED: /wrap stamp → WRAPPED" "$out" "WRAPPED"
 assert_not_contains "WRAPPED: no on-hold/reopened refinement (removed 2026-08-07)" "$out" "reopened"
 
+# WRAPPING is a state of its own, and WRAPPED holds only when the wrap is
+# fully completed. Step 0 stamps `wrapping`; the wrap's last act before the summary stamps `wrapped` (WRAPPED) or
+# `wrapped --checkpoint` (the seat continues: ACTIVE). Measured defect this closes: Step 0 wrote the
+# wrapped marker, so a peer read WRAPPED 2 min into a wrap that ran 7+ more minutes.
+CLAUDE_CODE_SESSION_ID=wr0a0001 python3 scripts/session-lifecycle.py wrapping >/dev/null 2>&1
+out=$(python3 scripts/session-lifecycle.py status --session wr0a0001 2>&1)
+assert_contains "WRAPPING: Step 0 wrapping stamp → WRAPPING" "$out" "WRAPPING"
+assert_not_contains "WRAPPING: Step 0 stamp is NOT WRAPPED (the completion stamp is)" "$out" "WRAPPED"
+assert_eq "WRAPPING: Step 0 writes no wrapped marker" "0" "$([ -f "$sl_state/session-wrapped-wr0a0001" ] && echo 1 || echo 0)"
+CLAUDE_CODE_SESSION_ID=wr0a0001 python3 scripts/session-lifecycle.py wrapped >/dev/null 2>&1
+out=$(python3 scripts/session-lifecycle.py status --session wr0a0001 2>&1)
+assert_contains "WRAPPING→WRAPPED: plain completion stamp → WRAPPED" "$out" "WRAPPED"
+assert_not_contains "WRAPPING→WRAPPED: plain completion is not still WRAPPING" "$out" "WRAPPING"
+assert_eq "WRAPPING→WRAPPED: plain completion REMOVES the wrapping marker" "0" "$([ -f "$sl_state/session-wrapping-wr0a0001" ] && echo 1 || echo 0)"
+# A re-wrap on a WRAPPED seat: WRAPPING outranks the earlier completed wrap while it runs.
+CLAUDE_CODE_SESSION_ID=wr0a0001 python3 scripts/session-lifecycle.py wrapping >/dev/null 2>&1
+out=$(python3 scripts/session-lifecycle.py status --session wr0a0001 2>&1)
+assert_contains "PRECEDENCE: WRAPPING over an earlier completed wrap → WRAPPING" "$out" "WRAPPING"
+# Checkpoint completion: the seat continues — ACTIVE, both markers gone.
+CLAUDE_CODE_SESSION_ID=wr0a0001 python3 scripts/session-lifecycle.py wrapped --checkpoint >/dev/null 2>&1
+out=$(python3 scripts/session-lifecycle.py status --session wr0a0001 2>&1)
+assert_contains "CHECKPOINT: wrapped --checkpoint completion → ACTIVE (the seat continues)" "$out" "ACTIVE"
+assert_eq "CHECKPOINT: completion clears the wrapping marker" "0" "$([ -f "$sl_state/session-wrapping-wr0a0001" ] && echo 1 || echo 0)"
+assert_eq "CHECKPOINT: completion clears the earlier wrapped marker too (a continuing seat is not done-for-now)" "0" "$([ -f "$sl_state/session-wrapped-wr0a0001" ] && echo 1 || echo 0)"
+# A dropped flag between Step 0 and the completion stamp is said out loud, and the declared checkpoint holds:
+# the rule is WRAPPED only when no --checkpoint was issued, so a dropped flag must not wake a peer.
+CLAUDE_CODE_SESSION_ID=wr0a0002 python3 scripts/session-lifecycle.py wrapping --checkpoint >/dev/null 2>&1
+assert_contains "WRAPPING: a CHECKPOINT wrap in progress → WRAPPING (the mode decides only what the completion stamp does)" "$(python3 scripts/session-lifecycle.py status --session wr0a0002 2>&1)" "WRAPPING"
+mm=$(CLAUDE_CODE_SESSION_ID=wr0a0002 python3 scripts/session-lifecycle.py wrapped 2>&1)
+assert_contains "MODE MISMATCH: Step 0 said checkpoint, completion said plain → warned" "$mm" "declared 'checkpoint'"
+assert_contains "MODE MISMATCH: a declared checkpoint holds — ACTIVE, never WRAPPED" "$(python3 scripts/session-lifecycle.py status --session wr0a0002 2>&1)" "ACTIVE"
+assert_eq "MODE MISMATCH: no wrapped marker is written (a peer on --peer-done does not wake)" "0" "$([ -f "$sl_state/session-wrapped-wr0a0002" ] && echo 1 || echo 0)"
+# Precedence: STANDBY over WRAPPING (a seat parked mid-wrap is deaf, whatever its wrap was doing).
+CLAUDE_CODE_SESSION_ID=wr0a0003 python3 scripts/session-lifecycle.py wrapping >/dev/null 2>&1
+python3 scripts/session-lifecycle.py standby --session wr0a0003 >/dev/null 2>&1
+out=$(python3 scripts/session-lifecycle.py status --session wr0a0003 2>&1)
+assert_contains "PRECEDENCE: STANDBY over WRAPPING → STANDBY" "$out" "STANDBY"
+# A legacy 'checkpoint' wrapped marker (pre-2026-11-01) has no state now: ACTIVE, not CHECKPOINT, not WRAPPED.
+printf 'deadbeef %s checkpoint\n' "$(date +%s)" > "$sl_state/session-wrapped-wr0a0004"
+out=$(python3 scripts/session-lifecycle.py status --session wr0a0004 2>&1)
+assert_contains "LEGACY: a mode=checkpoint wrapped marker → ACTIVE (the CHECKPOINT state is retired)" "$out" "ACTIVE"
+# A WRAPPING marker left standing at a SessionStart (the wrap never completed) is SAID, never cleared.
+CLAUDE_CODE_SESSION_ID=wr0a0005 python3 scripts/session-lifecycle.py wrapping >/dev/null 2>&1
+gout=$(CLAUDE_CODE_SESSION_ID=wr0a0005 python3 scripts/session-lifecycle.py gate --source startup 2>&1 >/dev/null)
+assert_contains "GATE: a standing WRAPPING marker at startup → advisory names it and the two ways out" "$gout" "never stamped completion"
+assert_eq "GATE: the advisory does not clear the marker (derive, don't store)" "1" "$([ -f "$sl_state/session-wrapping-wr0a0005" ] && echo 1 || echo 0)"
+# A WRAPPING marker at or before an EXIT goes with the exit marker on the resume (step 4): that wrap died
+# with the session, so the resumed seat reads ACTIVE, not WRAPPING.
+printf 'deadbeef %s wrap\n' "$(( $(date +%s) - 120 ))" > "$sl_state/session-wrapping-wr0a0006"
+python3 scripts/session-lifecycle.py finished --session wr0a0006 --reason logout >/dev/null 2>&1
+CLAUDE_CODE_SESSION_ID=wr0a0006 python3 scripts/session-lifecycle.py gate --source resume >/dev/null 2>&1
+assert_eq "RESUME: a wrapping marker PRE-DATING the exit is moved with it" "0" "$([ -f "$sl_state/session-wrapping-wr0a0006" ] && echo 1 || echo 0)"
+assert_contains "RESUME: the superseded wrapping is kept on record" "$(cat "$sl_state/session-exit-resumed-wr0a0006" 2>/dev/null)" "superseded-wrapping deadbeef"
+assert_contains "RESUME: the resumed seat reads ACTIVE, not WRAPPING" "$(python3 scripts/session-lifecycle.py status --session wr0a0006 2>&1)" "ACTIVE"
+# EXITED outranks WRAPPING: a seat whose SessionEnd fired mid-wrap (no resume since) is EXITED, not mid-wrap.
+CLAUDE_CODE_SESSION_ID=wr0a0007 python3 scripts/session-lifecycle.py wrapping >/dev/null 2>&1
+python3 scripts/session-lifecycle.py finished --session wr0a0007 --reason logout >/dev/null 2>&1
+assert_contains "PRECEDENCE: EXITED over WRAPPING (SessionEnd mid-wrap) → EXITED" "$(python3 scripts/session-lifecycle.py status --session wr0a0007 2>&1)" "EXITED"
+# A WRAPPING marker older than GC_DAYS (a wrap abandoned without SessionEnd: /exit, a closed terminal) is GC'd
+# by any session's gate, so a dead seat stops reading WRAPPING; a fresh one survives the same pass.
+printf 'deadbeef %s wrap\n' "$(( $(date +%s) - 8*86400 ))" > "$sl_state/session-wrapping-wr0a0008"
+python3 -c "import os,sys,time; t=time.time()-8*86400; os.utime(sys.argv[1], (t, t))" "$sl_state/session-wrapping-wr0a0008"
+CLAUDE_CODE_SESSION_ID=wr0a0009 python3 scripts/session-lifecycle.py gate --source startup >/dev/null 2>&1
+assert_eq "GC: a WRAPPING marker older than GC_DAYS is removed by a peer's gate" "0" "$([ -f "$sl_state/session-wrapping-wr0a0008" ] && echo 1 || echo 0)"
+assert_eq "GC: a fresh WRAPPING marker survives the same gate" "1" "$([ -f "$sl_state/session-wrapping-wr0a0005" ] && echo 1 || echo 0)"
+
 # SOFT reason (other) must NOT promote to EXITED (only logout/prompt_input_exit are terminal)
 python3 scripts/session-lifecycle.py finished --session "smkwrap1cc" --reason other >/dev/null 2>&1
 out=$(python3 scripts/session-lifecycle.py status --session "smkwrap1cc" 2>&1)
@@ -8004,12 +8383,16 @@ else
 fi
 assert_one_json_doc "PARSE: mail-listen-arm-reminder.sh unarmed arm → ONE parseable hookSpecificOutput doc, the arm command survives (the multi-doc class — the three greps above are substring checks, green on a two-doc stdout that delivers nothing)" "$sout" 'mail-listen --poll 30'
 # The idle exception must stay SCOPED: a seat that is owed mail (the review hub, an unanswered
-# review request or deploy-hold) keeps re-arming. Unscoped, the exception switched the hub off.
+# review request or deploy-hold, mail it asked of a peer or a peer promised, until that peer's session-finished
+# marker) keeps re-arming. Unscoped, the exception switched the hub off. The peer
+# clause is pinned on three phrases — the stop, the asked-for case, the store check — one per clause it carries.
 ctx=$(printf '%s' "$sout" | python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])' 2>/dev/null)
-if printf '%s' "$ctx" | grep -qF 'review-hub-active' && printf '%s' "$ctx" | grep -qF 'deploy-hold'; then
-  pass "SCOPE: mail-listen-arm-reminder.sh idle exception names the review-hub marker and an unanswered deploy-hold as owed-mail cases"
+if printf '%s' "$ctx" | grep -qF 'review-hub-active' && printf '%s' "$ctx" | grep -qF 'deploy-hold' \
+   && printf '%s' "$ctx" | grep -qF 'session-finished-<peer8>' \
+   && printf '%s' "$ctx" | grep -qF 'that it asked for' && printf '%s' "$ctx" | grep -qF 'is newer than that ask'; then
+  pass "SCOPE: mail-listen-arm-reminder.sh idle exception names the review-hub marker, an unanswered deploy-hold and mail asked of a peer (with its stop) as owed-mail cases"
 else
-  fail "SCOPE: mail-listen-arm-reminder.sh idle exception must name review-hub-active and deploy-hold, or it switches off seats that are waiting for mail"
+  fail "SCOPE: mail-listen-arm-reminder.sh idle exception must name review-hub-active, deploy-hold and the asked-of-a-peer case ending at session-finished-<peer8>, or it switches off seats that are waiting for mail"
 fi
 # SAFE: marker present (session armed) → fully silent (no stdout, no stderr). SMK2TEST-bbbb → same [:8] key.
 mkdir -p .claude/state; touch .claude/state/mail-listen-armed-smk2test
@@ -8215,7 +8598,16 @@ touch "$_wpp_dir/plans/session-smk5wpp1-2000-01-01-blocks-2000-01-03.md" "$_wpp_
 out=$(echo '{"session_id":"SMK5WPP1-aaaa","source":"resume"}' | CLAUDE_PROJECT_DIR="$_wpp_dir" bash .claude/hooks/session-start.sh 2>/dev/null | grep -F 'WORKING PLAN (exists)')
 assert_contains "FIRE: two plan files for one sid → the hook announces the LAST in byte order (the live plan)" "$out" "plans/session-smk5wpp1-2000-01-01.md —"
 assert_not_contains "FIRE: the stale -blocks- fragment is NOT the announced plan" "$out" "-blocks-2000-01-03.md"
+assert_contains "FIRE: the exists line tells the session to list its backlog items" "$out" "Name it under ## Backlog items in the plan"
 rm -rf "$_wpp_dir"
+# The two no-plan arms carry the plan template, so a fresh session's FIRST plan has the section:
+# without these pins, deleting the section phrase from either arm stays green.
+_wpq_dir="$(cd "$(mktemp -d)" && pwd -P)"; mkdir -p "$_wpq_dir/plans" "$_wpq_dir/.claude/state"
+out=$(echo '{"session_id":"SMK5WPQ1-aaaa","source":"startup"}' | CLAUDE_PROJECT_DIR="$_wpq_dir" bash .claude/hooks/session-start.sh 2>/dev/null | grep -F 'WORKING PLAN (standing directive)')
+assert_contains "FIRE: no plan, startup → the standing directive lists the ## Backlog items section" "$out" "a ## Backlog items section (empty until work on a BACKLOG entry starts)"
+out=$(echo '{"session_id":"SMK5WPQ2-aaaa","source":"compact"}' | CLAUDE_PROJECT_DIR="$_wpq_dir" bash .claude/hooks/session-start.sh 2>/dev/null | grep -F 'WORKING PLAN (compaction')
+assert_contains "FIRE: no plan, compact → the create-now arm lists the ## Backlog items section" "$out" "a ## Backlog items section (empty until work on a BACKLOG entry starts)"
+rm -rf "$_wpq_dir"
 
 echo ""
 echo "=== working-plan-reminder.sh (UserPromptSubmit — plan directive injected into AGENT CONTEXT until plans/session-<sid8>-*.md exists) ==="
@@ -8234,6 +8626,7 @@ assert_contains "FIRE: no plan file → hookEventName is UserPromptSubmit" "$sou
 assert_one_json_doc "FIRE: no plan file → ONE parseable doc, inline spec survives in additionalContext" "$sout" "REVIEW LEDGER"
 assert_one_json_doc "FIRE: no plan file → exact plans/session-<sid8>-<today>.md path survives in the PARSED context" "$sout" "plans/session-smk4wpx1-$(date +%Y-%m-%d).md"
 assert_one_json_doc "FIRE: the directory searched is named in the PARSED context (self-diagnosis)" "$sout" "$_wpr_dir/plans/"
+assert_one_json_doc "FIRE: the PARSED context lists the plan's ## Backlog items section" "$sout" "a ## Backlog items section (empty until work on a BACKLOG entry starts)"
 # SAFE: plan file exists (any date suffix) → fully silent (no stdout, no stderr).
 touch "$_wpr_dir/plans/session-smk4wpx2-2000-01-01.md"
 out=$(echo '{"prompt":"do a thing","session_id":"SMK4WPX2-bbbb"}' | CLAUDE_PROJECT_DIR="$_wpr_dir" bash .claude/hooks/working-plan-reminder.sh 2>&1)
@@ -11200,6 +11593,49 @@ _cm_s5=$(printf '{"session_id":"zzzz7777-0000","source":"startup"}' | CLAUDE_RES
 assert_not_contains "SAFE: session-start.sh startup → no staleness line (the launch just built the file)" "$_cm_s5" "DOCTRINE CHANGED SINCE LAUNCH"
 _cm_s6=$(printf '{"session_id":"zzzz7777-0000","source":"compact"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="not-a-commit" FF_STATE_DIR="$_cm_t" bash .claude/hooks/session-start.sh 2>/dev/null)
 assert_contains "FIRE: session-start.sh compact + a label that is not a commit → says freshness is UNKNOWN, never silent" "$_cm_s6" "freshness is UNKNOWN"
+# A RESUME compares against the commit RECORDED for that conversation at its last startup, clear or compaction, never
+# this launch's: Claude Code 2.1.316 re-sends the recorded system prompt after a --resume until the next compaction
+# (--system-prompt-snapshot, measured 2026-11-02 with two canary files).
+_cm_rt=$(cd "$(mktemp -d)" && pwd -P)
+printf '{"session_id":"zzzz8888-0000","source":"startup"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$_cm_old" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+_cm_r1=$(printf '{"session_id":"zzzz8888-0000","source":"resume"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh 2>/dev/null)
+assert_contains "FIRE: session-start.sh resume of a conversation recorded at an older commit, relaunched at HEAD → names the files" "$_cm_r1" "DOCTRINE CHANGED SINCE LAUNCH"
+_cm_r2=$(printf '{"session_id":"zzzz9999-0000","source":"resume"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh 2>/dev/null)
+assert_contains "FIRE: session-start.sh resume with no commit recorded for the conversation → freshness is UNKNOWN, never silent" "$_cm_r2" "freshness is UNKNOWN"
+printf '{"session_id":"zzzz6666-0000","source":"startup"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+_cm_r3=$(printf '{"session_id":"zzzz6666-0000","source":"resume"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh 2>/dev/null)
+assert_not_contains "SAFE: session-start.sh resume of a conversation recorded at HEAD → no staleness line" "$_cm_r3" "DOCTRINE CHANGED SINCE LAUNCH"
+# The record is rewritten at /clear and at compaction, and a resume never rewrites it (found in review:
+# a record skipped at clear or compact, appended instead of replaced, or rewritten after a resume's read kept all three
+# arms above green).
+_cm_r6=$(printf '{"session_id":"zzzz8888-0000","source":"resume"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh 2>/dev/null)
+assert_contains "FIRE: session-start.sh a second resume of the conversation recorded at an older commit → still names the files (a resume never rewrites the record)" "$_cm_r6" "DOCTRINE CHANGED SINCE LAUNCH"
+printf '{"session_id":"zzzz5555-0000","source":"startup"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+printf '{"session_id":"zzzz5555-0000","source":"clear"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$_cm_old" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+_cm_r7=$(printf '{"session_id":"zzzz5555-0000","source":"resume"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh 2>/dev/null)
+assert_contains "FIRE: session-start.sh resume after a /clear recorded at an older commit → names the RECORDED commit" "$_cm_r7" "as it was at ${_cm_old:0:9};"
+printf '{"session_id":"zzzz4444-0000","source":"startup"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$_cm_old" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+printf '{"session_id":"zzzz4444-0000","source":"compact"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+_cm_r8=$(printf '{"session_id":"zzzz4444-0000","source":"resume"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$_cm_old" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh 2>/dev/null); _cm_r8rc=$?
+assert_not_contains "SAFE: session-start.sh resume after a compaction recorded at HEAD, relaunched at an older commit → no staleness line" "$_cm_r8" "DOCTRINE CHANGED SINCE LAUNCH"
+assert_eq "session-start.sh: that SAFE resume ran to its end (rc 0, so an empty output is not a crash)" "0" "$_cm_r8rc"
+# Placed by hand from a review report (session ids changed from its patch so they do not
+# collide with the arms above): a plain compaction re-records the system prompt without the doctrine, so the record it
+# leaves must not survive it; and a record write into a missing state dir stays off stderr.
+printf '{"session_id":"zzzz3333-0000","source":"startup"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+printf '{"session_id":"zzzz3333-0000","source":"compact"}' | env -u CLAUDE_RESIDENT_DOCTRINE_COMMIT FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+_cm_r4=$(printf '{"session_id":"zzzz3333-0000","source":"resume"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh 2>/dev/null)
+assert_contains "FIRE: session-start.sh resume after a plain (non-launcher) compaction → freshness is UNKNOWN, not the old launcher record" "$_cm_r4" "freshness is UNKNOWN"
+_cm_r5=$(printf '{"session_id":"zzzz2222-0000","source":"startup"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt/missing" bash .claude/hooks/session-start.sh 2>&1 >/dev/null)
+assert_not_contains "SAFE: session-start.sh record write into a missing state dir → no error on stderr" "$_cm_r5" "resident-doctrine-commit-"
+# The two empty-session-id guards (owed when either guard is edited, which this fold does): with
+# no session id there is no conversation to key, so nothing is written and a resume never reads a shared record.
+printf '{"session_id":"","source":"startup"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh >/dev/null 2>&1
+assert_eq "session-start.sh: a startup with no session id writes no record" "absent" "$([ -e "$_cm_rt/resident-doctrine-commit-" ] && echo present || echo absent)"
+printf '%s\n' "$_cm_old" > "$_cm_rt/resident-doctrine-commit-"
+_cm_r9=$(printf '{"session_id":"","source":"resume"}' | CLAUDE_RESIDENT_DOCTRINE_COMMIT="$(git rev-parse HEAD)" FF_STATE_DIR="$_cm_rt" bash .claude/hooks/session-start.sh 2>/dev/null)
+assert_contains "FIRE: session-start.sh resume with no session id → freshness is UNKNOWN, never a record keyed on an empty id" "$_cm_r9" "freshness is UNKNOWN"
+rm -rf "$_cm_rt"
 # Half-built doctrine and the 14-day sweep, against a COPY of the launcher in a scratch repo. Every git verb below
 # runs only after the repo is proven to be the scratch dir: an empty mktemp result would otherwise aim them here.
 _cm_r=$(mktemp -d) && _cm_r=$(cd "$_cm_r" && pwd -P) && [ "$_cm_r" != "$(pwd -P)" ] && git -C "$_cm_r" init -q \
@@ -12247,7 +12683,9 @@ if git clone --shared --quiet "$REPO_ROOT" "$_pgate_cl" 2>/dev/null; then
   git -C "$_pgate_cl" remote set-url origin "$_pgate_cl"
   # npm is a stub here: the precheck's dependency audit (rc 5) would otherwise reach the registry, and these
   # arms would red on a registry outage or on a new advisory in the lockfile, neither of which they test.
-  mkdir -p "$_pgate_tmp/npmstub"; printf '#!/usr/bin/env bash\nexit 0\n' > "$_pgate_tmp/npmstub/npm"; chmod +x "$_pgate_tmp/npmstub/npm"
+  # Since 2026-10-29 the audit is scripts/audit-gate.mjs, which reads npm's --json report and fails closed on an
+  # empty one, so the stub prints the report a clean audit returns.
+  mkdir -p "$_pgate_tmp/npmstub"; printf '#!/usr/bin/env bash\necho '"'"'{"vulnerabilities":{}}'"'"'\nexit 0\n' > "$_pgate_tmp/npmstub/npm"; chmod +x "$_pgate_tmp/npmstub/npm"
   _pgate_pc_run() { ( cd "$_pgate_cl" && env -i PATH="$_pgate_tmp/npmstub:$PATH" HOME="$HOME" "$@" bash scripts/promote-precheck.sh 2>&1 ); }
   _pgate_pc_out="$(_pgate_pc_run SKIP_E2E_HOOK=1)"; _pgate_pc_rc=$?
   assert_eq "promote precheck: SKIP_E2E_HOOK=1 set → refused before the gate (rc 2)" "2" "$_pgate_pc_rc"
@@ -12585,6 +13023,11 @@ _sop_out="$(python3 "$REPO_ROOT/scripts/summary-owner-predicate-check.py" --self
 assert_eq "summary-owner-predicate-check --self-test → exit 0" "0" "$_sop_rc"
 # ⛔ rc alone certifies a help message. Demand the VERDICT TOKEN.
 assert_contains "  ...emits a positive verdict, not merely rc=0" "$_sop_out" "SELF-TEST PASSED"
+# ⛔ The required mutation arms are pinned HERE, outside the file under edit: emptying
+# REQUIRED_MUTATION_ARMS, or trimming it in step with HISTORICAL_BROKEN, passed rc=0 with
+# "SELF-TEST PASSED". And a PASSED verdict beside a [FAIL] line is a lie.
+assert_contains "  ...names both required mutation arms, not a count" "$_sop_out" "all 2 required arms present (F7 form, F8 form)"
+assert_not_contains "  ...no arm line reads [FAIL] under a passing verdict" "$_sop_out" "[FAIL]"
 # ⛔ The MUTATION arm is the load-bearing half: it swaps each historical broken regex in and
 # demands the fixtures go RED. Without it the fixtures could stop discriminating and this
 # suite would stay green over a dead test.
@@ -13230,13 +13673,38 @@ assert_eq "SAFE: no arm in this section wrote a row to the suite's own HOOK_FIRE
 rm -rf "$_dazh_root"; unset _dazh_root _dazh_out _dazh_rc
 
 echo ""
+# todo-meta-schema-warn.sh (wired in .githooks/pre-commit, 2026-11-01).
+# Satisfies the "hook coverage completeness" gate, which fails any hook wired into .githooks/ whose
+# path `hooks/todo-meta-schema-warn.sh` this file never mentions. Behavioural coverage lives in
+# a unit test file (16 arms, 13 of 14 mutants RED); this is the FIRE/SAFE pair.
+echo "=== todo-meta-schema-warn (warn-mode — unreadable todo.txt meta block at commit time) ==="
+tms_tmp=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$tms_tmp" init -q
+git -C "$tms_tmp" config user.email "smoke@""test.local"; git -C "$tms_tmp" config user.name smoke
+mkdir -p "$tms_tmp/.claude/hooks/lib" "$tms_tmp/scripts"
+cp "$REPO_ROOT/.claude/hooks/todo-meta-schema-warn.sh" "$tms_tmp/.claude/hooks/"
+cp "$REPO_ROOT/.claude/hooks/lib/fires-log.sh" "$tms_tmp/.claude/hooks/lib/"
+cp "$REPO_ROOT/scripts/defer-trigger-scan.py" "$tms_tmp/scripts/"
+printf -- '- [ ] A — x\n  meta:\n    trigger-type: date\n    trigger: 2026-12-01\n' > "$tms_tmp/todo.txt"
+git -C "$tms_tmp" add todo.txt; git -C "$tms_tmp" commit -q -m base
+printf -- '- [ ] A — x\n  meta:\n    trigger-type: date\n    trigger: 2026-12-01\n- [ ] B — y\n  meta: {trigger-type: date, trigger: 2026-09-08}\n' > "$tms_tmp/todo.txt"
+git -C "$tms_tmp" add todo.txt
+out=$(cd "$tms_tmp" && bash .claude/hooks/todo-meta-schema-warn.sh 2>&1); ec=$?
+assert_contains "FIRE: todo-meta-schema-warn flags a flow-form meta block this commit wrote" "$out" "[FLOW-FORM]"
+assert_eq "SAFE: todo-meta-schema-warn is warn-mode (exit 0)" "0" "$ec"
+printf -- '- [ ] A — x\n  meta:\n    trigger-type: date\n    trigger: 2026-12-01\n- [ ] B — y\n  meta:\n    trigger-type: date\n    trigger: 2026-09-08\n' > "$tms_tmp/todo.txt"
+git -C "$tms_tmp" add todo.txt
+out=$(cd "$tms_tmp" && bash .claude/hooks/todo-meta-schema-warn.sh 2>&1)
+assert_empty "SAFE: a well-formed meta block is silent" "$out"
+rm -rf "$tms_tmp"
+
 echo "=== always-loaded-commit-gate.sh (the commit tools refuse an always-loaded file while the session's door is closed; asks block-subagent-always-loaded-write.sh; 2026-10-28) ==="
 # The gate's protected set and door window ARE this guard's (it puts each committed path to the guard as a
 # synthetic Edit), so a guard change that breaks the gate shows here, on the push that changes the hook.
 # The exact count pins the arm set: a deleted or added arm reds the second assert.
 _alg_out=$(bash scripts/always-loaded-commit-gate.sh --self-test 2>&1); _alg_rc=$?
 assert_eq "always-loaded-commit-gate.sh --self-test exits 0 (closed/open/expired door, every protected family, the removed override refused, no session)" "0" "$_alg_rc"
-assert_contains "always-loaded-commit-gate.sh --self-test runs its 40 arms, 0 failed" "$_alg_out" "self-test: 40 passed, 0 failed"
+assert_contains "always-loaded-commit-gate.sh --self-test runs its 44 arms, 0 failed" "$_alg_out" "self-test: 44 passed, 0 failed"
 unset _alg_out _alg_rc
 # A plain `git commit` meets the same gate through .githooks/prepare-commit-msg (the only site, which git runs
 # for revert, cherry-pick, merge, rebase picks and --no-verify too). A throwaway repo wired to THIS checkout's .githooks: an ordinary file commits, CLAUDE.md with
@@ -13283,6 +13751,40 @@ assert_contains "prepare-commit-msg door: the same revert with the door open lan
 assert_contains "prepare-commit-msg door: git cherry-pick of a CLAUDE.md change with the door closed is refused" "$_alp_out" "P3=held"
 assert_contains "prepare-commit-msg door: git commit --no-verify of CLAUDE.md with the door closed is refused" "$_alp_out" "P4=held"
 rm -rf "$_alp_d" "$_alp_d.out"; unset _alp_d _alp_out
+# git am and git rebase --apply never run prepare-commit-msg; .githooks/pre-applypatch runs it for them
+# (built as recommended; the route was measured in a review, 2026-10-28). A patch of
+# CLAUDE.md applied with the door closed is refused, the same apply with the door open lands, and a --apply
+# rebase of a CLAUDE.md commit with the door closed applies nothing; the same rebase with the door open lands.
+# "held" is HEAD unmoved AND the am session stopped in flight AND the gate's REFUSED line AND (A3) the file at HEAD
+# without the change: HEAD alone reads held on a conflict, on a commit dropped as already upstream, and on the
+# merge backend (found in review). git am --no-verify skips pre-applypatch: A5 pins that route as STATED OPEN.
+# MUTATION: delete .githooks/pre-applypatch -> A1 and A3 move HEAD and red; make it refuse everything -> every arm but A0 reds; back to the bare exec -> A1b reds.
+_ala_d="$(cd "$(mktemp -d)" && pwd -P)"
+(
+  cd "$_ala_d" && git init -q . && git config user.email t@t && git config user.name t
+  echo x > plain.txt; echo rules > CLAUDE.md; git add plain.txt CLAUDE.md; git commit -qm init; git branch -M base
+  git config core.hooksPath "$_alh_hooks"
+  export CLAUDE_CODE_SESSION_ID=feedc0de-0000-4000-8000-0000 FF_ALWAYS_LOADED_ALLOW_MARKER="$_ala_d/door"
+  _ra="$(git rev-parse --git-path rebase-apply)"; _has() { git show HEAD:CLAUDE.md | grep -qxF more; }
+  git checkout -q -b topic; : > "$_ala_d/door"; echo more >> CLAUDE.md; git commit -qam rules-open >/dev/null 2>&1; echo "A0=$?"; rm -f "$_ala_d/door"; _t=$(git rev-parse HEAD)
+  git format-patch -q -1 -o "$_ala_d.p" topic >/dev/null 2>&1
+  git checkout -q base; _h=$(git rev-parse HEAD)
+  git am -q "$_ala_d.p"/*.patch >/dev/null 2>"$_ala_d.e"; [ "$(git rev-parse HEAD)" = "$_h" ] && [ -d "$_ra" ] && grep -qF 'always-loaded-commit-gate: REFUSED' "$_ala_d.e" && echo "A1=held"; grep -qF 'git am --abort' "$_ala_d.e" && echo "A1b=told"; git am --abort >/dev/null 2>&1; git reset -q --hard "$_h"
+  : > "$_ala_d/door"; git am -q "$_ala_d.p"/*.patch >/dev/null 2>&1; [ "$(git rev-parse HEAD)" != "$_h" ] && _has && echo "A2=landed"; rm -f "$_ala_d/door"; git reset -q --hard "$_h"
+  echo y >> plain.txt; git commit -qam base-moves >/dev/null 2>&1; _b=$(git rev-parse HEAD)
+  git checkout -q topic; git rebase -q --apply base >/dev/null 2>"$_ala_d.e"; [ "$(git rev-parse HEAD)" = "$_b" ] && [ -d "$_ra" ] && grep -qF 'always-loaded-commit-gate: REFUSED' "$_ala_d.e" && ! _has && echo "A3=held"; git rebase --abort >/dev/null 2>&1
+  git checkout -q topic; git reset -q --hard "$_t"; : > "$_ala_d/door"; git rebase -q --apply base >/dev/null 2>&1; [ "$(git rev-parse HEAD^)" = "$_b" ] && _has && echo "A4=landed"; rm -f "$_ala_d/door"
+  git checkout -q base; git reset -q --hard "$_b"; git am -q --no-verify "$_ala_d.p"/*.patch >/dev/null 2>&1; [ "$(git rev-parse HEAD)" != "$_b" ] && _has && echo "A5=open"
+) > "$_ala_d.out" 2>&1
+_ala_out="$(cat "$_ala_d.out")"
+assert_contains "pre-applypatch door: a door-open commit of CLAUDE.md lands (the fixture's base)" "$_ala_out" "A0=0"
+assert_contains "pre-applypatch door: git am of a CLAUDE.md patch with the door closed is refused" "$_ala_out" "A1=held"
+assert_contains "pre-applypatch door: that refusal says the patch sits applied on disk and how to put it back (git am --abort)" "$_ala_out" "A1b=told"
+assert_contains "pre-applypatch door: the same git am with the door open lands" "$_ala_out" "A2=landed"
+assert_contains "pre-applypatch door: git rebase --apply of a CLAUDE.md commit with the door closed applies nothing" "$_ala_out" "A3=held"
+assert_contains "pre-applypatch door: the same git rebase --apply with the door open lands" "$_ala_out" "A4=landed"
+assert_contains "pre-applypatch door: git am --no-verify skips pre-applypatch and lands (STATED OPEN; red here means the route closed: update both hook headers)" "$_ala_out" "A5=open"
+rm -rf "$_ala_d" "$_ala_d.out" "$_ala_d.e" "$_ala_d.p"; unset _ala_d _ala_out
 unset _alh_hooks
 
 echo "=== smoke-expected-failures.py (the closing summary's expected/unexpected split, read when scripts/smoke-expected-failures.txt exists; 2026-10-28) ==="

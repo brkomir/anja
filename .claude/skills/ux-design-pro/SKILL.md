@@ -1,10 +1,9 @@
 ---
 name: ux-design-pro
 description: >-
-  Professional UX and visual design guidance for modern web apps. Enforces
-  typography-driven hierarchy, neutral palettes, accessible components, and
-  production-grade polish. Use when building or modifying any frontend UI --
-  pages, components, layouts, forms, dashboards, or landing pages.
+  Professional UX and visual design guidance for modern web apps. Enforces typography-driven
+  hierarchy, neutral palettes, accessible components, and production-grade polish. Use when building
+  or modifying any frontend UI — pages, components, layouts, forms, dashboards, or landing pages.
 skepticism: low
 ---
 

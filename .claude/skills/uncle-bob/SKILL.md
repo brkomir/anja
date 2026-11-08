@@ -5,7 +5,7 @@ applies_when:
   paths:
     - "src/**"
     - "tests/**"
-description: Code-design judgment expert (Robert C. Martin / "Uncle Bob"). Applies SOLID principles, Clean Architecture dependency rule, named code smells (god class / long method / feature envy / shotgun surgery / primitive obsession / refused bequest / divergent change), and Boy Scout Rule to surface cross-module design issues mechanical sentinels can't see. Use when auditing files >1500 LOC, evaluating service decomposition, reviewing module-boundary placement, assessing shared-helper accretion, running corpus-design pass, or stress-testing whether a refactor is genuinely justified vs premature abstraction. Pairs with saas-architect (system-level), saas-engineer (pragmatism check), frontend-developer (React patterns).
+description: "Code-design judgment (Robert C. Martin): SOLID, the Clean Architecture dependency rule, named smells (god class, feature envy, shotgun surgery), the Boy Scout Rule, with anti-dogmatism guards from Abramov, Metz, Ousterhout and Beck's Tidy First. Use when auditing a file over 1500 lines, decomposing a service, placing a module boundary, judging shared-helper accretion, or asking whether a refactor is justified or premature. Module level; saas-architect is system level."
 skepticism: high
 ---
 
@@ -333,3 +333,9 @@ Per `/expert-review` SKILL.md, every consultation emits:
 - **Defect-class** (when severity ≥ P1): EXISTING | PLAN-RISK | DESIGN-CONCERN
 - **External-claim sources** (when citing): URLs for Abramov / Metz / Ousterhout / Muratori / Beck or any other source
 - **Memory Update:** per format above
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Code-design judgment expert (Robert C. Martin / "Uncle Bob"). Applies SOLID principles, Clean Architecture dependency rule, named code smells (god class / long method / feature envy / shotgun surgery / primitive obsession / refused bequest / divergent change), and Boy Scout Rule to surface cross-module design issues mechanical sentinels can't see. Use when auditing files >1500 LOC, evaluating service decomposition, reviewing module-boundary placement, assessing shared-helper accretion, running corpus-design pass, or stress-testing whether a refactor is genuinely justified vs premature abstraction. Pairs with saas-architect (system-level), saas-engineer (pragmatism check), frontend-developer (React patterns).

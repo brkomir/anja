@@ -14,6 +14,7 @@
 import { readdirSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import YAML from "yaml";
 import { MODEL_INVOKED_EXPERTS, pairingViolations } from "./lib/skill-overrides-pairing.mjs";
 
 const USAGE = `usage: node scripts/generate-expert-agents.mjs [--check]
@@ -45,76 +46,43 @@ const AGENTS_DIR = join(ROOT, ".claude/agents");
 // excluded — they're meant for the main conversation, not parallel agents.
 // newsletter-draft is also excluded — its own SKILL.md says it is a
 // content generator, not a consultation expert.
-const EXPERTS = {
-  "ab-testing":
-    "A/B testing and experiment design expert. Use when designing experiments, calculating statistical significance, planning feature flags, designing low-traffic experiments, or interpreting experiment results.",
-  "accessibility-expert":
-    "Web accessibility expert specializing in WCAG 2.2 AA compliance for image-heavy SaaS applications. Covers semantic HTML, ARIA patterns, keyboard navigation, screen reader compatibility, color contrast, motion sensitivity, alt text strategy, focus management, and accessible interactive components. Use when building or reviewing UI components, auditing pages for a11y issues, designing image grids/lightboxes, handling scores/badges/overlays, or ensuring compliance with ADA, EU Accessibility Act, and Section 508.",
-  "ai-vision-expert":
-    "AI vision model expert. Use when questions concern vision model capabilities and limits, image preprocessing impact, what models can and cannot see, downscaling tradeoffs, scoring calibration, or deciding what data to feed vs. let the model see.",
-  "brand-naming-expert":
-    "Expert in brand naming, verbal identity, and trademark strategy for SaaS/creative tools. Use when brainstorming product names, evaluating name candidates, checking for brand conflicts, or developing naming criteria for a product.",
-  "context-architect":
-    "LLM context-consumption and agent-memory architecture expert for the meta-system. Covers how always-loaded rule corpora, bands, digests, and archives get delivered and fire; delivery planes and their non-summable cost currencies; qualifier-preserving displacement; scoping and dispatch-tax design. Use for memory-structure proposals, band/digest changes, always-loaded budget design, and resident-vs-injected-vs-hooked-vs-archived decisions.",
-  "devops-deploy-expert":
-    "DevOps and deployment expert. Use when configuring CI/CD, designing deploy pipelines, managing Vercel/Supabase environments, planning rollbacks, configuring preview deploys, or hardening the release process.",
-  "engagement-psychologist":
-    "Expert in behavioral psychology, game theory, and gamification of user experience. Designs engagement loops, retention mechanics, and incentive structures for SaaS products. Use when designing features for user retention, planning gamification, analyzing user motivation, designing onboarding, building habit loops, or evaluating engagement mechanics.",
-  "external-fagemx-edda":
-    "External-system expert on fagemx/edda, a solo Rust workspace (one `edda` binary, 23 crates) that gives coding agents a hash-chained SQLite ledger of decisions and sessions, a peers board with path claims and heartbeats, and a review gate that refuses an author session as its own reviewer, grades the reviewer's model, keeps a standing \"changes requested\" over a later approval, pins approval to a head sha and voids a review when the base moves over a changed file, all in code; plus a session-end post-mortem whose learned rules fade on a 30/60/90-day clock. Use when calibrating reviewer independence, verdict precedence, head and base pinning at promote, peer claims and heartbeats, or rule lifecycles that decay. (external-* entry: the live description is read from its SKILL.md frontmatter at generate-time; this string is only a fallback.)",
-  "frontend-developer":
-    "React/Next.js App Router implementation expert for this project. Covers component architecture, server vs client component decisions, hooks patterns, state management, form handling, optimistic UI, Suspense boundaries, base-ui primitive wrapping, error boundaries, and production-grade React patterns. Use when building or refactoring components, splitting large files, deciding server vs client boundaries, wiring server actions, implementing forms, adding loading/error states, or wrapping base-ui primitives into project UI components.",
-  "growth-analyst":
-    "Product analytics and growth expert for SaaS products. Covers North Star metrics, activation funnels, retention cohorts, engagement tracking, revenue metrics (MRR, LTV, CAC), A/B testing strategy, segmentation, instrumentation planning, and dashboard design. Use when defining what to measure, designing analytics instrumentation, evaluating feature impact, planning experiments, analyzing funnels, or building growth models for a SaaS product.",
-  "haines-churn-prevention":
-    "When the user wants to reduce churn, build cancellation flows, set up save offers, recover failed payments, or implement retention strategies. Also use when the user mentions churn, cancel flow, offboarding, save offer, dunning, failed payment recovery, win-back, retention, exit survey, pause subscription, involuntary churn, or customers leaving.",
-  "haines-onboarding-cro":
-    "When the user wants to optimize post-signup onboarding, user activation, first-run experience, or time-to-value. Also use when the user mentions onboarding flow, activation rate, user activation, first-run experience, empty states, onboarding checklist, aha moment, new user experience, or time to value.",
-  "haines-page-cro":
-    "When the user wants to optimize, improve, or increase conversions on any marketing page — homepage, landing pages, pricing pages, feature pages, or blog posts. Also use when the user says CRO, conversion rate optimization, improve conversions, low conversion rate, or bounce rate is too high.",
-  "haines-paywall-upgrade-cro":
-    "When the user wants to create or optimize in-app paywalls, upgrade screens, upsell modals, or feature gates. Also use when the user mentions paywall, upgrade screen, upsell, feature gate, freemium conversion, or trial expiration screen. For public pricing pages, see haines-page-cro.",
-  "haines-signup-flow-cro":
-    "When the user wants to optimize signup, registration, account creation, or trial activation flows. Also use when the user mentions signup conversions, registration friction, signup form optimization, reduce signup dropoff, or simplify signup. For post-signup onboarding, see haines-onboarding-cro.",
-  "launch-ops-expert":
-    "Launch operations expert. Use when planning a production launch, writing pre-launch checklists, coordinating go-live, designing rollback plans, or setting up post-launch monitoring for a SaaS product.",
-  "legal-advisor":
-    "Legal advisor specializing in SaaS, AI, and digital photography law. Covers copyright ownership, user-uploaded content liability, AI-generated output rights, privacy/GDPR/CCPA compliance, terms of service design, content moderation obligations, biometric data, EU AI Act, right of publicity, data retention, and SaaS contract best practices. Use when drafting ToS, privacy policies, evaluating legal risk of features, handling user data, assessing copyright implications of AI analysis, or planning compliance strategy.",
-  "market-researcher":
-    "Market research and competitive intelligence expert. Use when assessing competitive positioning, sizing a market, evaluating a new market entry, or researching user segments.",
-  "ops-monitor":
-    "Production observability expert. Use when designing monitoring, setting Sentry alerts, establishing error budgets, tracking AI cost, monitoring cron health, monitoring email deliverability, or investigating production incidents.",
-  "performance-expert":
-    "Web performance and optimization expert for Next.js App Router SaaS applications. Covers Core Web Vitals, bundle analysis, image optimization, caching strategies, server vs client component boundaries, database query performance, connection pooling, AI API latency/cost optimization, and Vercel-specific deployment performance. Use when auditing page speed, reducing bundle size, optimizing database queries, improving TTFB, analyzing AI token costs, or diagnosing performance regressions.",
-  "prompt-engineer":
-    "Expert in AI prompt engineering, system prompt design, and structured output reliability. Specializes in OpenAI vision models, multimodal analysis, and production-grade AI systems. Use when writing or optimizing system prompts, designing structured JSON output schemas, debugging AI output quality, reducing hallucinations, managing token costs, or evaluating model selection.",
-  "qa-expert":
-    "SaaS QA expert for this project. Use when testing features end-to-end, writing test plans, reviewing code for edge cases, validating payment flows, testing file upload handling, verifying AI output quality, checking cross-browser behavior, preparing for launch, or auditing test coverage before marking a feature complete.",
-  "saas-architect":
-    "SaaS system architect specializing in scalable architecture design, system evolution, async patterns, multi-tenancy, API design, domain modeling, and technical debt management. Use when making high-level architectural decisions, evaluating system trade-offs, planning scalability, designing async pipelines, structuring background jobs, planning API versioning, modeling domains, deciding what NOT to build, or documenting architectural decisions (ADRs). Distinct from saas-engineer (implementation details) — this operates at the design and trade-off level.",
-  "saas-economist":
-    "SaaS economist and pricing strategist with experience launching profitable products. Covers unit economics, pricing tier design, margin analysis, value metrics, financial modeling, and pricing validation methods (Van Westendorp, MaxDiff). Use when designing pricing tiers, evaluating profitability, calculating cost-per-action, setting plan limits, analyzing churn, validating pricing with users, or building a financial model for a SaaS product.",
-  "saas-engineer":
-    "Senior SaaS engineer covering full-stack architecture, deployment, security, database design, performance, monitoring, billing integration, and production operations. Use when making infrastructure decisions, deploying to production, configuring hosting, setting up CI/CD, designing database schemas, hardening security, optimizing performance, integrating Stripe/Paddle, managing environments, debugging production issues, or preparing for launch.",
-  "saas-launch-marketing":
-    "SaaS launch marketing strategist for indie founders and small teams. Covers pre-launch, launch day, post-launch growth, and go-to-market strategy. Use when planning a product launch, writing marketing copy, building a waitlist, preparing a Product Hunt launch, crafting landing page messaging, or developing channel strategy. For cancel flows and dunning, see haines-churn-prevention.",
-  "saas-metrics-analyst":
-    "SaaS metrics and analytics expert for indie/solo-founder products. Covers revenue metrics (MRR, NRR, Quick Ratio), customer economics (LTV, CAC), churn analysis, AI-specific cost metrics (margin per request, token efficiency), credit-based usage analytics, PLG metrics (activation, time-to-value), cohort analysis, admin dashboard design, and data quality/schema design for analytics. Use when deciding what to track, building dashboards, interpreting metrics, diagnosing growth/retention issues, or making schema decisions that affect data aggregation.",
-  "security-expert":
-    "Application security expert for SaaS web applications. Covers OWASP Top 10, image upload attack vectors, API security, authentication/authorization, secrets management, dependency supply chain, Supabase RLS policies, signed URL security, rate limiting, content security policy, input validation, AI API key protection, incident response, and security audit methodology. Use when reviewing code for vulnerabilities, hardening file uploads, auditing auth flows, configuring storage security, assessing API exposure, managing secrets, or preparing a security checklist before launch.",
-  "seo-content-strategist":
-    "SEO and content strategy expert for SaaS products. Covers keyword research, content cluster architecture, technical SEO, on-page optimization, content calendars, and AI search optimization (GEO/AEO/LLMO). Use when planning blog content, optimizing pages for search, implementing metadata, building sitemaps, writing SEO-focused copy, optimizing for AI search engines (ChatGPT, Perplexity, Google AI Overviews), or developing an organic growth strategy.",
-  "uncle-bob":
-    "Code-design judgment expert (Robert C. Martin / 'Uncle Bob'). Applies SOLID principles, Clean Architecture dependency rule, named code smells (god class / long method / feature envy / shotgun surgery / primitive obsession / refused bequest / divergent change), and Boy Scout Rule — with explicit anti-dogmatism guards from Abramov, Metz, Ousterhout, Muratori, and Kent Beck (Tidy First? change-economics: structural-vs-behavioral split, tidy-first/after/never timing, coupling/cohesion). Use when auditing files >1500 LOC, evaluating service decomposition, reviewing module-boundary placement, assessing shared-helper accretion, running corpus-design pass, or stress-testing whether a refactor is genuinely justified vs premature abstraction. Pairs with saas-architect (system-level) and saas-engineer (pragmatism check).",
-  "user-researcher":
-    "User researcher focused on qualitative insights. Use when planning user interviews, synthesizing feedback, designing beta programs, validating personas against real users, or deciding whether a product signal warrants a qualitative study.",
-  "ux-copywriter":
-    "UX copywriter and voice strategist for SaaS products. Covers microcopy, error messages, empty states, onboarding text, CTA wording, button labels, tooltips, notification copy, AI-generated content framing, tone adaptation, and brand voice consistency. Use when writing or reviewing interface text, crafting CTAs, designing error/success messages, creating onboarding flows, naming features, or establishing voice and tone guidelines for a product.",
-  "ux-design-pro":
-    "Professional UX and visual design guidance for modern web apps. Enforces typography-driven hierarchy, neutral palettes, accessible components, and production-grade polish. Use when building or modifying any frontend UI — pages, components, layouts, forms, dashboards, or landing pages.",
-  "web-designer":
-    "Visual web design specialist for Tailwind CSS v4, shadcn/ui (base-ui), and Next.js App Router. Focuses on layout composition, visual rhythm, pricing pages, landing pages, dark mode polish, and SaaS page design. Complements ux-design-pro with implementation-level design decisions.",
-};
+// Names only: each agent's description is read from its SKILL.md frontmatter (descriptionFromSkill).
+const EXPERTS = [
+  "ab-testing",
+  "accessibility-expert",
+  "ai-vision-expert",
+  "brand-naming-expert",
+  "context-architect",
+  "devops-deploy-expert",
+  "engagement-psychologist",
+  "external-fagemx-edda",
+  "frontend-developer",
+  "growth-analyst",
+  "haines-churn-prevention",
+  "haines-onboarding-cro",
+  "haines-page-cro",
+  "haines-paywall-upgrade-cro",
+  "haines-signup-flow-cro",
+  "launch-ops-expert",
+  "legal-advisor",
+  "market-researcher",
+  "ops-monitor",
+  "performance-expert",
+  "prompt-engineer",
+  "qa-expert",
+  "saas-architect",
+  "saas-economist",
+  "saas-engineer",
+  "saas-launch-marketing",
+  "saas-metrics-analyst",
+  "security-expert",
+  "seo-content-strategist",
+  "uncle-bob",
+  "user-researcher",
+  "ux-copywriter",
+  "ux-design-pro",
+  "web-designer",
+];
 
 // Broad tool access — expert agents may read code, write fixes, run checks.
 // Adjust here if individual experts should be more locked down.
@@ -312,43 +280,40 @@ function renderAgent(name, description) {
   return frontmatter + agentBody(name, readOnly);
 }
 
-// For external-* experts the SOURCE OF TRUTH is the SKILL.md frontmatter
-// `description:` (routing text only — stars, versions and counts live
-// in the SKILL.md body and `repo-stars-at-fetch`, never here). Read it at generate-time so the agent stays in sync and the
-// hardcoded EXPERTS copy can't drift — the 2026-06-18 regression was a stale
-// hardcoded map regressing current agent files on regen. Non-external entries
-// stay hardcoded; fall back to the hardcoded value if no frontmatter description.
+// For EVERY expert the SOURCE OF TRUTH is the SKILL.md frontmatter `description:` (external-* first;
+// every name since 2026-11-02). Read at generate-time so the agent file cannot drift from the
+// skill — the 2026-06-18 regression was a stale hardcoded map regressing agent files on regen, so there is
+// no hardcoded copy and no fallback: a missing, empty or unparseable description stops the run.
+// The key's own lines go through a real YAML parser (a wrapped plain scalar, `|`, `>+`, comments,
+// escapes); not the whole frontmatter, which is not YAML-clean in every skill (external-fagemx-edda's
+// `upstream-status:`). Whitespace runs collapse to one space: the agent line is one double-quoted scalar.
 function descriptionFromSkill(name) {
   let txt;
   try {
-    txt = readFileSync(join(ROOT, ".claude/skills", name, "SKILL.md"), "utf8");
+    txt = readFileSync(join(ROOT, ".claude/skills", name, "SKILL.md"), "utf8").replace(/\r\n/g, "\n");
   } catch {
-    return null;
+    return { error: "no SKILL.md" };
   }
   const parts = txt.split(/^---\s*$/m);
-  const fm = parts.length >= 3 ? parts[1] : "";
-  const lines = fm.split("\n");
-  const start = lines.findIndex((l) => /^description:\s*>-?\s*$/.test(l));
-  if (start === -1) {
-    const inline = lines.find((l) => /^description:\s*\S/.test(l));
-    return inline
-      ? inline.replace(/^description:\s*/, "").replace(/^["']|["']$/g, "").trim()
-      : null;
+  const lines = (parts.length >= 3 ? parts[1] : "").split("\n");
+  const keyed = lines.flatMap((l, i) => (/^description\s*:/.test(l) ? [i] : []));
+  if (keyed.length !== 1) return { error: `${keyed.length} frontmatter description: keys (want 1)` };
+  let end = keyed[0] + 1;
+  while (end < lines.length && /^(\s|$)/.test(lines[end])) end++;
+  let value;
+  try {
+    value = YAML.parse(lines.slice(keyed[0], end).join("\n"))?.description;
+  } catch (e) {
+    return { error: `description is not valid YAML (${String(e.message).split("\n")[0]})` };
   }
-  const body = [];
-  for (let j = start + 1; j < lines.length; j++) {
-    if (/^\S/.test(lines[j])) break; // next top-level key
-    if (lines[j].trim()) body.push(lines[j].trim());
-  }
-  return body.join(" ").trim() || null;
+  if (typeof value !== "string" || !value.trim()) return { error: "description is empty or not a string" };
+  return { value: value.replace(/\s+/g, " ").trim() };
 }
 
 // A READ_ONLY_EXPERTS member that is not an EXPERTS key writes no file, so the
 // restriction silently does not ship. Fail loud rather than report a clean count.
-// `hasOwn`, not `in` — `in` walks the prototype chain, so a name colliding with
-// an Object.prototype key would read as present and skip the guard.
 const unknownReadOnly = [...READ_ONLY_EXPERTS].filter(
-  (n) => !Object.hasOwn(EXPERTS, n),
+  (n) => !EXPERTS.includes(n),
 );
 if (unknownReadOnly.length) {
   console.error(
@@ -360,12 +325,19 @@ if (unknownReadOnly.length) {
 // Render every file first; the two modes differ only in what they do with the plan.
 const planned = new Map(); // absolute path -> content
 let readOnlyPlanned = 0;
-for (const [name, hardcoded] of Object.entries(EXPERTS)) {
-  const description = name.startsWith("external-")
-    ? descriptionFromSkill(name) ?? hardcoded
-    : hardcoded;
-  planned.set(join(AGENTS_DIR, `${name}.md`), renderAgent(name, description));
+const unusable = [];
+for (const name of EXPERTS) {
+  const d = descriptionFromSkill(name);
+  if (d.error) {
+    unusable.push(`.claude/skills/${name}/SKILL.md: ${d.error}`);
+    continue;
+  }
+  planned.set(join(AGENTS_DIR, `${name}.md`), renderAgent(name, d.value));
   if (READ_ONLY_EXPERTS.has(name)) readOnlyPlanned++;
+}
+if (unusable.length) {
+  console.error(`generate-expert-agents: ${unusable.length} expert skill(s) give no usable description — nothing written or compared:\n  ${unusable.join("\n  ")}`);
+  process.exit(1);
 }
 
 if (CHECK) {
@@ -402,7 +374,7 @@ if (CHECK) {
   const onDisk = readdirSync(AGENTS_DIR)
     .filter((f) => f.endsWith(".md") && !f.startsWith("_"))
     .map((f) => f.slice(0, -3));
-  const generated = new Set(Object.keys(EXPERTS));
+  const generated = new Set(EXPERTS);
   const orphans = onDisk.filter((n) => !generated.has(n));
   const expectedOrphans = [];
   const unexpected = orphans.filter((n) => !expectedOrphans.includes(n));

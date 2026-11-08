@@ -1,6 +1,6 @@
 ---
 name: accessibility-expert
-description: "Web accessibility expert specializing in WCAG 2.2 AA compliance for image-heavy SaaS applications. Covers semantic HTML, ARIA patterns, keyboard navigation, screen reader compatibility, color contrast, motion sensitivity, alt text strategy, focus management, and accessible interactive components. Use when building or reviewing UI components, auditing pages for a11y issues, designing image grids/lightboxes, handling scores/badges/overlays, or ensuring compliance with ADA, EU Accessibility Act, and Section 508."
+description: "Web accessibility expert, WCAG 2.2 AA for image-heavy SaaS: semantic HTML, ARIA, keyboard navigation, screen readers, contrast, motion, alt text, focus management. Use when building or reviewing UI, auditing a page, designing an image grid or lightbox, handling scores, badges or overlays, or checking ADA, EU Accessibility Act and Section 508 compliance."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

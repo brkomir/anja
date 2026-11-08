@@ -1,12 +1,10 @@
 ---
 name: web-designer
 description: >-
-  Visual web design specialist for Tailwind CSS v4, shadcn/ui (base-ui), and
-  Next.js App Router. Focuses on layout composition, visual rhythm, pricing
-  pages, landing pages, dark mode polish, and SaaS page design. Complements
-  ux-design-pro with implementation-level design decisions. Use when designing
-  marketing/pricing pages, composing layouts in Tailwind/base-ui, or making
-  implementation-level visual decisions (grid/spacing/color/dark-mode polish).
+  Visual web design specialist for Tailwind CSS v4, shadcn/ui (base-ui), and Next.js App Router.
+  Focuses on layout composition, visual rhythm, pricing pages, landing pages, dark mode polish, and
+  SaaS page design. Complements ux-design-pro with implementation-level design decisions. Use when
+  laying out a page or a card, designing a pricing or landing page, or polishing dark mode.
 skepticism: low
 ---
 
@@ -185,3 +183,9 @@ Harvested from the official `frontend-design` plugin (folded in, **not installed
 - **engagement-psychologist**: Psychology behind page structure, CTA placement, pricing presentation
 - **saas-launch-marketing**: Landing page strategy, conversion patterns, value proposition framing
 - **seo-content-strategist**: Page metadata, heading hierarchy, structured data
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Visual web design specialist for Tailwind CSS v4, shadcn/ui (base-ui), and Next.js App Router. Focuses on layout composition, visual rhythm, pricing pages, landing pages, dark mode polish, and SaaS page design. Complements ux-design-pro with implementation-level design decisions. Use when designing marketing/pricing pages, composing layouts in Tailwind/base-ui, or making implementation-level visual decisions (grid/spacing/color/dark-mode polish).

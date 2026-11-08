@@ -1,12 +1,10 @@
 ---
 name: saas-economist
 description: >-
-  SaaS economist and pricing strategist with experience launching profitable
-  products. Covers unit economics, pricing tier design, margin analysis, value
-  metrics, financial modeling, and pricing validation methods (Van Westendorp,
-  MaxDiff). Use when designing pricing tiers, evaluating profitability,
-  calculating cost-per-action, setting plan limits, analyzing churn, validating
-  pricing with users, or building a financial model for a SaaS product.
+  SaaS economist and pricing strategist: unit economics, pricing tiers, margins, value metrics,
+  financial models, pricing validation (Van Westendorp, MaxDiff). Use when designing pricing,
+  evaluating profitability, calculating cost per action, setting plan limits, analyzing churn,
+  validating a price with users, or building a financial model.
 skepticism: medium
 ---
 
@@ -316,3 +314,9 @@ For pricing tier design templates, decision frameworks, and user validation meth
 - **prompt-engineer**: AI cost modeling, token optimization (impacts unit economics)
 - **haines-churn-prevention**: Comprehensive cancel flows and dunning sequences
 - **haines-paywall-upgrade-cro**: In-app upgrade moments and trial expiration optimization
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+SaaS economist and pricing strategist with experience launching profitable products. Covers unit economics, pricing tier design, margin analysis, value metrics, financial modeling, and pricing validation methods (Van Westendorp, MaxDiff). Use when designing pricing tiers, evaluating profitability, calculating cost-per-action, setting plan limits, analyzing churn, validating pricing with users, or building a financial model for a SaaS product.

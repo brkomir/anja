@@ -1,6 +1,6 @@
 ---
 name: haines-churn-prevention
-description: "When the user wants to reduce churn, build cancellation flows, set up save offers, recover failed payments, or implement retention strategies. Also use when the user mentions 'churn,' 'cancel flow,' 'offboarding,' 'save offer,' 'dunning,' 'failed payment recovery,' 'win-back,' 'retention,' 'exit survey,' 'pause subscription,' 'involuntary churn,' 'people keep canceling,' 'churn rate is too high,' 'how do I keep users,' or 'customers are leaving.' Use this whenever someone is losing subscribers or wants to build systems to prevent it. For post-cancel win-back email sequences, see saas-launch-marketing. For in-app upgrade paywalls, see haines-paywall-upgrade-cro."
+description: "When the user wants to reduce churn, build a cancellation flow, set up save offers, recover failed payments, or implement retention. Also when the user mentions churn, cancel flow, offboarding, save offer, dunning, win-back, retention, exit survey, pause subscription, involuntary churn, or customers leaving."
 metadata:
   version: 1.1.0
 skepticism: high
@@ -453,3 +453,9 @@ For implementation, see the [tools registry](../../tools/REGISTRY.md).
 - **saas-economist**: For plan structure and annual discount strategy
 - **haines-onboarding-cro**: For activation to prevent early churn
 - **growth-analyst**: For setting up churn signal events
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+When the user wants to reduce churn, build cancellation flows, set up save offers, recover failed payments, or implement retention strategies. Also use when the user mentions 'churn,' 'cancel flow,' 'offboarding,' 'save offer,' 'dunning,' 'failed payment recovery,' 'win-back,' 'retention,' 'exit survey,' 'pause subscription,' 'involuntary churn,' 'people keep canceling,' 'churn rate is too high,' 'how do I keep users,' or 'customers are leaving.' Use this whenever someone is losing subscribers or wants to build systems to prevent it. For post-cancel win-back email sequences, see saas-launch-marketing. For in-app upgrade paywalls, see haines-paywall-upgrade-cro.

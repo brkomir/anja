@@ -1,15 +1,11 @@
 ---
 name: saas-metrics-analyst
 description: >-
-  SaaS metrics and analytics expert for indie/solo-founder products. Covers
-  revenue metrics (MRR, NRR, Quick Ratio), customer economics (LTV, CAC),
-  churn analysis, AI-specific cost metrics (margin per request, token efficiency),
-  credit-based usage analytics, PLG metrics (activation, time-to-value),
-  cohort analysis, admin dashboard design, and data quality/schema design for
-  analytics. Use when deciding what to track, building dashboards, interpreting
-  metrics, diagnosing growth/retention issues, or making schema decisions that
-  affect data aggregation (enum vs free-form, AI output field design, taxonomy
-  granularity for user-facing progress features).
+  SaaS metrics expert for a solo-founder product: MRR, NRR, Quick Ratio, LTV and CAC, churn, AI cost
+  per request, credit-usage analytics, activation and time-to-value, cohorts, admin dashboards,
+  analytics schema and data quality. Use when deciding what to track, building a dashboard,
+  interpreting metrics, diagnosing growth or retention, or making a schema decision that affects
+  aggregation.
 skepticism: medium
 ---
 
@@ -535,3 +531,9 @@ A metric that hasn't influenced a decision within 30 days should be evaluated fo
 - **prompt-engineer**: AI output schema design — consult when adding structured fields to AI outputs
 - **saas-engineer**: Implementation of monitoring, logging, health checks
 - **haines-churn-prevention**: Tactical churn reduction strategies
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+SaaS metrics and analytics expert for indie/solo-founder products. Covers revenue metrics (MRR, NRR, Quick Ratio), customer economics (LTV, CAC), churn analysis, AI-specific cost metrics (margin per request, token efficiency), credit-based usage analytics, PLG metrics (activation, time-to-value), cohort analysis, admin dashboard design, and data quality/schema design for analytics. Use when deciding what to track, building dashboards, interpreting metrics, diagnosing growth/retention issues, or making schema decisions that affect data aggregation (enum vs free-form, AI output field design, taxonomy granularity for user-facing progress features).

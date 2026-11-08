@@ -77,6 +77,15 @@ worktree disagree for those paths, then commits. Exits non-zero on refusal.
             the count: `git diff --cached -U0 HEAD -- <paths>` and confirm every
             changed line is yours. You lose the arithmetic check and keep the
             one that matters.
+            DECLARE BOTH ENDPOINTS OF EVERY RENAME, after `git mv` or a plain
+            `mv` alike. GATE 1 reads the staged set with --no-renames, so the
+            old name's deletion and the new name are two paths, and both are
+            what rename pairing needs for the derived pair above. Declare only
+            the new name and: after `git mv` GATE 1 refuses with the old name
+            listed UNDECLARED (a rename, not a peer); after a plain `mv` the
+            commit lands as an ADD and the old name's deletion stays behind,
+            uncommitted. (Until a fix landed, GATE 1 folded renames and refused
+            the both-endpoints declaration this paragraph asked for.)
             WHY THIS CARVE EXISTS: without it the usage text forbade the only
             method available on a rename, i.e. it contradicted this script's own
             refusal path -- the same defect class as the one the block above
@@ -332,7 +341,17 @@ if [ "$SELFTEST" -eq 0 ]; then
     echo '  These are YOURS -- both exits are open: commit them, or unstage them.' >&2
     echo '  A blob left here is takeable by any peer bare commit.' >&2
   }
-  [ "$STAGED_MODE" -eq 1 ] || git add -- "${LPATHS[@]}"
+  # A declared path gone from BOTH the index and the worktree (the old name after `git mv`) is already a
+  # staged deletion, and `git add` of it dies "pathspec did not match" (rc 128 under set -e, no refusal
+  # text), so a git mv declared with both endpoints never committed (arm AN). Add only the paths git can
+  # still see; a typo'd path then reaches GATE 1 and is named "DECLARED but NOT staged". `-L` keeps a new
+  # dangling symlink, which `-e` (it follows the link) reads as gone (arm AO). The count guard
+  # keeps bash 3.2 `set -u` from dying on an empty array.
+  ADDP=()
+  for _sc_p in "${PATHS[@]}"; do
+    if [ -e "$_sc_p" ] || [ -L "$_sc_p" ] || [ -n "$(git ls-files -- ":(literal)$_sc_p")" ]; then ADDP+=(":(literal)$_sc_p"); fi
+  done
+  [ "$STAGED_MODE" -eq 1 ] || [ "${#ADDP[@]}" -eq 0 ] || git add -- "${ADDP[@]}"
 
   # GATE 1 — foreign PATHS. Compare the staged set to the declared set.
   # core.quotePath=false: name-only C-quotes a non-ASCII path ("caf\303\251.txt") while
@@ -369,6 +388,9 @@ if [ "$SELFTEST" -eq 0 ]; then
     echo "  If you DECLARED A DIRECTORY: this gate compares FILE paths, so a directory can never" >&2
     echo "  match -- every staged file reads foreign and the directory reads missing, which mimics a" >&2
     echo "  peer collision. Expand it (git diff --cached --name-only --no-renames -- <dir>) and declare the FILES." >&2
+    echo "  If you RENAMED a file (git mv, or a mv on disk): this gate reads --no-renames, so the OLD name's" >&2
+    echo "  deletion and the NEW name are two staged paths. Declare BOTH endpoints; declaring one lists the" >&2
+    echo "  other above as UNDECLARED, which also mimics a peer collision." >&2
     echo "  If you passed ':(literal)...' pathspec magic: git add honors it, this gate string-compares" >&2
     echo "  PLAIN paths -- declare the plain path; keep :(literal) for git diff/show." >&2
     echo "  NOT repairing. Unstage them yourself (record their blob SHAs first:" >&2
@@ -1302,6 +1324,37 @@ else
   FAIL=$((FAIL+1)); echo "  FAIL AJ: rc=$RC pd-old.md in HEAD: $(git cat-file -e HEAD:pd-old.md 2>/dev/null && echo y || echo n)"; sed 's/^/      /' "$SC_OUT" || true
 fi
 git reset -q -- pd-old.md my-new.md; rm -f my-new.md
+# Arm AM (the rename refusal names itself): a `git mv` declared by its NEW name only refuses, lists the old
+# name UNDECLARED, and the text names the rename branch, so the refusal stops reading as a peer collision.
+# MUTATION: delete the three "If you RENAMED" echo lines in GATE 1 -> this arm reds.
+seq 1 40 > mv-old.md; git add mv-old.md; git commit -qm mvbase; git mv mv-old.md mv-new.md
+run -m "new endpoint only" -- mv-new.md
+if [ "$RC" = 1 ] && grep -qF 'If you RENAMED' "$SC_OUT" && grep -qF '    mv-old.md' "$SC_OUT"; then
+  PASS=$((PASS+1)); echo "  PASS AM: a new-endpoint-only git mv refusal names the rename branch and the old name"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AM: rc=$RC"; sed 's/^/      /' "$SC_OUT" || true
+fi
+git reset -q -- mv-old.md mv-new.md; git checkout -q -- mv-old.md; rm -f mv-new.md
+# Arm AN (the add filter): a `git mv` declared with BOTH endpoints commits as one rename. The old name is in
+# neither the index nor the worktree, so a plain `git add` of it died rc 128 ("pathspec did not match").
+# MUTATION: put back `git add -- "${LPATHS[@]}"` in place of the ADDP filter -> rc 128; this arm reds.
+git mv mv-old.md mv-new.md
+run -m "git mv both endpoints" -- mv-old.md mv-new.md
+if [ "$RC" = 0 ] && [ "$(git show --name-status --format= HEAD | cut -c1)" = R ] && [ -z "$(git status --porcelain -- mv-old.md mv-new.md)" ]; then
+  PASS=$((PASS+1)); echo "  PASS AN: a git mv declared with both endpoints commits as one rename"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AN: rc=$RC head=$(git show --name-status --format= HEAD | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
+fi
+# Arm AO (the add filter keeps a NEW dangling symlink): `[ -e ]` follows the link, so a symlink to nothing
+# read as gone from both planes, was never added, and GATE 1 refused it "DECLARED but NOT staged".
+# MUTATION: drop the `[ -L "$_sc_p" ]` clause -> rc 1; this arm reds.
+ln -s nowhere-ao ao.lnk
+run -m "dangling symlink" -- ao.lnk
+if [ "$RC" = 0 ] && [ "$(git show --name-status --format= HEAD | tr '\t' ' ')" = "A ao.lnk" ]; then
+  PASS=$((PASS+1)); echo "  PASS AO: a new dangling symlink declared by name commits as an add"
+else
+  FAIL=$((FAIL+1)); echo "  FAIL AO: rc=$RC head=$(git show --name-status --format= HEAD | tr '\n' ' ')"; sed 's/^/      /' "$SC_OUT" || true
+fi
 
 # Arm AK (LPATHS: the main add, Gate 2 and the numstat read a declared path literally): a bracket path
 # whose glob sibling holds a peer's UNSTAGED edit commits only the declared file.

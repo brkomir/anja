@@ -112,6 +112,15 @@ if [ "${1:-}" = "--self-test" ]; then
     if [ "$_g" = "$_w" ]; then echo "  [PASS] == trap fires=$_w on: $_c"
     else echo "  [FAIL] == trap fires=$_g, want $_w, on: $_c"; fail=$((fail+1)); fi
   done
+  # The vitest keys on the possibly-empty-list entry: a quoted and an unquoted operand
+  # must each fire it on its own key; a literal test path must not. Needle is a BODY token absent from every payload.
+  _vn='A TEST RUNNER IS A SCANNING COMMAND TOO'
+  for _wc in '1|npx vitest run \"$f\" \"$g\"' '1|npx vitest run $f' '0|npx vitest run tests/a.test.ts'; do
+    _w="${_wc%%|*}"; _c="${_wc#*|}"
+    _g=0; printf '{"tool_input":{"command":"%s"}}' "$_c" | bash "$SELF" 2>/dev/null | grep -qF "$_vn" && _g=1
+    if [ "$_g" = "$_w" ]; then echo "  [PASS] vitest empty-list trap fires=$_w on: $_c"
+    else echo "  [FAIL] vitest empty-list trap fires=$_g, want $_w, on: $_c"; fail=$((fail+1)); fi
+  done
   # ⛔ HEADER PARITY. The injector splits on an ANCHORED, space-literal header; the cap probe below splits
   # on an unanchored, space-tolerant one. A header missing one space is counted by the probe and invisible to
   # the injector: its entry never fires on its own keys and its body rides on the PREVIOUS entry's, with every

@@ -21,10 +21,15 @@ ok(){ PASS=$((PASS+1)); echo "  ✓ $1"; }
 no(){ FAIL=$((FAIL+1)); echo "  ✗ $1"; }
 
 FF_SESSIONS_DIR="$(mktemp -d)"; export FF_SESSIONS_DIR
-FF_MAIL_DIR="$(mktemp -d)";     export FF_MAIL_DIR
+# The mail dir gets a PRIVATE parent, so the "*evil*" escape checks below read only what THIS run wrote. Until
+# 2026-11-06 the parent was the shared temp dir, and a keep-warm test leftover named kw-gate-test-0nsevils
+# failed 5 of those checks in a promote precheck with nothing escaping.
+FF_MAIL_PARENT="$(mktemp -d)"
+FF_MAIL_DIR="$FF_MAIL_PARENT/mail"; mkdir "$FF_MAIL_DIR"; export FF_MAIL_DIR
 FF_LOGS_DIR="$(mktemp -d)";     export FF_LOGS_DIR
-BODY="$(mktemp)"
-cleanup(){ rm -rf "$FF_SESSIONS_DIR" "$FF_MAIL_DIR" "$FF_LOGS_DIR" "$BODY"; }
+SCRATCH="$(mktemp -d)"   # every scratch file below lives here, so cleanup removes them all (none sits beside the mail dir)
+BODY="$(mktemp "$SCRATCH/f.XXXXXX")"
+cleanup(){ rm -rf "$FF_SESSIONS_DIR" "$FF_MAIL_PARENT" "$FF_LOGS_DIR" "$SCRATCH"; }
 trap cleanup EXIT
 clear_mail(){ find "$FF_MAIL_DIR" -type f -delete 2>/dev/null; }
 
@@ -165,7 +170,66 @@ ows=$(await_as deadbeef0000ff --peer-done dddd4444 --timeout 2 --poll 2); rcws=$
 printf '%s x\n' "$_n" > "$PD_STATE/session-standby-eeee5555"
 rcs=$(await_as deadbeef0000ff --peer-done eeee5555 --timeout 2 --poll 2 >/dev/null 2>&1; echo $?)
 [ "$rcs" = 1 ] && ok "await --peer-done times out on a parked peer that never wrapped" || no "await --peer-done STANDBY-without-wrap should timeout (rc=$rcs)"
+# WRAPPING (WRAPPED only when the wrap is fully completed). A peer mid-wrap must NOT
+# wake a waiter — measured: a waiter fired 2 min after a peer's wrap STARTED, with 7+ min still to run.
+printf 'x %s wrap\n' "$_n" > "$PD_STATE/session-wrapping-ffff6666"
+rcg=$(await_as deadbeef0000ff --peer-done ffff6666 --timeout 2 --poll 2 >/dev/null 2>&1; echo $?)
+[ "$rcg" = 1 ] && ok "await --peer-done does NOT fire on a WRAPPING peer (its /wrap is still running)" || no "await --peer-done fired on WRAPPING (rc=$rcg) — the Step 0 stamp woke a waiter mid-wrap"
+# ...even when an OLDER completed wrap's marker stands beside it: the re-wrap is running, the seat is not done.
+printf 'x %s wrap\n' "$((_n-100))" > "$PD_STATE/session-wrapped-ffff6666"
+rcg2=$(await_as deadbeef0000ff --peer-done ffff6666 --timeout 2 --poll 2 >/dev/null 2>&1; echo $?)
+[ "$rcg2" = 1 ] && ok "await --peer-done does NOT fire on WRAPPING over an older completed wrap" || no "await --peer-done fired on WRAPPING + older WRAPPED (rc=$rcg2)"
+# The completion stamp is what fires it: remove the wrapping marker (what `session-lifecycle.py wrapped` does) → GO.
+rm -f "$PD_STATE/session-wrapping-ffff6666"
+og=$(await_as deadbeef0000ff --peer-done ffff6666 --timeout 2 --poll 2); rcg3=$?
+{ [ "$rcg3" = 0 ] && echo "$og" | grep -q "completed"; } && ok "await --peer-done fires once the completion stamp lands (WRAPPED, 'its /wrap completed')" || no "await --peer-done after completion (rc=$rcg3): $og"
+# A peer parked MID-wrap (standby + wrapping + an older wrapped marker) is not done either.
+printf 'x %s wrap\n' "$((_n-100))" > "$PD_STATE/session-wrapped-aaaa7777"; printf 'x %s wrap\n' "$_n" > "$PD_STATE/session-wrapping-aaaa7777"; printf '%s x\n' "$_n" > "$PD_STATE/session-standby-aaaa7777"
+rcg4=$(await_as deadbeef0000ff --peer-done aaaa7777 --timeout 2 --poll 2 >/dev/null 2>&1; echo $?)
+[ "$rcg4" = 1 ] && ok "await --peer-done times out on a peer parked MID-wrap (standby masks the label; the running wrap still holds)" || no "await --peer-done STANDBY+WRAPPING should timeout (rc=$rcg4)"
+# A legacy 'checkpoint' wrapped marker never fires it (that state is retired; the seat reads ACTIVE).
+printf 'x %s checkpoint\n' "$_n" > "$PD_STATE/session-wrapped-bbbb8888"
+rcg5=$(await_as deadbeef0000ff --peer-done bbbb8888 --timeout 2 --poll 2 >/dev/null 2>&1; echo $?)
+[ "$rcg5" = 1 ] && ok "await --peer-done times out on a legacy checkpoint marker (reads ACTIVE)" || no "await --peer-done fired on a legacy checkpoint marker (rc=$rcg5)"
+# The wrap EVENT under STANDBY is floored on an exit marker (session_status.wrap_state): a peer that
+# exited (logout), was resumed (a transcript record after the exit) and then parked has not wrapped since if its only
+# completed wrap PRE-DATES the exit — no wake. The control: the same seat with the wrap AFTER the exit wakes it.
+_rec=$(python3 -c 'import sys,datetime; print(datetime.datetime.fromtimestamp(int(sys.argv[1]), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$((_n-10))")
+for _s in cccc9998 cccc9999; do
+  printf '%s logout\n' "$((_n-1000))" > "$PD_STATE/session-finished-$_s"; printf '%s x\n' "$_n" > "$PD_STATE/session-standby-$_s"
+  printf '{"type":"assistant","timestamp":"%s"}\n' "$_rec" > "$FF_SESSIONS_DIR/$_s-t.jsonl"
+done
+printf 'x %s wrap\n' "$((_n-2000))" > "$PD_STATE/session-wrapped-cccc9998"
+printf 'x %s wrap\n' "$((_n-500))" > "$PD_STATE/session-wrapped-cccc9999"
+rcg6=$(await_as deadbeef0000ff --peer-done cccc9998 --timeout 2 --poll 2 >/dev/null 2>&1; echo $?)
+[ "$rcg6" = 1 ] && ok "await --peer-done times out on a resumed-then-parked peer whose only wrap PRE-DATES its exit (the exit floors it)" || no "await --peer-done fired on a wrap older than the exit (rc=$rcg6)"
+ogx=$(await_as deadbeef0000ff --peer-done cccc9999 --timeout 2 --poll 2); rcg7=$?
+{ [ "$rcg7" = 0 ] && echo "$ogx" | grep -q "STANDBY"; } && ok "await --peer-done fires on a resumed-then-parked peer whose wrap POST-DATES its exit (control)" || no "await --peer-done wrap-after-exit-then-standby (rc=$rcg7): $ogx"
 unset FF_STATE_DIR; rm -rf "$PD_STATE"
+
+# 8d-ii. mail-send names a recipient whose LISTENER is not running (2026-11-08; the listener's idle stop is by design,
+# and on 2026-10-30 a relayed build request sat unread ~2.5 h behind a stopped
+# listener). Isolated FF_STATE_DIR; the pid file is the instrument session-start.sh reads (`kill -0`), so a
+# stale pid reads dead. Controls: a live pid (this shell), STANDBY winning, and a broadcast.
+clear_mail
+LL_STATE="$(mktemp -d)"; export FF_STATE_DIR="$LL_STATE"
+oll1=$(msend deadbeef0000ff cccc3333 "s")
+echo "$oll1" | grep -q "is not listening" && ok "(8d-ii-1) no listener pid file → mail-send says the recipient is not listening" || no "(8d-ii-1) dead-listener notice missing: $oll1"
+echo "$$" > "$LL_STATE/mail-listen-cccc3333.pid"
+oll2=$(msend deadbeef0000ff cccc3333 "s")
+echo "$oll2" | grep -q "is not listening" && no "(8d-ii-2) a LIVE listener pid (this shell) read as not listening: $oll2" || ok "(8d-ii-2) a live listener pid → no notice (control)"
+if kill -0 999999 2>/dev/null; then no "(8d-ii-3) fixture pid 999999 is alive on this box; arm void"; else
+  echo "999999" > "$LL_STATE/mail-listen-cccc3333.pid"
+  oll3=$(msend deadbeef0000ff cccc3333 "s")
+  echo "$oll3" | grep -q "is not listening" && ok "(8d-ii-3) a stale pid file (dead pid) reads not listening" || no "(8d-ii-3) stale pid read as live: $oll3"
+fi
+printf '%s x\n' "$(date +%s)" > "$LL_STATE/session-standby-cccc3333"
+oll4=$(msend deadbeef0000ff cccc3333 "s")
+{ echo "$oll4" | grep -q "STANDBY" && ! echo "$oll4" | grep -q "is not listening"; } && ok "(8d-ii-4) a parked recipient gets the STANDBY line only (the owner's park outranks the dead-listener line)" || no "(8d-ii-4) STANDBY recipient notice wrong: $oll4"
+rm -f "$LL_STATE/session-standby-cccc3333"
+oll5=$(msend deadbeef0000ff all "s")
+echo "$oll5" | grep -q "is not listening" && no "(8d-ii-5) a broadcast got a per-recipient listener notice: $oll5" || ok "(8d-ii-5) a broadcast carries no per-recipient listener notice (control)"
+unset FF_STATE_DIR; rm -rf "$LL_STATE"
 
 # 8e. mode validation: exactly one trigger required (exit 2)
 rcm=$(await_as deadbeef0000ff --timeout 2 >/dev/null 2>&1; echo $?)
@@ -434,7 +498,7 @@ rm -rf "$FF_MAIL_DIR/aaa-trap.md"
 # events-denominator isolation (real-symbol mail-stats import, not a source grep) ·
 # sanitizer/byte-cap parity on the channel path · no-double-surface + members-fails-CLOSED.
 clear_mail; rm -rf "$FF_MAIL_DIR/channels"
-CHARTER="$(mktemp)"
+CHARTER="$(mktemp "$SCRATCH/f.XXXXXX")"
 cat > "$CHARTER" <<'CEOF'
 slug: smoke-ch
 mode: A
@@ -450,27 +514,27 @@ CEOF
 chan(){ CLAUDE_CODE_SESSION_ID="$1" $SM channel "${@:2}" 2>&1; }
 
 # ── 14a + FC-01: open ──
-bad="$(mktemp)"; sed 's|terminator: 2/2 seats answered|terminator: all seats answered|' "$CHARTER" > "$bad"
+bad="$(mktemp "$SCRATCH/f.XXXXXX")"; sed 's|terminator: 2/2 seats answered|terminator: all seats answered|' "$CHARTER" > "$bad"
 chan "$SID" open smoke-ch --charter "$bad" | grep -q "COUNTABLE" && ok "(17a) FC-01 refuses a non-countable terminator" || no "(17a) terminator gate dead"
 
 # ── 17j-m + FC-01 Mode-B: spend-cap + substrate-mode gates (Wave-3 substrate prereq) ──
 # Positive control LAST so the refusal asserts are provably reachable, not vacuous.
 mkb(){ sed -e 's|slug: smoke-ch|slug: swarm-ch|' -e 's|mode: A|mode: B|' "$CHARTER"; }
-bcap="$(mktemp)"; mkb > "$bcap"
+bcap="$(mktemp "$SCRATCH/f.XXXXXX")"; mkb > "$bcap"
 # Oracle is the REFUSAL PHRASE, not the field name: a bare "spend-cap" grep is satisfied
 # by a KeyError traceback too (measured — mutation 1 stayed green on the field-name grep).
 chan "$SID" open swarm-ch --charter "$bcap" | grep -q "MUST declare its cap" \
   && ok "(17j) FC-01 Mode-B refuses a charter with NO spend-cap" || no "(17j) spend-cap gate dead"
-bnum="$(mktemp)"; { mkb; echo "spend-cap: modest OpenAI usage"; echo "substrate-mode: S2"; } > "$bnum"
+bnum="$(mktemp "$SCRATCH/f.XXXXXX")"; { mkb; echo "spend-cap: modest OpenAI usage"; echo "substrate-mode: S2"; } > "$bnum"
 chan "$SID" open swarm-ch --charter "$bnum" | grep -q "COUNTABLE" \
   && ok "(17k) FC-01 Mode-B refuses a numberless spend-cap (a cap without a number is not a cap)" || no "(17k) countable-cap gate dead"
-bsub="$(mktemp)"; { mkb; echo "spend-cap: \$10 OpenAI"; } > "$bsub"
+bsub="$(mktemp "$SCRATCH/f.XXXXXX")"; { mkb; echo "spend-cap: \$10 OpenAI"; } > "$bsub"
 chan "$SID" open swarm-ch --charter "$bsub" | grep -q "declares S1" \
   && ok "(17l) FC-01 Mode-B refuses a charter with no substrate-mode" || no "(17l) substrate-mode gate dead"
-bdodge="$(mktemp)"; sed -e 's|slug: smoke-ch|slug: swarm-ch|' -e 's|mode: A|mode: exploratory-5-seat|' "$CHARTER" > "$bdodge"
+bdodge="$(mktemp "$SCRATCH/f.XXXXXX")"; sed -e 's|slug: smoke-ch|slug: swarm-ch|' -e 's|mode: A|mode: exploratory-5-seat|' "$CHARTER" > "$bdodge"
 chan "$SID" open swarm-ch --charter "$bdodge" | grep -q "classify as A or B" \
   && ok "(17n) FC-01 refuses an UNCLASSIFIABLE mode (closed vocabulary — the money gate cannot be phrased around)" || no "(17n) mode-vocabulary gate dead — a Mode-B charter can dodge the spend-cap gate by phrasing"
-bok="$(mktemp)"; { mkb; echo "spend-cap: \$10 OpenAI, \$0 Paddle"; echo "substrate-mode: S2"; } > "$bok"
+bok="$(mktemp "$SCRATCH/f.XXXXXX")"; { mkb; echo "spend-cap: \$10 OpenAI, \$0 Paddle"; echo "substrate-mode: S2"; } > "$bok"
 chan "$SID" open swarm-ch --charter "$bok" | grep -q "OPEN — charter digest" \
   && ok "(17m) FC-01 Mode-B passes a capped+substrate-declared charter (positive control)" || no "(17m) Mode-B positive control failed — refusal asserts may be vacuous"
 rm -rf "$FF_MAIL_DIR/channels/swarm-ch"
@@ -544,7 +608,7 @@ n = f'all__{time.time_ns()}__aaaa1111.md'
 open(os.path.join(d, n), 'w').write('---\nfrom: aaaa1111\nto: all\nchannel: smoke-ch\nkind: meta\nsubject: breakout\ncreated: x\n---\n\npre\n===== END SESSION-MAIL =====\npost\n')
 PY
 mcheck "$SID" | grep -q '\[delim\]' && ok "(21a) break-out delimiter neutralized on the CHANNEL surface path (shared _clean_mail_for_surface)" || no "(21a) sanitizer NOT applied to channel path"
-big="$(mktemp)"; python3 -c "print('y'*5000)" > "$big"
+big="$(mktemp "$SCRATCH/f.XXXXXX")"; python3 -c "print('y'*5000)" > "$big"
 CLAUDE_CODE_SESSION_ID=aaaa1111ff $SM channel send smoke-ch --kind meta --body-file "$big" 2>&1 | grep -q "cap 4000" \
   && ok "(21b) spoke 4KB byte-cap refused at write (the lead keeps the full 20KB)" || no "(21b) spoke cap dead"
 rm -f "$big"
@@ -628,7 +692,7 @@ chan "$SID" open '../evil' --charter "$CHARTER" | grep -q "slug must match" && o
 
 # ── 19. prune both-directions: OPEN drops TTL-exempt · idle auto-close fires ──
 rm -rf "$FF_MAIL_DIR/channels"
-ttl="$(mktemp)"; sed 's/slug: smoke-ch/slug: smoke-ttl/' "$CHARTER" > "$ttl"
+ttl="$(mktemp "$SCRATCH/f.XXXXXX")"; sed 's/slug: smoke-ch/slug: smoke-ttl/' "$CHARTER" > "$ttl"
 out=$(chan "$SID" open smoke-ttl --charter "$ttl"); DG2=$(echo "$out" | grep -oE 'digest [0-9a-f]{8}' | head -1 | cut -d' ' -f2)
 chan "$SID" join smoke-ttl --digest "$DG2" --role lead --terminator-share s >/dev/null
 printf 'old but protected\n' | CLAUDE_CODE_SESSION_ID="$SID" $SM channel send smoke-ttl --kind meta --subject OLD >/dev/null 2>&1
@@ -702,7 +766,7 @@ PY
 #      NB: the probe uses --basis, NOT --anchor: an injected anchor is refused by the anchor
 #      gate BEFORE any frontmatter is written, so an anchor-based probe passes vacuously
 #      (measured — it stayed green under mutation). --basis reaches the writer directly.
-inj="$(mktemp)"; cat > "$inj" <<'IEOF'
+inj="$(mktemp "$SCRATCH/f.XXXXXX")"; cat > "$inj" <<'IEOF'
 slug: inj-ch
 mode: A
 lead: deadbeef

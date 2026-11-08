@@ -90,7 +90,7 @@ For research-heavy skills (domain experts, frameworks-based personas):
 **Update integrations (4 edited files + 1 generated):**
 - `.claude/skills/expert-review/SKILL.md` — add routing-rule row(s) for the trigger phrases from Phase 2.
 - `.claude/skills/expert-review/references/department-directory.md` — add to relevant cluster (Engineering / UX / etc.); update cluster count; update interaction note for how this expert pairs with siblings.
-- `scripts/generate-expert-agents.mjs` — add to EXPERTS dict with description string. Position alphabetically among siblings.
+- `scripts/generate-expert-agents.mjs` — add the name to the EXPERTS list (the description is read from the SKILL.md frontmatter). Position alphabetically among siblings.
 - Run `node scripts/generate-expert-agents.mjs` — generates `.claude/agents/<name>.md` wrapper file. Verify the new agent file is created (`ls .claude/agents/<name>.md`).
 - `.claude/settings.json` `skillOverrides` — add `"<name>": "user-invocable-only"` for a new EXPERT (it has an agent wrapper and is dispatched by the Agent tool, so it is hidden from the model's skill listing like its siblings). The generator does not write this line. A COMMAND skill the model invokes itself gets no entry, and neither does an expert the model invokes through the Skill tool.
 

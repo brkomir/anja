@@ -5,6 +5,7 @@
 // Detectors (per skill):
 // - EMPTY_DESCRIPTION   — description shorter than 20 chars
 // - MISSING_TRIGGER     — description doesn't include "Use when…" / "Use this when…" framing
+// - AGENT_DESCRIPTION_LONG — an expert's .claude/agents/<name>.md description, as the harness reads it, over 500 B (2026-11-02)
 // - BLOATED_SKILL       — SKILL.md > 800 lines (unconditional), OR > 600 with no references/
 // - SPEC_OVER_READ_BAND — SKILL.md bytes over the read guard's ARM-A band (the byte axis, 2026-09-13)
 // - ORPHAN_REFERENCE    — SKILL.md links to a `.claude/skills/X/` that doesn't exist, OR a
@@ -188,6 +189,34 @@ function modelInvocable(fm) {
 // The whole MISSING_TRIGGER predicate, so the self-test reaches the call site's conjunction and not only its parts.
 function missingTrigger(description, fm) {
   return !!description && description.length >= 20 && modelInvocable(fm) && !hasTriggerFraming(description);
+}
+
+// AGENT_DESCRIPTION_LONG — since 2026-11-02 the generator copies an expert's SKILL.md
+// frontmatter description into its .claude/agents/<name>.md, and that text is the expert's entry in
+// the helper-agent list the harness re-sends at every restart. A shrink of the restart overhead cut
+// the 58 from 26,624 B to about 19,000 B: before it 17 of 58 were over 500 B (largest 1,549), after it
+// none (174-472 B). A warning, not a cap: the convention sets no byte cap and its trial cuts
+// below ~300 B lost triggers, so the line sits above every description as cut and catches only a
+// return to the old style. Bytes, not characters (the listing is paid in bytes). A command's
+// description is out of scope: it goes to the command list, which Claude Code caps by itself.
+// It measures the AGENT FILE's description, not the SKILL.md one: the agent file is what the harness
+// re-sends, one external-* expert's is hand-maintained, and the generator reads SKILL.md with a YAML
+// parser that lintSkill's description regex does not match (a wrapped plain scalar or a multi-line
+// quoted one read as its first line only, 51 B for a 480 B value).
+const AGENT_DESCRIPTION_WARN_BYTES = 500;
+function agentDescriptionOverBand(description, hasAgentFile) {
+  return !!hasAgentFile && Buffer.byteLength(description || "", "utf8") > AGENT_DESCRIPTION_WARN_BYTES;
+}
+// The agent file's description value, or null when this cannot read it. The generator writes one
+// double-quoted line escaping only `\` and `"` (renderAgent), which is a JSON string; a plain one-line
+// value is read as-is; any other shape is null, so the caller reports it unmeasured, never as short.
+function agentFileDescription(body) {
+  const fm = (body.match(/^---\n([\s\S]*?)\n---/) ?? [])[1] ?? "";
+  const lines = fm.split("\n").filter((l) => /^description\s*:/.test(l));
+  if (lines.length !== 1) return null;
+  const raw = lines[0].replace(/^description\s*:\s*/, "").trim();
+  if (raw.startsWith('"')) { try { const v = JSON.parse(raw); return typeof v === "string" ? v : null; } catch { return null; } }
+  return raw === "" || /^['|>&*!%@`#]/.test(raw) || / #/.test(raw) ? null : raw;
 }
 
 // CHECK_PATH_ROT core, extracted so it has a COMMITTED regression control: a detector whose
@@ -394,6 +423,21 @@ if (args.includes("--self-test")) {
   const mtOk = missingTrigger(untriggered, "name: x\ndisable-model-invocation: true\n") === false && missingTrigger(untriggered, "name: x\n") === true;
   mtOk ? pass++ : fail++;
   console.log(`${mtOk ? "PASS" : "FAIL"}: missingTrigger — the call-site predicate honours the exemption and still fires without it`);
+  // The literal 500 on purpose: moving the constant reds this arm. Nothing ties AUTHORING §8's "500 B" to it; change that sentence too.
+  const adOk = agentDescriptionOverBand("x".repeat(500), true) === false
+    && agentDescriptionOverBand("x".repeat(501), true) === true
+    && agentDescriptionOverBand("x".repeat(501), false) === false
+    && agentDescriptionOverBand("\u00e9".repeat(251), true) === true;
+  adOk ? pass++ : fail++;
+  console.log(`${adOk ? "PASS" : "FAIL"}: agentDescriptionOverBand — 500 B passes, 501 B warns, no agent file never warns, 251 two-byte characters (502 B) warn`);
+  // agentFileDescription reads the value the harness gets: escapes decoded, never the raw line's bytes.
+  const afd = (d) => agentFileDescription(`---\nname: x\n${d}\nmodel: inherit\n---\nbody\n`);
+  const afdOk = afd(`description: "a \\"b\\" c\\\\d"`) === 'a "b" c\\d'
+    && afd("description: plain words here") === "plain words here"
+    && ["description: |", "description: >-", "description: 'q'", "description: x # c", 'description: "broken', "description:"].every((d) => afd(d) === null)
+    && agentFileDescription('---\nname: x\ndescription: "a"\ndescription: "b"\n---\n') === null;
+  afdOk ? pass++ : fail++;
+  console.log(`${afdOk ? "PASS" : "FAIL"}: agentFileDescription — a generated double-quoted line decodes its escapes, a plain line reads as-is, every other shape (block, single-quoted, comment, broken quote, empty, two keys) is null`);
   // CHECK_PATH_ROT committed regression control: a bad checks: path
   // must produce a miss, a good one must not — so a future refactor can't silently render the
   // rot-detector inert while the suite stays green.
@@ -787,6 +831,32 @@ console.error("stub: unknown command " + cmd); process.exit(2);
       rmSync(join(fx2, ".claude/skills/dangling"));
       expect("arch: a HYPHENATED unknown section beside a known one → the known one parsed, the unknown one a marker (the header class admits `-`)", ["arch", "--json"], "new-section-hyphen", "architecture.md", "ARCH_DOC_DRIFT marks=1");
       { const u = unit(run(["arch", "--json"], "crash"), "architecture.md"); const m = u ? u.findings.find((f) => f.unscanned === true) : null; arm("arch: a node-shaped crash (file:/// frame first) → the marker quotes the TypeError line, not the frame", !!m && /TypeError: Cannot read properties/.test(m.msg), m ? m.msg.slice(0, 160) : "<no marker>"); }
+      // AGENT_DESCRIPTION_LONG at the call site: the unit arms above test the predicate, these the wiring.
+      const desc = (n) => `Use when testing the agent description band. ${"y".repeat(n - 45)}`;
+      for (const [nm, n, agent] of [["longexp", 501, true], ["okexp", 500, true], ["longcmd", 501, false]]) {
+        w(`.claude/skills/${nm}/SKILL.md`, `---\nname: ${nm}\ndescription: ${desc(n)}\n---\n# ${nm}\n`);
+        w(`.claude/skills/${nm}/MEMORY.md`, `# ${nm} MEMORY\n`);
+        if (agent) w(`.claude/agents/${nm}.md`, `---\nname: ${nm}\ndescription: ${JSON.stringify(desc(n))}\nmodel: inherit\n---\n`);
+      }
+      // The generator's YAML reader takes a wrapped plain scalar whole; lintSkill's regex reads its first line.
+      // Short SKILL.md text beside a long agent file proves which one is measured.
+      w(".claude/skills/wrapexp/SKILL.md", `---\nname: wrapexp\ndescription: Use when testing the agent description band\n  ${"z".repeat(470)}\n---\n# w\n`);
+      w(".claude/skills/wrapexp/MEMORY.md", "# wrapexp MEMORY\n");
+      w(".claude/agents/wrapexp.md", `---\nname: wrapexp\ndescription: ${JSON.stringify(`Use when testing the agent description band ${"z".repeat(470)}`)}\nmodel: inherit\n---\n`);
+      const quoted = `Use when testing escapes. ${'"q" '.repeat(118)}`.slice(0, 500);
+      w(".claude/skills/escexp/SKILL.md", `---\nname: escexp\ndescription: Use when testing escapes.\n---\n# e\n`);
+      w(".claude/skills/escexp/MEMORY.md", "# escexp MEMORY\n");
+      w(".claude/agents/escexp.md", `---\nname: escexp\ndescription: ${JSON.stringify(quoted)}\nmodel: inherit\n---\n`);
+      w(".claude/skills/blockexp/SKILL.md", `---\nname: blockexp\ndescription: Use when testing an unreadable agent description.\n---\n# b\n`);
+      w(".claude/skills/blockexp/MEMORY.md", "# blockexp MEMORY\n");
+      w(".claude/agents/blockexp.md", `---\nname: blockexp\ndescription: |\n  Use when testing an unreadable agent description.\nmodel: inherit\n---\n`);
+      expect("agent description: an expert at 501 B → AGENT_DESCRIPTION_LONG", ["longexp", "--json"], "clean", "longexp", "AGENT_DESCRIPTION_LONG marks=0");
+      { const u = unit(run(["longexp", "--json"]), "longexp"); const f = u ? u.findings.find((x) => x.code === "AGENT_DESCRIPTION_LONG") : null; arm("agent description: the 501 B finding is warn severity (an error would make CI's --severity=fail a byte cap)", !!f && f.severity === "warn", f ? f.severity : "<no finding>"); }
+      expect("agent description: an expert at 500 B → no finding (control)", ["okexp", "--json"], "clean", "okexp", "- marks=0");
+      expect("agent description: a command (no agent file) at 501 B → no finding", ["longcmd", "--json"], "clean", "longcmd", "- marks=0");
+      expect("agent description: the agent file is measured — 514 B there, a wrapped plain scalar in SKILL.md → AGENT_DESCRIPTION_LONG", ["wrapexp", "--json"], "clean", "wrapexp", "AGENT_DESCRIPTION_LONG marks=0");
+      expect("agent description: 500 B decoded, over 500 B as escaped source → no finding", ["escexp", "--json"], "clean", "escexp", "- marks=0");
+      expect("agent description: an agent file whose description this cannot read → one marker, not a pass", ["blockexp", "--json"], "clean", "blockexp", "AGENT_DESCRIPTION_LONG marks=1");
     } catch (e) {
       arm("arms ran to the end without throwing", false, `threw: ${e.message}`);
     } finally {
@@ -847,6 +917,18 @@ function lintSkill(name) {
   // or the equivalent "When the user..." construction. These all give the harness a natural-language condition for routing.
   if (missingTrigger(description, fm)) {
     findings.push({ code: "MISSING_TRIGGER", severity: "warn", msg: "description lacks 'Use when/at/before/after/…' framing — improves harness skill match" });
+  }
+
+  // AGENT_DESCRIPTION_LONG — only a skill with an agent file (the experts), measured on that file; see agentDescriptionOverBand.
+  const agentFile = join(AGENTS_DIR, `${name}.md`);
+  if (existsSync(agentFile)) {
+    let agentDescription = null;
+    try { agentDescription = agentFileDescription(readFileSync(agentFile, "utf8")); } catch { /* unreadable: reported as unmeasured below */ }
+    if (agentDescription === null) {
+      findings.push(unscanned("AGENT_DESCRIPTION_LONG", `.claude/agents/${name}.md: no one-line description this can read — its size was not measured`));
+    } else if (agentDescriptionOverBand(agentDescription, true)) {
+      findings.push({ code: "AGENT_DESCRIPTION_LONG", severity: "warn", msg: `.claude/agents/${name}.md description ${Buffer.byteLength(agentDescription, "utf8")} B > ${AGENT_DESCRIPTION_WARN_BYTES} B — it is this expert's entry in the helper-agent list, re-sent at every restart; keep the role, the Use-when triggers and at most one pointer in SKILL.md's description and regenerate (AUTHORING.md §8)` });
+    }
   }
 
   // BLOATED_SKILL — the SKILL.md artifact is what loads on activation; references/ is the on-demand
