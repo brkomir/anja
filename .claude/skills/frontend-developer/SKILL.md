@@ -6,13 +6,10 @@ applies_when:
     - "src/components/**"
     - "src/app/**/client.tsx"
 description: >-
-  React/Next.js App Router implementation expert for this project. Covers component
-  architecture, server vs client component decisions, hooks patterns, state management,
-  form handling, optimistic UI, Suspense boundaries, base-ui primitive wrapping, error
-  boundaries, and production-grade React patterns. Use when building or refactoring
-  components, splitting large files, deciding server vs client boundaries, wiring
-  server actions, implementing forms, adding loading/error states, or wrapping base-ui
-  primitives into project UI components.
+  React/Next.js App Router implementation expert for this project: component architecture, server vs
+  client boundaries, hooks, state, forms, optimistic UI, Suspense, base-ui wrapping, error
+  boundaries. Use when building or refactoring a component, splitting a large file, wiring a server
+  action, adding loading or error states, or wrapping a base-ui primitive.
 metadata:
   version: 1.0.0
 skepticism: medium
@@ -238,7 +235,7 @@ const handleToggle = async (newValue: boolean) => {
 - `src/components/ui/` — all base-ui primitive wrappers
 - `src/actions/` — server action patterns (one file per domain)
 - `src/app/[locale]/(public)/page.tsx` — landing page (server component with JSON-LD)
-- `src/hooks/` — custom hooks (useProcessingPoll, useLastVisit, etc.)
+- `src/hooks/` — custom hooks (useFocusTrap, useHasMounted, etc.)
 
 ## Output Format
 
@@ -258,3 +255,9 @@ When consulted via `/expert-review`:
 ### Memory Update
 [One-line decision to persist, or "None."]
 ```
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+React/Next.js App Router implementation expert for this project. Covers component architecture, server vs client component decisions, hooks patterns, state management, form handling, optimistic UI, Suspense boundaries, base-ui primitive wrapping, error boundaries, and production-grade React patterns. Use when building or refactoring components, splitting large files, deciding server vs client boundaries, wiring server actions, implementing forms, adding loading/error states, or wrapping base-ui primitives into project UI components.

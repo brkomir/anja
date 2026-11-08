@@ -1,6 +1,6 @@
 ---
 name: decisions
-description: Record or manage entries in DECISIONS.md at repo root — the project's human-readable decisions log. Use after shipping a bundle of changes (capture what/why), when you say "we already decided this" and want to prevent re-litigation, when parking a decision for later (add to Open with trigger), or at end of a significant session to sweep for undocumented calls. Distinct from /session-memory (which writes to project memory + skill MEMORYs) — DECISIONS.md is the human-readable owner-scannable companion at repo root.
+description: Record or manage entries in DECISIONS.md at repo root — the project's human-readable decisions log. Use after shipping a bundle of changes (capture what/why), when you say "we already decided this" and want to prevent re-litigation, when parking a decision for later (add to Open with trigger), or at end of a significant session to sweep for undocumented calls. Distinct from /session-memory (which writes to the project memory and each skill's memory file) — DECISIONS.md is the human-readable owner-scannable companion at repo root.
 ---
 
 # /decisions — Decisions Log
@@ -28,14 +28,14 @@ Records significant project decisions to `DECISIONS.md` at repo root. Human-read
 
 - Routine code edits, bug fixes, refactors that don't change user-facing behavior or strategy
 - Implementation details (those belong in code + commit messages, not in DECISIONS.md)
-- Memory-only items that don't shape future decisions (those belong in `.claude/skills/*/MEMORY.md` or `.claude/project-memory/`)
+- Memory-only items that don't shape future decisions (those belong in a skill's memory file or the project memory)
 
 ## Distinction from `/session-memory`
 
 | | /decisions | /session-memory |
 |---|---|---|
 | Audience | Human owner, future-self, contributors | Orchestrator, future sessions |
-| Location | `DECISIONS.md` at repo root | `.claude/project-memory/*.md` + `.claude/skills/*/MEMORY.md` |
+| Location | `DECISIONS.md` at repo root | the project memory + each skill's memory file |
 | Format | 3-5 lines, prose, owner-scannable | Structured frontmatter + body, machine-loadable |
 | Scope | Business / pricing / strategy / vendor / release decisions | Per-feature, per-flow, per-expert technical decisions |
 | Lifecycle | Survives machine switches via git (always); never auto-pruned | Lives in project memory; subject to /meta distill |
@@ -134,8 +134,8 @@ tension here** — they were competing for the same lines because nobody had ass
 **Verbatim-banking discipline.** A quote recorded as verbatim is treated as un-re-checkable by
 every later reader, so the elision rules are stricter than for paraphrase:
 - Cut leading/trailing material freely. **Mark every INTERIOR cut with `…`.**
-- **Never elide a hedge or an accompanying question** (*"i don't know what X is here"*, *"am i
-  right on this?"*). Those state the ruling's CONFIDENCE and are half the ruling. In the source
+- **Never elide a hedge or an accompanying question** (a stated doubt about what something is,
+  or a closing question asking whether the reading is right). Those state the ruling's CONFIDENCE and are half the ruling. In the source
   project a recorded quote kept a preference and dropped both the hedge and the closing question
   that came with it, and the option shipped on the strength of that quote deleted a live gate.
 - Diff the banked quote against the source record before committing.
@@ -153,7 +153,7 @@ every later reader, so the elision rules are stricter than for paraphrase:
 - **Never delete Rejected entries.** They prevent re-litigating the same debate in 3 months. Each Rejected entry is institutional memory.
 - **Mirror business-critical project-memory entries** here when they should survive machine changes / contributor onboarding / context compaction. The same decision can live in BOTH `.claude/project-memory/project_X.md` (machine-readable) AND `DECISIONS.md` (human-readable) — they serve different audiences.
 - **Each entry should be scannable by a non-technical co-owner in ~10 seconds.** If the entry needs to be re-read to understand, it's too long or too dense.
-- **Supersede-marker sweep:** when a new entry OVERRIDES a panel/expert verdict (the owner picks an option the panel advised against), annotate **every dissenting expert MEMORY entry** with a one-line `> SUPERSEDED by DECISIONS YYYY-MM-DD (<what shipped>)` marker — not just one of them. An unmarked losing verdict is cited by a future panel as the current position. Grep: the expert names are in the entry's own "panel split" text.
+- **Supersede-marker sweep:** when a new entry OVERRIDES a panel/expert verdict (the owner picks an option the panel advised against), mark **every dissenting expert MEMORY entry**, not just one of them, by appending a dated `## YYYY-MM-DD — superseded: <the losing entry's heading>` entry that names this DECISIONS entry and what shipped, to that expert's current shard (its `MEMORY.md` when it has none) with Bash `>>` (`/expert-review` step 8a) — never an in-place `> SUPERSEDED` line, which edits an existing memory entry. An unmarked losing verdict is cited by a future panel as the current position. Grep: the expert names are in the entry's own "panel split" text.
 
 ## Cross-references
 

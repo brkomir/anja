@@ -95,6 +95,10 @@ function computeCounts() {
   return {
     skills: shInt("ls -d .claude/skills/*/ 2>/dev/null | wc -l"),
     agents: shInt("ls .claude/agents/*.md 2>/dev/null | wc -l"),
+    // Definitions = the files minus the `_`-prefixed preamble (`_agent-primer.md`). An audit
+    // (2026-11-04) found "56 agent definitions" standing in 9 places of architecture.md two expert agents after
+    // it went stale, because only the file total (`agents`) had a pattern.
+    agentDefinitions: shInt("ls .claude/agents/*.md 2>/dev/null | grep -v '/_' | wc -l"),
     hooks: shInt("ls .claude/hooks/*.sh .claude/hooks/*.py 2>/dev/null | wc -l"),  // .py since 2026-10-14: three wired Python hooks were invisible to this count
     // settings.json-wired hook sub-count — a secondary breakdown the doc states in 2 places
     // (Lecture 11 "N wired in settings.json" + the Appendix-B "wired in settings.json, N"
@@ -505,6 +509,19 @@ const PATTERNS = [
   [/\*\*(\d+)\s+agents?\*\*\s+\(\s*[`'"]?\.claude\/agents\/(?:\*\/)?[`'"]?\s*\)/gi, "agents", "agents (in .claude/agents/)"],
   [/(\d+)\s+agents?\s+in\s+`?\.claude\/agents/gi, "agents", "agents in .claude/agents/"],
   [/\bAgents\s+\((\d+)\s+files?\)/gi, "agents", "Appendix B snapshot: Agents (N files)"],
+  // Present-tense definition counts only: "all N (project) agent definitions" and the Preface's "N agent
+  // definitions plus `_agent-primer`". A dated clause ("56 at 2026-10-12") never matches. Arms D1-D3.
+  [/\ball\s+(\d+)\s+(?:project\s+)?agent\s+definitions?\b(?!\s+(?:at|on|until|before)\s+\d{4}-\d{2})/gi, "agentDefinitions", "all N agent definitions"],
+  [/\b(\d+)\s+agent\s+definitions\s+plus\s+`?_agent-primer/gi, "agentDefinitions", "N agent definitions plus _agent-primer"],
+  // The other present-tense definition counts in Lecture 6 (found in review: 7 of the 11 sites were
+  // untracked). Each phrase is anchored on words a dated clause does not carry. Arms D4-D10.
+  [/\b(?:across|of)\s+the\s+(\d+)\s+agent\s+definitions\b/gi, "agentDefinitions", "across/of the N agent definitions"],
+  [/\ball\s+(\d+)\s+agents\s+declare\b/gi, "agentDefinitions", "all N agents declare"],
+  [/\b(\d+)\s+agents\s+\+\s+1\s+primer\b/gi, "agentDefinitions", "N agents + 1 primer"],
+  [/\binherit`?\s+on\s+all\s+(\d+)\b/gi, "agentDefinitions", "inherit on all N"],
+  [/\bfires\s+on\s+the\s+(\d+)\s+that\s+point\s+at\s+it\b/gi, "agentDefinitions", "the primer fires on the N"],
+  [/\(zero\s+of\s+(\d+)\s+name\s+it\)/gi, "agentDefinitions", "zero of N name it"],
+  [/\baccounts\s+for\s+all\s+(\d+)\s+files\b/gi, "agents", "accounts for all N files"],
   // Hooks
   [/\*\*(\d+)\s+hooks?\*\*\s+\(`?\.claude\/hooks/gi, "hooks", "hooks in .claude/hooks/"],
   [/\*\*(\d+)\s+hook\s+scripts?\*\*\s+in\s+`?\.claude\/hooks/gi, "hooks", "hook scripts in .claude/hooks/"],
@@ -675,7 +692,7 @@ const isSuspectZero = (d) =>
 // Scope = the prose-anchored, rot-prone-by-design keys this commit family added
 // (extend on encounter, and audit a key for legitimate-absence before adding it —
 // a key whose claim the doc may deliberately drop would make this a standing nag).
-const NARRATIVE_EXPECTED_KEYS = ["selfAuditChecks", "sessionManifestModes"];
+const NARRATIVE_EXPECTED_KEYS = ["selfAuditChecks", "sessionManifestModes", "agentDefinitions"];
 function findAnchorRot(docText) {
   const rot = [];
   for (const key of NARRATIVE_EXPECTED_KEYS) {
@@ -1374,6 +1391,31 @@ function runSelfTest() {
     ptnCounts(PTN_AGENTS, "- **3 agents** (`.claude/agents/external-*.md`) — catalog agents"),
     [],
   );
+
+  // D1-D3 — the agent-definition patterns (2026-11-04).
+  const PTN_DEF_ALL = ptnFor("all N agent definitions");
+  const PTN_DEF_PLUS = ptnFor("N agent definitions plus _agent-primer");
+  eq("D1 definitions: a present-tense 'all N' claim counts",
+    ptnCounts(PTN_DEF_ALL, "a pointer carried by all 58 project agent definitions — not an injection"), [58]);
+  eq("D2 definitions: a dated history clause does not count",
+    ptnCounts(PTN_DEF_ALL, "(58 at 2026-11-04; 56 at 2026-10-12, before the two experts)"), []);
+  eq("D3 definitions: the Preface phrasing counts",
+    ptnCounts(PTN_DEF_PLUS, "- **59 agents** (`.claude/agents/`) — 58 agent definitions plus `_agent-primer.md`, the preamble"), [58]);
+  const P = (label, text) => ptnCounts(ptnFor(label), text);
+  eq("D4 definitions: 'all N agent definitions at <date>' is history, not a claim",
+    P("all N agent definitions", "(re-derived 2026-11-04; all 56 agent definitions at 2026-10-12)"), []);
+  eq("D5 definitions: 'across the N' counts, bare 'across N' (the dated history) does not",
+    P("across/of the N agent definitions", "two shapes across the 58 agent definitions; re-derived 2026-10-09 across 56 agent definitions"), [58]);
+  eq("D6 definitions: 'every one of the N' counts",
+    P("across/of the N agent definitions", "every one of the 58 agent definitions has a matching skill directory"), [58]);
+  eq("D7 definitions: 'all N agents declare' counts",
+    P("all N agents declare", "**all 58 agents declare `model: inherit`** since 2026-10-12"), [58]);
+  eq("D8 definitions: 'N agents + 1 primer' and 'accounts for all N files'",
+    [...P("N agents + 1 primer", "so 58 agents + 1 primer accounts for all 59 files"), ...P("accounts for all N files", "so 58 agents + 1 primer accounts for all 59 files")], [58, 59]);
+  eq("D9 definitions: 'inherit on all N' counts, its dated tail does not",
+    P("inherit on all N", "they declare `inherit` on all 58 (`grep`, 2026-11-04; 56 on 2026-10-12"), [58]);
+  eq("D10 definitions: 'fires on the N' and 'zero of N name it'",
+    [...P("the primer fires on the N", "the primer fires on the 58 that point at it"), ...P("zero of N name it", "(zero of 58 name it)")], [58, 58]);
 
   // E1-E6 — parseMetaEntryPoints, the one reader behind metaEntryPoints AND the heading check (2026-10-27).
   // Hand-written fixtures; E2/E3 are the drift each way, E4 the non-command bullet the real list carries.

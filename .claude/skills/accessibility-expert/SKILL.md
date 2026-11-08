@@ -5,13 +5,10 @@ applies_when:
   paths:
     - "src/components/**"
 description: >-
-  Web accessibility expert specializing in WCAG 2.2 AA compliance for
-  image-heavy SaaS applications. Covers semantic HTML, ARIA patterns, keyboard
-  navigation, screen reader compatibility, color contrast, motion sensitivity,
-  alt text strategy, focus management, and accessible interactive components.
-  Use when building or reviewing UI components, auditing pages for a11y issues,
-  designing image grids/lightboxes, handling scores/badges/overlays, or ensuring
-  compliance with ADA, EU Accessibility Act, and Section 508.
+  Web accessibility expert, WCAG 2.2 AA for image-heavy SaaS: semantic HTML, ARIA, keyboard
+  navigation, screen readers, contrast, motion, alt text, focus management. Use when building or
+  reviewing UI, auditing a page, designing an image grid or lightbox, handling scores, badges or
+  overlays, or checking ADA, EU Accessibility Act and Section 508 compliance.
 skepticism: medium
 ---
 
@@ -332,3 +329,9 @@ Tailwind: use the `sr-only` class. For text that should be visible when focused 
 - **web-designer**: Tailwind/shadcn implementation of accessible components
 - **qa-expert**: Testing for accessibility regressions
 - **saas-engineer**: Server-side accessibility concerns (semantic HTML, response headers)
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Web accessibility expert specializing in WCAG 2.2 AA compliance for image-heavy SaaS applications. Covers semantic HTML, ARIA patterns, keyboard navigation, screen reader compatibility, color contrast, motion sensitivity, alt text strategy, focus management, and accessible interactive components. Use when building or reviewing UI components, auditing pages for a11y issues, designing image grids/lightboxes, handling scores/badges/overlays, or ensuring compliance with ADA, EU Accessibility Act, and Section 508.

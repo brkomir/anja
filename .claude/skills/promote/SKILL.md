@@ -293,7 +293,7 @@ V=$(gh pr checks <n> --json name,bucket --jq '[.[] | select(.name == "ci-gate (m
   gets no pull-request run. STOP and say which.
 - empty, or any other value → `gh` errored or the shape changed; STOP and re-read, never treat it as
   `absent` or `pending`.
-- `fail`, `cancel`, `skipping` → not green. Disposition each red job as `/push` § 6 does for a
+- `fail`, `cancel`, `skipping` → not green. FIRST list every job that is not green in one command, `gh pr checks <n> --json name,bucket,event --jq '.[] | select(.bucket != "pass" and .bucket != "skipping") | "\(.bucket)\t\(.event)\t\(.name)"'`, and fix none until all are listed. The `ci-gate` lines are verdicts, not jobs. Every `fail` and `cancel` line is final once `V` reads `fail` or `cancel` (ci-gate starts only after all its inputs end), so fix those; a `cancel` is a job that never finished, so read its log before calling it code. A `pending` line is a job ci-gate does not read (coverage, meta-hygiene) or the `dev` push run: read it again just before the fix push, because that push cancels it (`test.yml` concurrency) (on 2026-10-29 two were fixed and knip was missed, a whole CI cycle lost). Then disposition each red job as `/push` § 6 does for a
   push-to-main run (whose code, known flake or new), fix on `dev`, push `dev`; the PR re-runs, and the
   certified head is now a new one, so go back to step 1.
 
@@ -504,7 +504,9 @@ two-parent merge.
 A tracker row can wait on a commit REACHING `main` (`trigger-type: on-ref`, `trigger: <sha> origin/main`),
 and the merge is the moment it fires; `/orient` and `/wrap` run the scan, this command did not, so the
 step landed a session late. Run `python3 scripts/defer-trigger-scan.py` after step 7 and act on every row
-that names `origin/main` as its ref.
+that names `origin/main` or `origin/dev` as its ref (a promote that pushes `dev` first fires the `dev` rows
+too; a row that moves, deletes, prunes or rewrites anything outside the tracker waits for the owner's word,
+as in `/push` D3b — added 2026-10-31).
 
 ### 8. Deploy verification — `/push` § 6, § 7, § 8, unchanged
 

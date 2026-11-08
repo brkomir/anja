@@ -51,6 +51,11 @@ session's position is.
    an owner-queue/mine-queue revision — derived from events this session, never restated from
    memory of the file). If nothing moved, write
    nothing — an idle-run must be a no-op on the hand-written sections.
+   Two parts of the plan are read elsewhere, so keep them current in the same pass: the row
+   whose Status cell (the second) starts with `NOW` names the one thing in progress, and
+   `scripts/statusline.py` shows it on the status line's top row, so move the mark when the work
+   moves; and each backlog entry the session works on (`/backlog`) is named under `## Backlog items`
+   (`#N` and one line) when the work starts, which `/wrap` reads to close or update that entry.
 3. **Sync the fence**: `node scripts/summary-plan-sync.mjs` (CURRENT | UPDATED | NO-PLAN).
    The fence is the only machine-written region; everything else stays hand-written.
 4. **SHOW.** ⛔ **The DEFAULT render is the WHOLE plan — jump to § The WHOLE plan is the DEFAULT

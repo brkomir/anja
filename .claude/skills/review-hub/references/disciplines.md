@@ -70,7 +70,7 @@ out as a finding** — now wearing the panel's authority.
 
 Measured 2026-07-30: a re-run brief told the architect breaker that three findings
 had been *"ALL CONCEDED WITHOUT A CHECK."* False — three of the four legs had been verified at
-source (`charter:16-20`, the comparison record, an independent runtime-registry corroboration) and
+source (a charter, the comparison record, an independent runtime-registry corroboration) and
 only one was accepted on reasoning. The reviewee intercepted before the panel converged.
 
 **Rule:** before sending, separate the brief's claims about the DIFF from its claims about the
@@ -91,6 +91,7 @@ statement, never an idle report. Stop only when the range is empty or the owner 
   Measured failure: 0 unanswered requests reported as an empty queue while 17+ delegated
   commits sat unreviewed; it took three pings in one session to surface it.
 - "Say the word and I'll take the rest" is a defer. The word was said at delegation.
+- ⛔ **This is the ROLE, not a preference:** work that is plainly pending is served without waiting for an instruction, because serving pending review requests on time is the review hub's basic responsibility. It bites at the TURN BOUNDARY: if the readout you are about to write names a pending item that is YOURS, do not write it — do the item, report after. Naming it and stopping is the same defect as not naming it.
 - ⛔ **AND THE COMMITS-NOT-MAIL RULE ABOVE HAS ITS OWN BLIND SPOT — IT CANNOT SEE A REQUEST YOU NEVER OPENED (measured 2026-08-06, TWO hubs in one handoff, same direction).** That rule exists to stop a real failure (reading "0 unanswered mails" as an empty queue) and in fixing it points AWAY from the mail store — but a delegation that was never read has no declared range to subtract from, so a commits-only derivation is structurally blind to it. **A queue derivation must ENUMERATE THE STORE'S INBOUND *and* reconcile the commit range. Neither alone is sufficient.**
   **Both seats failed it and both named it better than the rule did.** The retiring hub certified *"UNREVIEWED QUEUE: EMPTY. Explicitly, and derived… from the mail store this turn, not from recall"* — and its own account of what it actually ran: *"I grepped for the SHAs of the waves I remembered serving, and for deploy-clear tokens. I never enumerated the store's INBOUND. So the derivation confirmed what I already believed and could not surface what I had never seen."* Its one-liner is the rule: **a queue derivation must LIST INBOUND, not VERIFY OUTBOUND — mine did the second and called it the first.** A peer sharpened the general form: **"derived, not recalled" bounds the SOURCE and says nothing about the SET — both halves need naming: derived from WHAT, enumerating WHICH population.**
   **Cost, measured:** a 4-commit wave with a serious security finding stranded 40 min on the retiring hub (never opened, omitted from a handoff that named two other peers), then a further 4 hours on the successor, which had the self-contained resend in its own store and reported a clear queue four times. A plain question about pending reviews is what surfaced it; `mail-check --peek` answered in one call.

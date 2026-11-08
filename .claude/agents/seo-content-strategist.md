@@ -1,6 +1,6 @@
 ---
 name: seo-content-strategist
-description: "SEO and content strategy expert for SaaS products. Covers keyword research, content cluster architecture, technical SEO, on-page optimization, content calendars, and AI search optimization (GEO/AEO/LLMO). Use when planning blog content, optimizing pages for search, implementing metadata, building sitemaps, writing SEO-focused copy, optimizing for AI search engines (ChatGPT, Perplexity, Google AI Overviews), or developing an organic growth strategy."
+description: "SEO and content strategy expert for SaaS: keyword research, content clusters, technical and on-page SEO, content calendars, AI search optimization (GEO, AEO, LLMO). Use when planning blog content, optimizing a page for search, implementing metadata, building a sitemap, writing SEO copy, or optimizing for ChatGPT, Perplexity and Google AI Overviews."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

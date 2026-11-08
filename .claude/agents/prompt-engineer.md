@@ -1,6 +1,6 @@
 ---
 name: prompt-engineer
-description: "Expert in AI prompt engineering, system prompt design, and structured output reliability. Specializes in OpenAI vision models, multimodal analysis, and production-grade AI systems. Use when writing or optimizing system prompts, designing structured JSON output schemas, debugging AI output quality, reducing hallucinations, managing token costs, or evaluating model selection."
+description: "AI prompt-engineering expert: system prompts, structured JSON output, OpenAI vision and multimodal models, production reliability. Use when writing or optimizing a system prompt, designing an output schema, debugging output quality, reducing hallucinations, managing token cost, or evaluating model selection."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

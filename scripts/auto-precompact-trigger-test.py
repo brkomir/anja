@@ -108,8 +108,8 @@ def main():
         check('FIRE: inside headroom -> exactly one JSON document', rc == 0 and len(d) == 1 and d[0] is not None, out)
         ctx = (d[0] or {}).get('hookSpecificOutput', {}) if d and d[0] else {}
         check('FIRE: event name echoed', ctx.get('hookEventName') == 'PostToolUse', ctx)
-        check('FIRE: directive names /pre-compact and the numbers',
-              '/pre-compact' in ctx.get('additionalContext', '') and '707,000' in ctx.get('additionalContext', '')
+        check('FIRE: directive names /pre-compact --keep-listening and the numbers',
+              '/pre-compact --keep-listening ' in ctx.get('additionalContext', '') and '707,000' in ctx.get('additionalContext', '')
               and '20,000 left' in ctx.get('additionalContext', ''), ctx.get('additionalContext'))
         check('FIRE: crossing marker written', fired(state))
         log = open(os.path.join(state, 'fires.jsonl')).read().splitlines()

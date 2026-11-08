@@ -137,7 +137,7 @@ declare -a ADVISORIES=(
 
   # Defer discipline
   '→ every defer needs LOC estimate + trigger condition + valid reason. "post-launch" alone is not a trigger.'
-  '→ apply defer discipline to monitor items; present effort estimate.'
+  '→ apply defer discipline to "monitor post-launch" items too; present effort estimate.'
 
   # Speculation guardrails
   '→ read the actual code path before speculating from stack trace symptoms.'
@@ -151,7 +151,7 @@ declare -a ADVISORIES=(
   '→ in auth email templates, link to the app'\''s own auth-callback route carrying the token hash (server-side PKCE flow), NOT the provider'\''s default confirmation URL.'
 
   # Meta
-  '→ prefix /meta response with bold `[meta]` marker for visual disambiguation.'
+  '→ .claude/orchestrator/conventions.md § Response-mode prefix: prefix /meta response with bold `[meta]` marker for visual disambiguation.'
   '→ avoid human-time estimates in recommendations — use LOC / file-count / tool-call count instead.'
 
   # Peer-state assertion

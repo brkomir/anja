@@ -12,6 +12,10 @@ import re
 import runpy
 import subprocess
 import sys
+import atexit
+import glob
+import signal
+import shutil
 import tempfile
 import time
 
@@ -23,6 +27,29 @@ SID8 = SID[:8]
 T0 = 1_800_000_000.0
 PING = '[keep-warm] automated cache keep-alive'
 fails = 0
+# Every gate run gets a fake notifier: a recovery pass posts a desktop notification, and an arm must never put one
+# on the owner's screen (the first run of the 2026-11-06 arms posted 8 real ones before this seam existed).
+# Every temp folder this suite makes lives under ONE run folder, removed at exit. Until 2026-11-06 each Rig left
+# its folder in the shared temp dir (52,241 kw-gate-test-* folders by then), and one random name,
+# kw-gate-test-0nsevils, failed the session-mail smoke's '*evil*' escape check 5 times in a promote precheck.
+# A run killed by SIGKILL keeps its folder, so sweep run folders older than an hour (a full run takes ~15 s);
+# SIGTERM and SIGHUP become a normal exit, so atexit still removes this run's folder.
+for _old in glob.glob(os.path.join(tempfile.gettempdir(), 'kw-gate-run-*')):
+    try:
+        if time.time() - os.path.getmtime(_old) > 3600:
+            shutil.rmtree(_old, True)
+    except OSError:        # a peer run removed it between the glob and the stat
+        pass
+RUN_ROOT = tempfile.mkdtemp(prefix='kw-gate-run-')
+atexit.register(shutil.rmtree, RUN_ROOT, True)
+for _sig in (signal.SIGTERM, signal.SIGHUP):
+    signal.signal(_sig, lambda signum, _frame: sys.exit(128 + signum))
+NOTIFY_DIR = tempfile.mkdtemp(prefix='kw-notify-', dir=RUN_ROOT)
+NOTIFY_CMD = os.path.join(NOTIFY_DIR, 'notify.sh')
+with open(NOTIFY_CMD, 'w') as _f:
+    _f.write('#!/bin/sh\nprintf "%s|%s\\n" "$1" "$2" >> "${KW_NOTIFY_LOG:-/dev/null}"\n')
+os.chmod(NOTIFY_CMD, 0o755)
+os.environ['KEEP_WARM_NOTIFY_CMD'] = NOTIFY_CMD     # every subprocess env below is built from os.environ
 
 
 def iso(t):
@@ -46,7 +73,7 @@ def transcript(path, reqs):
 
 class Rig:
     def __init__(self):
-        self.dir = tempfile.mkdtemp(prefix='kw-gate-test-')
+        self.dir = tempfile.mkdtemp(prefix='kw-gate-test-', dir=RUN_ROOT)
         self.state = os.path.join(self.dir, 'state')
         os.makedirs(self.state)
         self.tx = os.path.join(self.dir, 'tx.jsonl')
@@ -66,7 +93,8 @@ class Rig:
         inp = payload if payload is not None else json.dumps(
             {'session_id': SID, 'prompt': prompt, 'transcript_path': self.tx, 'cwd': self.dir})
         env = dict(os.environ, FF_STATE_DIR=self.state, KEEP_WARM_NOW=str(at), KEEP_WARM_LOG=self.log,
-                   CLAUDE_PROJECT_DIR=self.dir)
+                   CLAUDE_PROJECT_DIR=self.dir, KEEP_WARM_NOTIFY_CMD=NOTIFY_CMD,
+                   KW_NOTIFY_LOG=os.path.join(self.dir, 'notify.log'))
         env.pop('SKIP_KEEP_WARM', None)
         env.pop('KEEP_WARM_COMPACT_HEADROOM', None)
         env.update(extra_env or {})
@@ -522,7 +550,7 @@ rc2, out2 = r.deny()
 check('ping passed at the real clock -> its marker stamp keeps the tool block on', out == '' and '"permissionDecision":"deny"' in out2, (out, out2))
 
 # 15. production path resolution: no FF_STATE_DIR, no CLAUDE_PROJECT_DIR, the session cwd in a subdirectory
-proj = tempfile.mkdtemp(prefix='kw-gate-proj-')
+proj = tempfile.mkdtemp(prefix='kw-gate-proj-', dir=RUN_ROOT)
 subprocess.run(['git', 'init', '-q', proj], check=True)
 sub = os.path.join(proj, 'scripts')
 pstate = os.path.join(proj, '.claude', 'state')
@@ -533,6 +561,7 @@ ptx = os.path.join(proj, 'tx.jsonl')
 transcript(ptx, [(now_real - 7200, 0, 300_000, '1h'), (now_real - 35 * 60, 400_000, 2_000, '1h')])
 penv = {k: v for k, v in os.environ.items() if k not in ('CLAUDE_PROJECT_DIR', 'FF_STATE_DIR', 'SKIP_KEEP_WARM', 'KEEP_WARM_NOW')}
 penv['KEEP_WARM_LOG'] = os.path.join(proj, 'fires.jsonl')
+penv['KEEP_WARM_NOTIFY_CMD'] = NOTIFY_CMD
 
 
 def sub_gate():
@@ -630,7 +659,7 @@ DENY_CMD = {'type': 'command', 'command': '"$CLAUDE_PROJECT_DIR/.claude/hooks/ke
 
 
 def directive(hooks, markers, skill=True, extra=None, source='startup'):
-    root = tempfile.mkdtemp(prefix='kw-ss-test-')
+    root = tempfile.mkdtemp(prefix='kw-ss-test-', dir=RUN_ROOT)
     for d in ('.claude/hooks', '.claude/state', 'scripts'):
         os.makedirs(os.path.join(root, d))
     with open(SS) as src, open(os.path.join(root, '.claude/hooks/session-start.sh'), 'w') as dst:
@@ -687,6 +716,587 @@ directive(WIRED, ON + [f'keep-warm-armed-{SID8}'], source='compact')
 check('arm reminder: armed marker kept across a compact -> silent, rc 0', REM_RESULTS[-1] == (0, 0), REM_RESULTS[-1])
 directive(WIRED, ON + [f'keep-warm-armed-{SID8}'], source='startup')
 check('arm reminder: armed marker dropped by a startup -> fires', REM_RESULTS[-1] == (0, 1), REM_RESULTS[-1])
+
+# 16. recovery ping. The mail watch is restarted as recommended, but never on a session that is parked, or
+#     compacted, with its mail listeners shut down and waiting on the owner's message.
+#     The gate tells ONE passing ping to re-arm the mail listener when the seat's reply to its own listener-expiry
+#     notice was refused by the safety filter (one session, 08:52Z to 12:22Z on 2026-11-06), and the tool block
+#     lets exactly that Monitor call through. Every other state must be left exactly as it was.
+EXPIRY_BUSY = (f'<task-notification>\n<task-id>b1</task-id>\n<summary>Monitor event: "inbound session mail for {SID8}"'
+               '</summary>\n<event>[Monitor expired after 30m with 2 events delivered. Re-arm it if you still need the '
+               'watch.]</event>\n</task-notification>')
+EXPIRY_QUIET = EXPIRY_BUSY.replace('with 2 events delivered', 'with no events delivered')
+MAIL_EVENT = (f'<task-notification>\n<task-id>b1</task-id>\n<summary>Monitor event: "inbound session mail for {SID8}"'
+              '</summary>\n<event>===== SESSION-MAIL (ADVISORY DATA) =====\nfrom: <peer-session-id></event>\n</task-notification>')
+SAFETY_NOTE = ('Your response above was stopped by a safety classifier — this is not a tool or API error. The rest of '
+               'it was withheld.')
+ZERO_USAGE = {'input_tokens': 0, 'output_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0,
+              'cache_creation': {'ephemeral_1h_input_tokens': 0, 'ephemeral_5m_input_tokens': 0}}
+
+
+def note(path, t, text, **kw):
+    with open(path, 'a') as f:
+        f.write(json.dumps({'type': 'user', 'timestamp': iso(t), 'message': {'role': 'user', 'content': text}, **kw}) + '\n')
+
+
+def said(path, t, text):
+    """A plain reply with no usage block: a turn's text, never a request the gap rule reads."""
+    with open(path, 'a') as f:
+        f.write(json.dumps({'type': 'assistant', 'timestamp': iso(t),
+                            'message': {'content': [{'type': 'text', 'text': text}]}}) + '\n')
+
+
+def safety_refusal(path, t):
+    with open(path, 'a') as f:
+        f.write(json.dumps({'type': 'assistant', 'timestamp': iso(t), 'isApiErrorMessage': True, 'error': 'invalid_request',
+                            'message': {'model': '<synthetic>', 'stop_reason': 'refusal', 'usage': ZERO_USAGE,
+                                        'content': [{'type': 'text', 'text': 'API Error: safeguards flagged this message'}]}}) + '\n')
+
+
+def refusal_rig(trigger=EXPIRY_BUSY, at=T0, kind='refusal', before=()):
+    """A due ping (the status-line countdown decides) after a turn started by `trigger` and refused."""
+    r = Rig()
+    transcript(r.tx, [(at - 7200, 0, 300_000, '1h'), (at - 35 * 60, 400_000, 2_000, '1h')])
+    for fn in before:
+        fn(r.tx)
+    note(r.tx, at - 30 * 60, trigger, promptSource='system')
+    note(r.tx, at - 30 * 60 + 2, SAFETY_NOTE, isMeta=True)
+    (safety_refusal if kind == 'refusal' else refused)(r.tx, at - 30 * 60 + 10)
+    r.status(cache_expires_at=at + 15 * 60)
+    return r
+
+
+def recovery_of(out):
+    try:
+        return json.loads(out)['hookSpecificOutput']['additionalContext']
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def rec_marker(r):
+    return os.path.exists(os.path.join(r.state, f'keep-warm-recovery-{SID8}'))
+
+
+r = refusal_rig()
+rc, out = r.gate(PING, T0)
+line = recovery_of(out) or ''
+check('refused reply to the listener expiry, listener dead -> PASS with ONE recovery line naming the listener command',
+      rc == 0 and not blocked(out) and line.startswith('[keep-warm] RECOVERY')
+      and 'scripts/session-manifest.py mail-listen --poll 30`' in line and f'inbound session mail for {SID8}' in line, out)
+check('recovery ping -> recovery marker AND turn marker written, fire line logs the refusal',
+      rec_marker(r) and r.turn_marker() and last_fire(r).get('recovery', {}).get('refused_at') == iso(T0 - 30 * 60 + 10),
+      last_fire(r))
+r.gate('back now', T0 + 60)
+check('the owner speaking clears the recovery marker with the turn marker', not rec_marker(r) and not r.turn_marker())
+
+# the states left out by design: parked or compacting seats are never touched
+r = refusal_rig()
+r.touch(f'session-standby-{SID8}', '1 x')
+rc, out = r.gate(PING, T0)
+check('same refusal on a /standby seat -> BLOCK as before, no recovery marker', blocked(out) and not rec_marker(r), out)
+r = refusal_rig()
+r.touch(f'post-compact-pending-{SID}', 'compacted=x trigger=manual focus=no')
+rc, out = r.gate(PING, T0)
+check('same refusal with a post-compact recovery pending -> no recovery line, no recovery marker',
+      recovery_of(out) is None and not rec_marker(r), out)
+r = refusal_rig()
+r.touch(f'post-compact-deferred-{SID}', 'x')
+rc, out = r.gate(PING, T0)
+check('same refusal with a deferred-compaction marker -> no recovery line', recovery_of(out) is None and not rec_marker(r), out)
+
+# a seat that had gone quiet by its own choice: two empty expiries in a row, nobody spoke between
+r = refusal_rig(trigger=EXPIRY_QUIET, before=(lambda p: note(p, T0 - 62 * 60, EXPIRY_QUIET, promptSource='system'),
+                                              lambda p: said(p, T0 - 62 * 60 + 5, 'Leaving the listener off.')))
+rc, out = r.gate(PING, T0)
+check('second quiet expiry in a row refused (the seat had gone quiet) -> plain PASS, no recovery',
+      rc == 0 and out == '' and not rec_marker(r), out)
+r = refusal_rig(trigger=EXPIRY_QUIET, before=(lambda p: note(p, T0 - 62 * 60, EXPIRY_QUIET, promptSource='system'),
+                                              lambda p: note(p, T0 - 50 * 60, 'check these claims', promptSource='typed'),
+                                              lambda p: said(p, T0 - 50 * 60 + 5, 'Checked.')))
+rc, out = r.gate(PING, T0)
+check('quiet expiry refused, but the owner spoke after the previous quiet one -> recovery', bool(recovery_of(out)), out)
+r = refusal_rig(trigger=EXPIRY_QUIET)
+rc, out = r.gate(PING, T0)
+check('one quiet expiry refused, no earlier expiry in the tail -> recovery', bool(recovery_of(out)), out)
+
+# other refused turns are not this case
+for trig, label in (('please look at the hub verdict', 'an owner message'), (MAIL_EVENT, 'a mail delivery event')):
+    r = refusal_rig(trigger=trig)
+    rc, out = r.gate(PING, T0)
+    check(f'refused reply to {label} -> plain PASS, no recovery', rc == 0 and out == '' and not rec_marker(r), out)
+r = refusal_rig(kind='rate_limit')
+rc, out = r.gate(PING, T0)
+check('expiry turn ended by a usage-limit error, not a refusal -> no recovery', rc == 0 and out == '', out)
+r = refusal_rig()
+said(r.tx, T0 - 20 * 60, 'Re-armed the listener.')
+rc, out = r.gate(PING, T0)
+check('the seat answered again after the refusal -> no recovery', rc == 0 and out == '', out)
+
+# a live listener: nothing to do
+r = refusal_rig()
+live = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'mail-listen'])
+try:
+    r.touch(f'mail-listen-{SID8}.pid', f'{live.pid}\n')
+    rc, out = r.gate(PING, T0)
+    check('same refusal, listener process alive -> plain PASS, no recovery', rc == 0 and out == '' and not rec_marker(r), out)
+finally:
+    live.kill()
+    live.wait()
+r = refusal_rig()
+r.touch(f'mail-listen-{SID8}.pid', '999999\n')                       # a stale pid file: the process is gone
+rc, out = r.gate(PING, T0)
+check('stale pid file (no such process) -> recovery', bool(recovery_of(out)), out)
+
+# a recovery ping that did not re-arm is retried by the next one; ping turns are skipped when walking back
+r = refusal_rig()
+# the harness writes every ping isMeta (10 of 10 in one session, 130 of 130 in a review): a non-meta fixture
+# here passed while production's retry was dead (a review finding)
+note(r.tx, T0 - 10 * 60, PING + ', scheduled by this session.', promptSource='system', isMeta=True)
+said(r.tx, T0 - 10 * 60 + 2, '')
+said(r.tx, T0 - 10 * 60 + 3, '[keep-warm]')
+rc, out = r.gate(PING, T0)
+check('an earlier (isMeta) ping turn after the refusal (no re-arm) -> the next due ping carries the recovery line', bool(recovery_of(out)), out)
+
+
+# 16a. the folds of a review verdict, one arm per finding
+def queued_owner(path, t, text):
+    """An owner message typed while a turn runs: a queued_command attachment, never a user record."""
+    with open(path, 'a') as f:
+        f.write(json.dumps({'type': 'attachment', 'timestamp': iso(t), 'attachment': {
+            'type': 'queued_command', 'prompt': text, 'commandMode': 'prompt', 'origin': {'kind': 'human'},
+            'humanTurn': True}}) + '\n')
+
+
+def raw(path, rec):
+    with open(path, 'a') as f:
+        f.write(json.dumps(rec) + '\n')
+
+
+def bare_rig(at=T0):
+    """refusal_rig without the expiry turn: the caller writes the records."""
+    r = Rig()
+    transcript(r.tx, [(at - 7200, 0, 300_000, '1h'), (at - 35 * 60, 400_000, 2_000, '1h')])
+    r.status(cache_expires_at=at + 15 * 60)
+    return r
+
+
+A = T0 - 30 * 60
+r = bare_rig()
+note(r.tx, A, EXPIRY_BUSY, promptSource='system')
+queued_owner(r.tx, A + 1, 'leave the mail watch off and wait for me')
+note(r.tx, A + 2, SAFETY_NOTE, isMeta=True)
+safety_refusal(r.tx, A + 10)
+rc, out = r.gate(PING, T0)
+check('the owner spoke inside the refused expiry turn (queued mid-turn) -> no recovery', recovery_of(out) is None and not rec_marker(r), out)
+r = refusal_rig()
+note(r.tx, T0 - 10 * 60, PING + ', scheduled by this session.', promptSource='system', isMeta=True)
+queued_owner(r.tx, T0 - 10 * 60 + 1, 'stop the listener, I am back at six')
+said(r.tx, T0 - 10 * 60 + 3, 'Noted.')
+rc, out = r.gate(PING, T0)
+check('the owner spoke inside a later ping turn (queued mid-turn) -> no recovery', recovery_of(out) is None and not rec_marker(r), out)
+r = refusal_rig()
+note(r.tx, T0 - 10 * 60, PING + '\n\nwhy did this fire? leave the watch off.', promptSource='typed')
+said(r.tx, T0 - 10 * 60 + 3, 'Answered.')
+rc, out = r.gate(PING, T0)
+check('an owner message that starts with the ping text is the owner, not a ping -> no recovery', recovery_of(out) is None, out)
+PEER = 'Another Claude session sent a message: <agent-message from="x">ping</agent-message>'
+for starter, label in ((PEER, 'a peer message'), ('[Owner-authorized autonomous run - one-shot cron]', 'a one-shot run')):
+    r = bare_rig()
+    note(r.tx, A, EXPIRY_BUSY, promptSource='system')
+    said(r.tx, A + 5, 'Not re-arming: the owner said to wait for him.')
+    note(r.tx, A + 600, starter, promptSource='system', isMeta=True)
+    note(r.tx, A + 601, SAFETY_NOTE, isMeta=True)
+    safety_refusal(r.tx, A + 610)
+    rc, out = r.gate(PING, T0)
+    check(f'busy expiry answered (left off), a later isMeta {label} turn refused -> no recovery',
+          recovery_of(out) is None and not rec_marker(r), out)
+r = bare_rig()
+note(r.tx, A, EXPIRY_BUSY, promptSource='system')
+raw(r.tx, {'type': 'assistant', 'timestamp': iso(A + 1), 'message': {'content': [{'type': 'tool_use', 'id': 'tu1', 'name': 'Skill', 'input': {'skill': 'mail'}}]}})
+raw(r.tx, {'type': 'user', 'timestamp': iso(A + 2), 'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'tu1', 'content': 'ok'}]}})
+note(r.tx, A + 3, 'Base directory for this skill: /x', isMeta=True)
+note(r.tx, A + 4, SAFETY_NOTE, isMeta=True)
+safety_refusal(r.tx, A + 12)
+rc, out = r.gate(PING, T0)
+check('a refused expiry turn that ran a tool and loaded a skill (isMeta) -> recovery', bool(recovery_of(out)), out)
+r = bare_rig()
+note(r.tx, A - 3700, EXPIRY_QUIET, promptSource='system')
+said(r.tx, A - 3680, 'Leaving the listener off.')
+raw(r.tx, {'type': 'system', 'subtype': 'compact_boundary', 'timestamp': iso(A - 2000)})
+note(r.tx, A - 1999, 'This session is being continued from a previous conversation...', isCompactSummary=True)
+note(r.tx, A, EXPIRY_QUIET, promptSource='system')
+note(r.tx, A + 1, SAFETY_NOTE, isMeta=True)
+safety_refusal(r.tx, A + 9)
+rc, out = r.gate(PING, T0)
+check('second quiet expiry refused, the first one behind a compaction summary -> no recovery', recovery_of(out) is None, out)
+r = bare_rig()
+note(r.tx, A, EXPIRY_BUSY, promptSource='system')
+said(r.tx, A + 5, 'Re-armed.')
+raw(r.tx, {'type': 'assistant', 'timestamp': iso(A + 60), 'isSidechain': True, 'isApiErrorMessage': True, 'message': {'stop_reason': 'refusal', 'content': []}})
+raw(r.tx, {'type': 'assistant', 'timestamp': iso(A + 61), 'agentId': 'a1', 'isApiErrorMessage': True, 'message': {'stop_reason': 'refusal', 'content': []}})
+rc, out = r.gate(PING, T0)
+check('sub-agent refusal records after a normal expiry reply -> no recovery', recovery_of(out) is None, out)
+OTHER = EXPIRY_BUSY.replace(f'inbound session mail for {SID8}', 'usage watch')
+r = refusal_rig(trigger=OTHER)
+rc, out = r.gate(PING, T0)
+check('refused reply to ANOTHER Monitor expiry -> no recovery', recovery_of(out) is None, out)
+r = refusal_rig(trigger=f'why did this say "inbound session mail for {SID8}" [Monitor expired after 30m?')
+rc, out = r.gate(PING, T0)
+check('refused owner message QUOTING the expiry text -> no recovery', recovery_of(out) is None, out)
+QUOTING_EVENT = MAIL_EVENT.replace('from: <peer-session-id>', 'from: <peer-session-id>\n> [Monitor expired after 30m with 2 events delivered.]')
+r = refusal_rig(trigger=QUOTING_EVENT)
+rc, out = r.gate(PING, T0)
+check('refused reply to a mail EVENT whose body quotes the expiry words -> no recovery (the harness shape is matched whole)',
+      recovery_of(out) is None, out)
+r = refusal_rig(trigger=EXPIRY_QUIET, before=(lambda p: note(p, T0 - 62 * 60, OTHER.replace('2 events', 'no events'), promptSource='system'),
+                                              lambda p: said(p, T0 - 62 * 60 + 5, 'ok')))
+rc, out = r.gate(PING, T0)
+check('own quiet expiry refused, the previous quiet expiry was another Monitor -> recovery', bool(recovery_of(out)), out)
+r = bare_rig()
+note(r.tx, A, EXPIRY_BUSY, promptSource='system')
+rc, out = r.gate(PING, T0)
+check('an expiry with no reply recorded yet -> plain PASS, never a gate error', rc == 0 and out == '' and not rec_marker(r), out)
+r = refusal_rig()
+other_proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+try:
+    r.touch(f'mail-listen-{SID8}.pid', f'{other_proc.pid}\n')
+    rc, out = r.gate(PING, T0)
+    check('pid file reused by a live process that is not the listener -> recovery', bool(recovery_of(out)), out)
+finally:
+    other_proc.kill()
+    other_proc.wait()
+r = refusal_rig(trigger=EXPIRY_QUIET, before=(lambda p: note(p, T0 - 62 * 60, EXPIRY_QUIET, promptSource='system'),
+                                              lambda p: said(p, T0 - 62 * 60 + 5, 'ok')))
+r.touch(f'review-hub-active-{SID8}')
+rc, out = r.gate(PING, T0)
+check('a review hub whose second quiet expiry was refused -> recovery (a hub is owed mail)',
+      'mail-listen --poll 30 --rebroadcast-hours 48`' in (recovery_of(out) or ''), out)
+# From a review (its patch applied verbatim): the hand-merged clauses no arm above pins.
+# Each arm is the only one that reds its mutant: the quiet walk's attachment stop, its peer-turn break, its typed
+# break, and _owner_queued's origin test; the last is an earlier finding's queued arm.
+QUIET1 = (lambda p: note(p, T0 - 62 * 60, EXPIRY_QUIET, promptSource='system'), lambda p: said(p, T0 - 62 * 60 + 5, 'ok'))
+r = refusal_rig(trigger=EXPIRY_QUIET, before=QUIET1 + (lambda p: queued_owner(p, T0 - 50 * 60, 'keep going'),))
+rc, out = r.gate(PING, T0)
+check('second quiet expiry refused, the owner spoke (queued) between the two -> recovery (not an idle seat)', bool(recovery_of(out)), out)
+r = refusal_rig(trigger=EXPIRY_QUIET, before=QUIET1 + (lambda p: note(p, T0 - 50 * 60, PEER, promptSource='system', isMeta=True),
+                                                       lambda p: said(p, T0 - 50 * 60 + 5, 'Answered the peer.')))
+rc, out = r.gate(PING, T0)
+check('second quiet expiry refused, an isMeta peer-message turn between the two -> recovery (work between)', bool(recovery_of(out)), out)
+r = refusal_rig(trigger=EXPIRY_QUIET, before=QUIET1 + (lambda p: note(p, T0 - 50 * 60, '<task-notification> what was this?', promptSource='typed'),
+                                                       lambda p: said(p, T0 - 50 * 60 + 5, 'Explained.')))
+rc, out = r.gate(PING, T0)
+check('second quiet expiry refused, the owner TYPED a harness-prefixed message between the two -> recovery', bool(recovery_of(out)), out)
+r = bare_rig()
+note(r.tx, A, EXPIRY_BUSY, promptSource='system')
+raw(r.tx, {'type': 'attachment', 'timestamp': iso(A + 1), 'attachment': {'type': 'queued_command', 'commandMode': 'prompt', 'isMeta': True,
+                                                                         'prompt': '<agent-message from="a1">x</agent-message>', 'origin': {'kind': 'peer'}}})
+raw(r.tx, {'type': 'attachment', 'timestamp': iso(A + 1), 'attachment': {'type': 'queued_command', 'commandMode': 'task-notification',
+                                                                         'prompt': '<task-notification>\n<task-id>z</task-id>\n</task-notification>',
+                                                                         'origin': {'kind': 'task-notification'}}})
+note(r.tx, A + 2, SAFETY_NOTE, isMeta=True)
+safety_refusal(r.tx, A + 10)
+rc, out = r.gate(PING, T0)
+check('peer and task-notification queued attachments inside the refused turn are not the owner -> recovery', bool(recovery_of(out)), out)
+r = refusal_rig()
+note(r.tx, T0 - 10 * 60, PING + '\n\nwhy did this fire? leave the watch off.', promptSource='queued')
+said(r.tx, T0 - 10 * 60 + 3, 'Answered.')
+rc, out = r.gate(PING, T0)
+check('an owner message typed while busy (promptSource queued) that starts with the ping text is the owner -> no recovery',
+      recovery_of(out) is None, out)
+r = refusal_rig(trigger=EXPIRY_QUIET, before=QUIET1 + (lambda p: note(p, T0 - 50 * 60, '<task-notification> and this?', promptSource='suggestion_accepted'),
+                                                       lambda p: said(p, T0 - 50 * 60 + 5, 'Explained.')))
+rc, out = r.gate(PING, T0)
+check('second quiet expiry refused, an owner suggestion_accepted message between the two -> recovery (the quiet walk)',
+      bool(recovery_of(out)), out)
+r = refusal_rig(trigger=EXPIRY_QUIET, before=QUIET1 + (lambda p: note(p, T0 - 50 * 60, '<task-notification> and this?', promptSource='queued'),
+                                                       lambda p: said(p, T0 - 50 * 60 + 5, 'Explained.')))
+rc, out = r.gate(PING, T0)
+check('second quiet expiry refused, an owner message queued while busy (promptSource queued) between the two -> recovery (the quiet walk)',
+      bool(recovery_of(out)), out)
+# the recovery line overrides the OLD timer wording by name (seats armed before the change still carry it)
+r = refusal_rig()
+rc, out = r.gate(PING, T0)
+line = recovery_of(out) or ''
+check('the recovery line names and overrides the old timer wording (out of scope, do not arm a listener)',
+      'this line overrides it' in line and 'out of scope' in line and 'do not arm a listener' in line, line)
+# an allow earned by one ping does not survive a later ping that did not earn it (here: a compaction appeared)
+r = refusal_rig()
+r.gate(PING, T0)
+r.touch(f'post-compact-pending-{SID}', 'compacted=x trigger=auto focus=no')
+rc, out = r.gate(PING, T0 + 60)                                    # still due; the compaction was only prepared: DEFERRED, passes
+check('a later PASSING ping that earns no recovery removes the earlier recovery marker',
+      not blocked(out) and r.turn_marker() and not rec_marker(r), (out, rec_marker(r)))
+
+# the desktop notification when a session's reply is refused: once per refused reply, whatever turn was refused,
+# on the first timer tick that reads the transcript, passed or blocked. The first build covered only the listener
+# case on a passing ping.
+def notes(r):
+    p = os.path.join(r.dir, 'notify.log')
+    return open(p).read().splitlines() if os.path.exists(p) else []
+
+
+NAMED = (lambda p: raw(p, {'type': 'custom-title', 'customTitle': 'moderation-spinoff', 'sessionId': SID}),)
+r = refusal_rig(before=NAMED)
+r.gate(PING, T0)
+n_ = notes(r)
+check('listener-expiry refusal -> ONE notification naming the session, the time and the restart',
+      len(n_) == 1 and 'moderation-spinoff' in n_[0] and iso(A + 10)[11:16] in n_[0] and 'restarts it' in n_[0]
+      and last_fire(r).get('refusal_notice', {}).get('notified') is True, (n_, last_fire(r)))
+rc, out = r.gate(PING, T0 + 60)                                    # the next due ping retries the same refusal
+check('the next ping retrying the SAME refusal -> recovery line again, no second notification',
+      bool(recovery_of(out)) and len(notes(r)) == 1, (out, notes(r)))
+for trig, label in (('please look at the hub verdict', 'an owner message'), (MAIL_EVENT, 'a review verdict mail event')):
+    r = refusal_rig(trigger=trig, before=NAMED)
+    rc, out = r.gate(PING, T0)
+    n_ = notes(r)
+    check(f'refused reply to {label} -> ONE notification, no recovery line (the watch is not restarted)',
+          len(n_) == 1 and 'moderation-spinoff' in n_[0] and 'cannot wake it' in n_[0] and recovery_of(out) is None, (n_, out))
+r = refusal_rig(trigger=MAIL_EVENT)
+r.status(cache_expires_at=T0 + 50 * 60)                            # cache fresh: this tick is BLOCKED, not due
+rc, out = r.gate(PING, T0)
+check('a BLOCKED tick (cache fresh) still posts the notification for a new refusal',
+      blocked(out) and 'fresh' in out and len(notes(r)) == 1, (out, notes(r)))
+r = refusal_rig(trigger=MAIL_EVENT)
+live = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'mail-listen'])
+try:
+    r.touch(f'mail-listen-{SID8}.pid', f'{live.pid}\n')
+    r.gate(PING, T0)
+    n_ = notes(r)
+    check('refusal with the mail watch still running -> notification without a watch sentence',
+          len(n_) == 1 and 'mail watch' not in n_[0], n_)
+finally:
+    live.kill()
+    live.wait()
+r = refusal_rig()
+r.touch(f'session-standby-{SID8}', '1 x')
+r.gate(PING, T0)
+check('a /standby seat -> its ticks are blocked before the transcript is read, no notification', notes(r) == [], notes(r))
+r = due_rig()
+r.gate(PING, T0)
+check('no refusal -> no notification', notes(r) == [], notes(r))
+r = refusal_rig(trigger=MAIL_EVENT)
+r.gate(PING, T0)
+r.gate('back now', T0 + 30)
+note(r.tx, T0 + 40, MAIL_EVENT, promptSource='system')
+note(r.tx, T0 + 41, SAFETY_NOTE, isMeta=True)
+safety_refusal(r.tx, T0 + 50)
+r.gate(PING, T0 + 60)
+check('a NEW refusal later -> a second notification', len(notes(r)) == 2, notes(r))
+
+# notify hardening (three review findings): a harness run that
+# forgot the seam never reaches osascript, an empty seam is an off switch, and nothing on the notification path can
+# change a tick's decision. Every arm here puts a fake osascript first on PATH, so even a mutant that loses the guard
+# posts nothing real.
+FAKE_BIN = tempfile.mkdtemp(prefix='kw-fakebin-', dir=RUN_ROOT)
+with open(os.path.join(FAKE_BIN, 'osascript'), 'w') as _f:
+    _f.write('#!/bin/sh\necho "$@" >> "${KW_OSA_LOG:-/dev/null}"\n')
+os.chmod(os.path.join(FAKE_BIN, 'osascript'), 0o755)
+r = refusal_rig(trigger=MAIL_EVENT)
+osa = os.path.join(r.dir, 'osa.log')
+env = dict(os.environ, FF_STATE_DIR=r.state, KEEP_WARM_NOW=str(T0), KEEP_WARM_LOG=r.log, CLAUDE_PROJECT_DIR=r.dir,
+           PATH=FAKE_BIN + os.pathsep + os.environ['PATH'], KW_OSA_LOG=osa)
+env.pop('KEEP_WARM_NOTIFY_CMD', None)
+env.pop('SKIP_KEEP_WARM', None)
+p = subprocess.run([sys.executable, GATE], input=json.dumps({'session_id': SID, 'prompt': PING, 'transcript_path': r.tx}),
+                   capture_output=True, text=True, env=env, cwd=r.dir)
+check('a harness run (FF_STATE_DIR set) with no KEEP_WARM_NOTIFY_CMD never reaches osascript',
+      p.stdout.strip() == '' and not os.path.exists(osa), (p.stdout[-200:], os.path.exists(osa)))
+r = refusal_rig(trigger=MAIL_EVENT)
+osa = os.path.join(r.dir, 'osa.log')
+proj = tempfile.mkdtemp(prefix='kw-proj-', dir=RUN_ROOT)
+os.makedirs(os.path.join(proj, '.claude'))
+os.symlink(r.state, os.path.join(proj, '.claude', 'state'))       # production shape: no FF_STATE_DIR, no fake clock
+env = {k: v for k, v in os.environ.items() if k not in ('FF_STATE_DIR', 'KEEP_WARM_NOW', 'SKIP_KEEP_WARM')}
+env.update(KEEP_WARM_NOTIFY_CMD='', CLAUDE_PROJECT_DIR=proj, KEEP_WARM_LOG=r.log,
+           PATH=FAKE_BIN + os.pathsep + os.environ['PATH'], KW_OSA_LOG=osa)
+p = subprocess.run([sys.executable, GATE], input=json.dumps({'session_id': SID, 'prompt': PING, 'transcript_path': r.tx}),
+                   capture_output=True, text=True, env=env, cwd=r.dir)
+check('an empty KEEP_WARM_NOTIFY_CMD is an off switch in a production-shaped run: nothing reaches osascript',
+      'refusal_notice' in last_fire(r) and not os.path.exists(osa), (p.stdout[-200:], os.path.exists(osa)))
+NUL_NAME = (lambda p: raw(p, {'type': 'custom-title', 'customTitle': 'mod\x00spin', 'sessionId': SID}),)
+r = refusal_rig(before=NUL_NAME)
+rc, out = r.gate(PING, T0)
+check('a NUL in the session name -> the recovery ping still passes with its line (notify fails quietly)',
+      rc == 0 and not blocked(out) and bool(recovery_of(out)), out)
+r = refusal_rig(trigger=MAIL_EVENT, before=NUL_NAME)
+r.status(cache_expires_at=T0 + 50 * 60)
+rc, out = r.gate(PING, T0)
+check('a NUL in the session name on a BLOCKED tick -> the block keeps its own reason and its fire line',
+      blocked(out) and 'fresh' in out and 'gate error' not in out and os.path.exists(r.log)
+      and last_fire(r).get('refusal_notice', {}).get('notified') is False, out)
+r = refusal_rig(trigger=MAIL_EVENT)
+raw(r.tx, {'type': 'user', 'timestamp': iso(T0 - 60), 'message': 'not a dict'})   # off-shape: read as an empty message
+r.status(cache_expires_at=T0 + 50 * 60)
+rc, out = r.gate(PING, T0)
+check('an off-shape user record (message is a string) never changes the decision (the block keeps its own reason)',
+      blocked(out) and 'fresh' in out and 'gate error' not in out and os.path.exists(r.log), out)
+r = refusal_rig(trigger=MAIL_EVENT)
+raw(r.tx, {'type': 'user', 'timestamp': iso(T0 - 70), 'message': {'role': 'user', 'content': 'and now?'}, 'promptSource': 'typed'})
+raw(r.tx, {'type': 'assistant', 'timestamp': 1793990000, 'isApiErrorMessage': True,   # no usage: only the notice path reads it
+           'message': {'stop_reason': 'refusal', 'content': [{'type': 'text', 'text': 'API Error'}]}})
+r.status(cache_expires_at=T0 + 50 * 60)
+rc, out = r.gate(PING, T0)
+check('an exception on the notification path is caught and logged, and the block keeps its own reason (the decide() wrapper)',
+      blocked(out) and 'fresh' in out and os.path.exists(r.log)
+      and last_fire(r).get('refusal_notice', {}).get('error') == 'TypeError', out)
+
+# the review hub re-arms with its own listener flags
+r = refusal_rig()
+r.touch(f'review-hub-active-{SID8}')
+rc, out = r.gate(PING, T0)
+check('review hub -> the recovery command carries --rebroadcast-hours 48',
+      'mail-listen --poll 30 --rebroadcast-hours 48`' in (recovery_of(out) or ''), out)
+
+# the /pause keep-warm window passes through the same recovery
+r = refusal_rig()
+r.touch(f'session-pause-{SID8}', '1')
+r.touch(f'keep-warm-pause-{SID8}', str(int(T0 + 3600)))
+rc, out = r.gate(PING, T0)
+check('/pause keep-warm window -> the recovery line too (a paused seat keeps its listener on)', bool(recovery_of(out)), out)
+
+
+# 16b. the tool block on a recovery ping (real clock): exactly the listener call, once
+def deny_call(r, tool, tinput):
+    p = {'session_id': SID, 'tool_name': tool, 'tool_input': tinput}
+    env = {k: v for k, v in dict(os.environ, FF_STATE_DIR=r.state, CLAUDE_PROJECT_DIR=r.dir).items() if k != 'SKIP_KEEP_WARM'}
+    x = subprocess.run(['bash', DENY], input=json.dumps(p), capture_output=True, text=True, env=env)
+    return x.returncode, x.stdout.strip()
+
+
+now_real = int(time.time())
+r = refusal_rig(at=now_real)
+rc, out = r.gate(PING, now_real)
+m = re.search(r'command `([^`]+)`', recovery_of(out) or '')
+cmd = m.group(1) if m else ''
+listen = {'command': cmd, 'description': f'inbound session mail for {SID8}', 'timeout_ms': 1800000}
+rc, out = deny_call(r, 'Bash', {'command': 'ls'})
+check('recovery ping: a Bash call -> still DENIED', cmd != '' and '"permissionDecision":"deny"' in out, (cmd, out))
+for bad, label in ((dict(listen, command=cmd + '; rm -rf /tmp/x'), 'a listener command with a chained command'),
+                   (dict(listen, command='python3 scripts/other.py --poll 30'), 'another Monitor command'),
+                   (dict(listen, ws={'url': 'wss://x'}), 'a Monitor call carrying a websocket')):
+    rc, out = deny_call(r, 'Monitor', bad)
+    check(f'recovery ping: {label} -> DENIED, marker kept', '"permissionDecision":"deny"' in out and rec_marker(r), out)
+rc, out = deny_call(r, 'Monitor', listen)
+check('recovery ping: the exact listener command the gate printed -> allowed, and it spends the marker',
+      rc == 0 and out == '' and not rec_marker(r), (rc, out))
+rc, out = deny_call(r, 'Monitor', listen)
+check('recovery ping: the same call a second time -> DENIED', '"permissionDecision":"deny"' in out, out)
+r = Rig()
+r.touch(f'keep-warm-turn-{SID8}', f'{now_real}\n')
+rc, out = deny_call(r, 'Monitor', listen)
+check('ordinary ping (no recovery marker): the listener call -> DENIED (control)', '"permissionDecision":"deny"' in out, out)
+r.touch(f'keep-warm-recovery-{SID8}', f'{now_real - 2000}\n')
+rc, out = deny_call(r, 'Monitor', listen)
+check('recovery marker older than 30 minutes -> DENIED', '"permissionDecision":"deny"' in out, out)
+r.touch(f'keep-warm-recovery-{SID8}', f'{now_real}\n')
+rc, out = deny_call(r, 'Monitor', dict(listen, command=f'cd {r.dir} && python3 scripts/session-manifest.py mail-listen --poll 30 --rebroadcast-hours 48'))
+check('recovery ping: the review hub listener command -> allowed', rc == 0 and out == '', out)
+
+
+def armed(turn_body, rec_body):
+    x = Rig()
+    x.touch(f'keep-warm-turn-{SID8}', turn_body)
+    x.touch(f'keep-warm-recovery-{SID8}', rec_body)
+    return x
+
+
+LISTEN = 'python3 scripts/session-manifest.py mail-listen --poll 30'
+x = armed(f'{now_real}\n', f'{now_real}\n')
+rc, out = deny_call(x, 'Monitor', {'command': f'cd /tmp/elsewhere && {LISTEN}'})
+check('recovery ping: the listener command from ANOTHER directory -> DENIED (the cd is pinned to the project root)',
+      '"permissionDecision":"deny"' in out and rec_marker(x), out)
+rc, out = deny_call(x, 'Monitor', {'command': LISTEN})
+check('recovery ping: the bare listener command (no cd) -> allowed', rc == 0 and out == '', out)
+x = armed(f'{now_real}\n', f'{now_real - 60}\n')
+rc, out = deny_call(x, 'Monitor', {'command': LISTEN})
+check('recovery marker from an EARLIER ping (epoch differs from the turn marker) -> DENIED', '"permissionDecision":"deny"' in out, out)
+x = armed(f'{now_real}\n', f'{now_real}\n')
+rc, out = deny_call(x, 'Bash', {'command': LISTEN})
+check('recovery ping: a BASH call running the listener command -> DENIED', '"permissionDecision":"deny"' in out, out)
+x = armed(f'{now_real + 600}\n', f'{now_real + 600}\n')
+rc, out = deny_call(x, 'Monitor', {'command': LISTEN})
+check('recovery and turn markers stamped 10 minutes in the future -> no allow path (the turn block reads them stale)',
+      rc == 0 and out == '' and rec_marker(x), (rc, out))
+for body in ('0\n', '0800\n', 'x\n'):
+    x = armed(f'{now_real}\n', body)
+    rc, out = deny_call(x, 'Monitor', {'command': LISTEN})
+    check(f'recovery marker body {body.strip()!r} -> DENIED', '"permissionDecision":"deny"' in out, out)
+# two racing calls on one marker: the rename lets exactly one through
+races = []
+for _ in range(10):
+    x = armed(f'{now_real}\n', f'{now_real}\n')
+    env = {k: v for k, v in dict(os.environ, FF_STATE_DIR=x.state, CLAUDE_PROJECT_DIR=x.dir).items() if k != 'SKIP_KEEP_WARM'}
+    pl = json.dumps({'session_id': SID, 'tool_name': 'Monitor', 'tool_input': {'command': LISTEN}})
+    procs = [subprocess.Popen(['bash', DENY], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=env) for _ in range(2)]
+    for p in procs:              # feed both before reading either, so they run at the same time
+        p.stdin.write(pl)
+        p.stdin.close()
+    outs = [p.stdout.read().strip() for p in procs]
+    for p in procs:
+        p.wait()
+    races.append(sum(1 for o in outs if o == ''))
+check('two racing listener calls on one recovery marker -> exactly one allowed, 10 of 10 rounds', races == [1] * 10, races)
+
+# a review (its patch applied verbatim but for 2 hunks that only respelled
+# STOP as 14): the queued-owner flag's two readers, the quiet walk's own owner stop, and the notice read after the decision
+r = refusal_rig(trigger=EXPIRY_QUIET, before=(
+    lambda p: note(p, A - 1800, EXPIRY_QUIET, promptSource='system'),
+    lambda p: queued_owner(p, A - 1799, 'keep it running, I will write soon'),
+    lambda p: said(p, A - 1795, 'Leaving it off.')))
+rc, out = r.gate(PING, T0)
+check('two quiet expiries with the owner queued between them -> not an idle seat, recovery',
+      recovery_of(out) is not None and rec_marker(r), out)
+r = bare_rig()
+note(r.tx, A, 'please look at the hub verdict', promptSource='typed')
+queued_owner(r.tx, A + 1, 'and the other one')
+note(r.tx, A + 2, SAFETY_NOTE, isMeta=True)
+safety_refusal(r.tx, A + 10)
+rc, out = r.gate(PING, T0)
+check('owner queued inside a refused turn -> still ONE notification (only the recovery reads the flag)',
+      len(notes(r)) == 1 and recovery_of(out) is None, (notes(r), out))
+r = refusal_rig(trigger='please look at the hub verdict')
+note(r.tx, T0 - 10 * 60, PING + ', scheduled by this session.', promptSource='system', isMeta=True)
+queued_owner(r.tx, T0 - 10 * 60 + 1, 'back soon')
+said(r.tx, T0 - 10 * 60 + 3, '[keep-warm]')
+rc, out = r.gate(PING, T0)
+check('owner queued inside a LATER ping turn -> the refusal behind it still notifies', len(notes(r)) == 1, notes(r))
+r = refusal_rig()
+json.dump({'pings_since_owner': STOP}, open(os.path.join(r.state, f'keep-warm-{SID8}.json'), 'w'))
+rc, out = r.gate(PING, T0)
+check('stop-rule tick -> the notice never promises a ping will restart the watch',
+      blocked(out) and len(notes(r)) == 1 and 'restarts it' not in notes(r)[0], (out, notes(r)))
+r = refusal_rig(trigger='please look at the hub verdict')
+raw(r.tx, {'type': 'attachment', 'timestamp': iso(T0 - 60), 'attachment': {'type': 'queued_command', 'origin': 'human'}})
+r.status(cache_expires_at=T0 + 50 * 60)
+rc, out = r.gate(PING, T0)
+check('a record the walk cannot read -> the tick decides as without the notice (cache fresh), never a gate error',
+      blocked(out) and 'fresh' in out, out)
+r = refusal_rig()
+raw(r.tx, {'type': 'attachment', 'timestamp': iso(T0 - 60), 'attachment': {'type': 'queued_command', 'origin': 'human'}})
+rc, out = r.gate(PING, T0)
+check('the same off-shape attachment on a DUE ping -> it still passes, never a gate error', rc == 0 and not blocked(out), out)
+# from a later review: an unreadable record never earns a recovery and never raises on the notice path
+for _o in ('human', None, ['human']):
+    r = refusal_rig()
+    raw(r.tx, {'type': 'attachment', 'timestamp': iso(T0 - 60), 'attachment': {'type': 'queued_command', 'commandMode': 'prompt',
+                                                                               'prompt': 'leave it off', 'origin': _o}})
+    rc, out = r.gate(PING, T0)
+    check(f'a prompt-mode queued command with an unreadable origin ({_o!r}) after the refused expiry is the owner -> no recovery',
+          rc == 0 and not blocked(out) and recovery_of(out) is None and not rec_marker(r), out)
+r = bare_rig()   # the real shape of 406 of 16,953 task-notification queued commands (80 transcripts): no origin at all
+note(r.tx, A, EXPIRY_BUSY, promptSource='system')
+raw(r.tx, {'type': 'attachment', 'timestamp': iso(A + 1), 'attachment': {'type': 'queued_command', 'commandMode': 'task-notification',
+                                                                         'prompt': '<task-notification>\n<task-id>z</task-id>\n</task-notification>'}})
+note(r.tx, A + 2, SAFETY_NOTE, isMeta=True)
+safety_refusal(r.tx, A + 10)
+rc, out = r.gate(PING, T0)
+check('a task-notification queued command with no origin inside the refused turn is not the owner -> recovery', bool(recovery_of(out)), out)
+r = refusal_rig()
+raw(r.tx, {'type': 'user', 'timestamp': iso(T0 - 60), 'message': 'not a dict'})
+rc, out = r.gate(PING, T0)
+fl = last_fire(r) if os.path.exists(r.log) else {'refusal_notice': {'error': 'no fire line'}}
+check('a string-message user record after the refused expiry reads as a newer turn: pass, no recovery, no notice error (_msg)',
+      rc == 0 and not blocked(out) and recovery_of(out) is None and 'error' not in fl.get('refusal_notice', {}), (out, fl))
 
 # the house style for every block reason: subject, then detail; no parentheses, no semicolons
 odd = sorted({x for x in BLOCK_REASONS if '(' in x or ';' in x})

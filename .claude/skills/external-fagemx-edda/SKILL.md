@@ -9,15 +9,10 @@ version-source-of-truth: crates.io `edda` (0.6.2 at the read) and the repo's mai
 type: research
 catalog-basis: deep-cataloged from a full local clone at 46bf30ec215546912a1833b3c3b808e53f9e0025 on 2026-10-09 — the clone made with `GIT_LFS_SKIP_SMUDGE=1` and `core.symlinks=false` (0 symlinks, 0 gitlinks, no `.lfsconfig`; 1,663 tree entries, equal to the API listing) and read with cat, sed, grep and read-only git only, nothing built or run; an earlier draft written from the contents API was checked against the clone citation by citation and its corrections are folded into this body
 description: >-
-  External-system expert on fagemx/edda, a solo Rust workspace (one `edda` binary,
-  23 crates) that gives coding agents a hash-chained SQLite ledger of decisions and
-  sessions, a peers board with path claims and heartbeats, and a review gate that
-  refuses an author session as its own reviewer, grades the reviewer's model, keeps a
-  standing "changes requested" over a later approval, pins approval to a head sha and
-  voids a review when the base moves over a changed file, all in code; plus a
-  session-end post-mortem whose learned rules fade on a 30/60/90-day clock. Use
-  when calibrating reviewer independence, verdict precedence, head and base pinning
-  at promote, peer claims and heartbeats, or rule lifecycles that decay.
+  External-system expert on fagemx/edda, a Rust ledger for coding agents: hash-chained decisions,
+  peer claims and heartbeats, a review gate that refuses an author as its own reviewer and pins
+  approval to a head sha, learned rules that decay on a 30/60/90-day clock. Use when calibrating
+  reviewer independence, verdict precedence, head and base pinning, peer claims, or rule lifecycles.
 ---
 
 # External — fagemx/edda

@@ -1,14 +1,10 @@
 ---
 name: saas-architect
 description: >-
-  SaaS system architect specializing in scalable architecture design, system
-  evolution, async patterns, multi-tenancy, API design, domain modeling, and
-  technical debt management. Use when making high-level architectural decisions,
-  evaluating system trade-offs, planning scalability, designing async pipelines,
-  structuring background jobs, planning API versioning, modeling domains, deciding
-  what NOT to build, or documenting architectural decisions (ADRs). Distinct from
-  saas-engineer (implementation details) — this skill operates at the design and
-  trade-off level.
+  SaaS system architect: scalable design, system evolution, async pipelines, multi-tenancy, API
+  design, domain modeling, technical-debt management. Use when making an architectural decision,
+  weighing a system trade-off, planning scale, structuring background jobs, versioning an API,
+  deciding what not to build, or writing an ADR. Design level; saas-engineer is implementation.
 skepticism: medium
 ---
 
@@ -505,3 +501,9 @@ Low on any axis = reconsider or simplify dramatically.
 - **saas-economist**: Business constraints that shape architecture (cost, scale triggers)
 - **prompt-engineer**: AI pipeline architecture (async processing, model routing, cost management)
 - **saas-launch-marketing**: Launch constraints that affect architectural priorities
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+SaaS system architect specializing in scalable architecture design, system evolution, async patterns, multi-tenancy, API design, domain modeling, and technical debt management. Use when making high-level architectural decisions, evaluating system trade-offs, planning scalability, designing async pipelines, structuring background jobs, planning API versioning, modeling domains, deciding what NOT to build, or documenting architectural decisions (ADRs). Distinct from saas-engineer (implementation details) — this skill operates at the design and trade-off level.

@@ -99,9 +99,12 @@ export function parseSegments(text) {
 
 /** The sort key of a dated heading: its first date, plus the time right after it when there is one. */
 export function headingKey(heading) {
-  const m = /(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}):(\d{2}|\dx|xx))?/.exec(heading || "");
+  // A date-only heading keys as the END of its day (23:59), not midnight: keyed at 00:00 it sorted before every
+  // timed block of the same day and the two newest blocks rolled while older timed ones stayed (found in
+  // review, 2026-11-02). A "~" before the hour ("2026-11-02 ~19:40") is accepted.
+  const m = /(\d{4}-\d{2}-\d{2})(?:[ T]~?(\d{2}):(\d{2}|\dx|xx))?/.exec(heading || "");
   if (!m) return null;
-  return `${m[1]}T${m[2] || "00"}:${(m[3] || "00").replace(/x/g, "0")}`;
+  return `${m[1]}T${m[2] || "23"}:${(m[3] || "59").replace(/x/g, "0")}`;
 }
 
 function makeStub(seg, partRel, k, date) {

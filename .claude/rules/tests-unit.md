@@ -280,7 +280,7 @@ For any assertion pinning a value out of a small set (a `tags.source` marker, an
 
 ### FIVE MEASURED WAYS A GREEN ASSERTION TESTS NOTHING
 
-(1) **one-sided oracle** — fires-when-due pinned on a time-gated DESTRUCTIVE sweep with no fresh-fixture does-NOT-fire arm; (2) **expected-zero with no positive control** — an absence-grep keyed on a literal nothing else pins, so a reword makes it pass forever; (3) **unreachable path** — an upstream gate refuses the input before the writer under test is reached; (4) **malformed fixture** — doubled shell escapes meant `printf` emitted literal backslashes and the attack never happened (verify the bytes with `od -c`); (5) **unasserted guard** — protection shipped with nothing verifying it. **Fixture corollary: reach the guard by the path it DEFENDS, not the convenient one** — routed through the happy-path constructor it is caught by an earlier gate and passes vacuously. PARENT to search before adding a sibling: **`audit-check/SKILL.md` Check 4b(c)**. Cousins: the fire-count rule above, `typescript.md`, the `tests-integration.md` control-arm (not in this copy).
+(1) **one-sided oracle** — fires-when-due pinned on a time-gated DESTRUCTIVE sweep with no fresh-fixture does-NOT-fire arm; (2) **expected-zero with no positive control** — an absence-grep keyed on a literal nothing else pins, so a reword makes it pass forever; (3) **unreachable path** — an upstream gate refuses the input before the writer under test is reached; (4) **malformed fixture** — doubled shell escapes can make `printf` emit literal backslashes, so the case under test never runs (verify the bytes with `od -c`); (5) **unasserted guard** — protection shipped with nothing verifying it. **Fixture corollary: reach the guard by the path it DEFENDS, not the convenient one** — routed through the happy-path constructor it is caught by an earlier gate and passes vacuously. PARENT to search before adding a sibling: **`audit-check/SKILL.md` Check 4b(c)**. Cousins: the fire-count rule above, `typescript.md`, the `tests-integration.md` control-arm (not in this copy).
 
 ### WRITE THE WEAKER TRUE CLAIM WHEN A MUTATION REFUSES TO FAIL
 
@@ -362,7 +362,7 @@ An arm kept single-assertion on purpose (to avoid order-shadowing) is indistingu
 
 ### RE-CHECK THE GREEN ROWS OF A MUTATION TABLE, NOT ONLY THE REDS
 
-A GREEN disclosed as "defense-in-depth behind X's own check" proves only that the current fixtures cannot distinguish the two layers; the disclosure is a claim ABOUT X, which the mutation cannot test. **Run X directly against the input class the mutated layer defends** — if X admits it, the green marked a MISSING ARM (measured: both layers admitted `"constructor"`, and every off-registry fixture was a junk string a bare index also rejects, so the green measured the corpus's SHAPE, not the code). Then add the discriminating fixture, and delegate GREEN rows explicitly.
+A GREEN disclosed as "defense-in-depth behind X's own check" proves only that the current fixtures cannot distinguish the two layers; the disclosure is a claim ABOUT X, which the mutation cannot test. **Run X directly against the input class the mutated layer defends** — if X admits it, the green marked a MISSING ARM (for example, both layers can admit `"constructor"` while every off-registry fixture is a junk string a bare index also rejects, so the green measures the corpus's SHAPE, not the code). Then add the discriminating fixture, and delegate GREEN rows explicitly.
 
 ### ONE MUTATION ARM PER INDEPENDENT BRANCH — A MUTANT CAN DELETE ITS OWN PRECONDITION
 
@@ -421,7 +421,7 @@ Two doors, because the two measured instances entered through different ones. **
 
 ### AN ABSOLUTE FIXTURE STAMP ROTS AT THE PERIOD BOUNDARY WHEN THE OTHER SIDE IS DERIVED FROM NOW
 
-**TELL: the CONTROL arm fails, so it reads as a product bug and the real assertion never ran.** ⛔ **Ask whether the other side derives from now IN THE CODE UNDER TEST — never whether `Date.now()` appears in the file:** the incident's pre-fix fixture held ZERO clock calls, so a symbol-grep answers NO on the one file known rotten. A deliberately PINNED clock keeps absolute stamps. ⚠️ A whole-month relative anchor re-arms it — `addOneMonth` clamps, so a 60-day anchor sat ON the boundary **5.24%** of days. Copy a surviving sibling. Archive.
+**TELL: the CONTROL arm fails, so it reads as a product bug and the real assertion never ran.** ⛔ **Ask whether the other side derives from now IN THE CODE UNDER TEST — never whether `Date.now()` appears in the file:** the incident's pre-fix fixture held ZERO clock calls, so a symbol-grep answers NO on the one file known rotten. A deliberately PINNED clock keeps absolute stamps. ⚠️ A whole-month relative anchor re-arms it in either spelling: `addOneMonth` clamps, so a 60-day anchor sat ON the boundary **5.24%** of days, and a fixed `+31 days` read back as one calendar month lands up to 3 days in the FUTURE in every shorter month (red ~5 months a year) — pin the clock. Copy a surviving sibling. Archive.
 
 ### A MACOS-ONLY PATH IN A TEST IS GREEN LOCALLY AND RED ON CI'S LINUX RUNNER
 

@@ -352,7 +352,8 @@ def lifecycle_status(sid):
     """Derive a peer's terminal status from session-lifecycle.py's markers in STATE_DIR,
     WITHOUT re-importing it: finished marker -> EXITED (terminal SessionEnd
     — no future intent); standby marker -> STANDBY (owner-parked, listener disarmed);
-    wrapped marker -> WRAPPED (on-hold but REPEATABLE — keep
+    wrapping marker -> WRAPPING (its /wrap is RUNNING — live, never a peer-wake; 2026-11-01);
+    wrapped marker -> WRAPPED (the wrap COMPLETED; on-hold but REPEATABLE — keep
     defending, it may resume); else ACTIVE. We deliberately do NOT treat WRAPPED as
     terminal — /wrap is empirically repeatable, so a wrapped peer can still mutate state.
     Only a true exit drops a peer from the overlap gate. Sid normalized to lifecycle.py's
@@ -383,6 +384,37 @@ def lifecycle_status(sid):
     `scripts/session_status.py`."""
     s = (sid or '').lower()[:8]
     return session_status.lifecycle_status(s, STATE_DIR, SESSIONS_DIR)
+
+
+def listener_live(sid):
+    """True when the peer's inbound-mail listener PROCESS is running: its pid file
+    (`STATE_DIR/mail-listen-<sid8>.pid`, written by `mail-listen` at arm time) names a live
+    pid. A missing file, an unparseable pid and a dead pid all read NOT live — the same
+    instrument session-start.sh and /post-compact Step 5 use (`kill -0 $(cat <pid file>)`), so a
+    stale pid file left by a killed Monitor reads dead, as it should. A pid we may not signal
+    (PermissionError) is a live process that is not ours, so it reads live.
+
+    Consumer: mail-send's recipient notice (2026-11-08). The idle stop is a standing rule
+    (a quiet seat owed nothing stops listening and only the owner's next message wakes it), so a mail
+    routed to such a seat sits unread and nobody is told. The sender is the one place that can
+    see it at send time: on 2026-10-30 a relayed build request sat unread about
+    2.5 h behind a stopped listener and it was found only by noticing."""
+    s = (sid or '').lower()[:8]
+    p = os.path.join(STATE_DIR, f'mail-listen-{s}.pid')
+    try:
+        with open(p, encoding='utf-8') as f:
+            pid = int(f.read().strip().split()[0])
+    except (OSError, ValueError, IndexError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def own_session_path():
@@ -1242,7 +1274,7 @@ def cmd_read(args):
         # coordination risks (the overlap gate already skips them). WRAPPED is
         # on-hold-but-repeatable; ACTIVE carries no badge. Lets /orient distinguish
         # "a peer is live on this" from "a peer finished this an hour ago".
-        badge = {'EXITED': ' · ✓ exited', 'WRAPPED': ' · ⏸ wrapped', 'CHECKPOINT': ' · ⏯ checkpoint (declared CONTINUING)',
+        badge = {'EXITED': ' · ✓ exited', 'WRAPPED': ' · ⏸ wrapped', 'WRAPPING': ' · ⏳ wrapping (its /wrap started, not completed — treat as live)',
                  'STANDBY': ' · ⏸ standby (owner-parked, listener DISARMED — mail queues until the owner resumes it)'}.get(status, '')
         print(f'- **`{m["sid"]}`** ({age_min}{badge}) — {m["work_subject"][:120]}')
         if status != 'EXITED' and m['sensitive_refs']:
@@ -1423,7 +1455,7 @@ def cmd_check_overlap(args):
     print()
     for o in overlaps:
         src_tag = '🗂  (cached manifest)' if o['source'] == 'manifest' else '🌳 (git working tree)'
-        badge = {'EXITED': ' · ✓ exited', 'WRAPPED': ' · ⏸ wrapped (done-for-now signal — STILL a live process; can resume + send/receive mail)', 'CHECKPOINT': ' · ⏯ checkpoint (wrapped WITH declared intent to CONTINUE — expect further work)',
+        badge = {'EXITED': ' · ✓ exited', 'WRAPPED': ' · ⏸ wrapped (its /wrap COMPLETED — done-for-now, STILL a live process; can resume + send/receive mail)', 'WRAPPING': ' · ⏳ wrapping (its /wrap started, not completed — treat as live until the completion stamp)',
                  'STANDBY': ' · ⏸ standby (owner-parked — STILL a live process holding its work; listener DISARMED, so it reads mail only when the owner resumes it)'}.get(o.get('lifecycle', ''), '')
         print(f'### Peer `{o["sid"]}` {src_tag}{badge}{o.get("turn_badge", "")} — {o["work"][:120]}')
         print('**Overlapping files (will edit both sides?):**')
@@ -1631,7 +1663,7 @@ def cmd_who(args):
     for r in rows:
         marker = '→ ' if r['own'] else ''
         you = ' **(YOU)**' if r['own'] else ''
-        badge = {'EXITED': ' ✓', 'WRAPPED': ' ⏸', 'CHECKPOINT': ' ⏯', 'STANDBY': ' ⏸ standby'}.get(r['status'], '')
+        badge = {'EXITED': ' ✓', 'WRAPPED': ' ⏸', 'WRAPPING': ' ⏳ wrapping', 'STANDBY': ' ⏸ standby'}.get(r['status'], '')
         # Last-turn OUTCOME beside the lifecycle badge: mtime says a session is warm, this says
         # whether its turns are LANDING. A wedged seat re-writes its jsonl on every failed turn,
         # so the two disagree exactly when it matters (see turn_outcome_badge). Blank when
@@ -2142,6 +2174,15 @@ def cmd_mail_send(args):
                  f'this only when the owner resumes it; expect no reply on its own. mail-prune holds '
                  f'direct mail to a parked seat past the {MAIL_UNREAD_TTL_HOURS}h TTL; a broadcast '
                  f'is NOT held.')
+    elif to != 'all' and not listener_live(to):
+        # Not parked, not exited, but nobody is listening: idle stop or a
+        # dead watch. Delivery is fine; readership waits on the owner's next message to that seat, and
+        # only the sender knows at send time (2026-10-30: routed work sat unread ~2.5 h this
+        # way). A sender that needs the reply carries this line into its own readout, so the owner knows whom to poke.
+        sent += (f"\n⏸ recipient `{to}` is not listening (no live mail-listen process: its idle rule "
+                 f"stopped it, or the watch died) — it reads this at the owner's next message to it or "
+                 f"at its next start; expect no reply on its own. If this needs reading soon, say so in "
+                 f"your readout so the owner knows which session to poke.")
     print(sent)
     return 0
 
@@ -4486,7 +4527,8 @@ def cmd_mail_await(args):
     Exactly ONE trigger mode:
       --signal <tok> [--from <sid>]          cooperative: a mail to me with `signal: <tok>`
       --on-commit <pathspec> [--since <ref>] observational: a NEW commit touches <pathspec>
-      --peer-done <sid>                      observational: peer reached WRAPPED, STANDBY or EXITED
+      --peer-done <sid>                      observational: peer reached WRAPPED (its /wrap COMPLETED),
+                                             STANDBY after a completed wrap, or EXITED — never WRAPPING
 
     Bounded by --timeout (default 7200s), polled every --poll (default 30s). The
     condition is checked BEFORE the first sleep, so a signal/commit that landed before
@@ -4537,12 +4579,17 @@ def cmd_mail_await(args):
             if st == 'EXITED':
                 return f'GO — peer `{sid}` has EXITED (terminal); you are clear to proceed.'
             if st == 'WRAPPED':
-                # /wrap is repeatable (a wrapped peer can resume + keep committing) — don't overstate.
-                return (f'GO — peer `{sid}` is WRAPPED (done-for-now) — but /wrap is repeatable, so '
-                        f'confirm it is not still committing before you rely on its state.')
-            # STANDBY masks WRAPPED in the derived label; the wrap EVENT is what this mode waits on.
-            _wp = session_status.wrapped_marker(STATE_DIR, sid)
-            if st == 'STANDBY' and os.path.exists(_wp) and session_status.wrapped_mode(_wp) == 'wrap':
+                # WRAPPED = the wrap COMPLETED (the completion stamp is /wrap's last act since
+                # 2026-11-01; before that the marker landed at Step 0 and this fired ~10 steps early).
+                # /wrap is still repeatable (a wrapped peer can resume + keep committing) — don't overstate.
+                return (f'GO — peer `{sid}` is WRAPPED (its /wrap completed; done-for-now) — but /wrap is '
+                        f'repeatable, so confirm it is not still committing before you rely on its state.')
+            # WRAPPING (a /wrap RUNNING) is deliberately NOT a go: the peer is mid-wrap, committing and
+            # persisting — the rule is WRAPPED only when the wrap is fully complete. Falls through.
+            # STANDBY masks WRAPPED in the derived label; the wrap EVENT is what this mode waits on —
+            # a COMPLETED one, not while a newer wrap is still running on the parked seat, and never a
+            # wrap older than an exit marker — `session_status.wrap_state`, the derivation's own helper.
+            if st == 'STANDBY' and session_status.wrap_state(STATE_DIR, sid) == 'WRAPPED':
                 return (f'GO — peer `{sid}` WRAPPED and is now in STANDBY (owner-parked, listener '
                         f'disarmed) — it takes no turns until the owner resumes it.')
         elif args.on_commit:
@@ -5306,11 +5353,11 @@ def _print_corroboration(target, target_abs, hours):
 def _whose_edit_holder_verdict(rows):
     """PURE: rows = (tag, lifecycle status, is_own) for EVERY session that records the file,
     exactly as the caller prints them -> None (no other session has a real write), 'all-exited',
-    'paused' (none ACTIVE, at least one wrapped/standby) or 'live' (one is ACTIVE or a CHECKPOINT,
-    which declared it is continuing). Both exclusions live HERE so the self-test pins them: the
+    'paused' (none ACTIVE, at least one wrapped/standby) or 'live' (one is ACTIVE or WRAPPING —
+    a /wrap RUNNING is a seat still working; 2026-11-01). Both exclusions live HERE so the self-test pins them: the
     caller's own row never counts, and only an [observed]/[agent] row can produce a verdict. An
     [assigned] row still VETOES 'all-exited' — it is the one tag a live author wears when it wrote
-    through a channel the scan cannot see (the en.json case in the floor disclosure below), and a
+    through a channel the scan cannot see (the translations-bundle case in the floor disclosure below), and a
     false 'all-exited' is the direction that costs data."""
     others = [(tag, s) for (tag, s, own) in rows if not own]
     if not any(tag != 'assigned' for (tag, _) in others):
@@ -5318,7 +5365,7 @@ def _whose_edit_holder_verdict(rows):
     statuses = [s for (_, s) in others]
     if all(s == 'EXITED' for s in statuses):
         return 'all-exited'
-    if any(s in ('ACTIVE', 'CHECKPOINT') for s in statuses):
+    if any(s in ('ACTIVE', 'WRAPPING') for s in statuses):
         return 'live'
     return 'paused'
 
@@ -6368,6 +6415,44 @@ def cmd_self_test(args):
                 _f.write(f'{_now - 2000} deadbeefsha\n')
             check('status: standby under a superseded exit + a NEWER wrap → STANDBY at all three sites',
                   _all_three('aaaa0008'), ('STANDBY', 'STANDBY', 'STANDBY'))
+            # WRAPPING: a /wrap RUNNING outranks a completed wrap and reads the
+            # same at all three sites — under a superseded exit too, when it post-dates the exit.
+            _mk('aaaa0009', marker_ago=1000, record_ago=0, jsonl_mtime_ago=0, wrap_ago=500)
+            with open(os.path.join(_p_state, 'session-wrapping-aaaa0009'), 'w') as _f:
+                _f.write(f'deadbeefsha {_now - 100} wrap\n')
+            check('status: a WRAPPING marker over a completed wrap (superseded exit) → WRAPPING at all three sites',
+                  _all_three('aaaa0009'), ('WRAPPING', 'WRAPPING', 'WRAPPING'))
+            # ...and a WRAPPING marker that PRE-DATES the exit died with the session: it does not speak.
+            _mk('aaaa0010', marker_ago=1000, record_ago=0, jsonl_mtime_ago=0)
+            with open(os.path.join(_p_state, 'session-wrapping-aaaa0010'), 'w') as _f:
+                _f.write(f'deadbeefsha {_now - 2000} wrap\n')
+            check('status: a WRAPPING marker PRE-DATING a superseded exit → ACTIVE (the wrap died with the session)',
+                  _all_three('aaaa0010'), ('ACTIVE', 'ACTIVE', 'ACTIVE'))
+            # STANDBY outranks WRAPPING: a seat parked mid-wrap is deaf, whatever its wrap was doing.
+            with open(os.path.join(_p_state, 'session-wrapping-aaaa0011'), 'w') as _f:
+                _f.write(f'deadbeefsha {_now - 100} wrap\n')
+            with open(os.path.join(_p_state, 'session-standby-aaaa0011'), 'w') as _f:
+                _f.write(f'{_now - 50} deadbeefsha\n')
+            check('status: STANDBY over WRAPPING (parked mid-wrap) → STANDBY at all three sites',
+                  _all_three('aaaa0011'), ('STANDBY', 'STANDBY', 'STANDBY'))
+            # A legacy 'checkpoint' wrapped marker (written before 2026-11-01) has no state now: ACTIVE.
+            with open(os.path.join(_p_state, 'session-wrapped-aaaa0012'), 'w') as _f:
+                _f.write(f'deadbeefsha {_now - 100} checkpoint\n')
+            check('status: a legacy checkpoint wrapped marker → ACTIVE at all three sites (the CHECKPOINT state is retired)',
+                  _all_three('aaaa0012'), ('ACTIVE', 'ACTIVE', 'ACTIVE'))
+            # exit_marker_superseded ARM 1 reads the WRAPPING marker too: Step 0 writes it, not
+            # the wrapped marker, so a wrap stamped after an INFERRED exit is the seat back at the keyboard. No
+            # transcript here, so ARM 2 cannot answer and ARM 1 alone decides; the control is a pre-exit stamp.
+            _mk('aaaa0013', marker_ago=1000, reason='inferred-idle')
+            with open(os.path.join(_p_state, 'session-wrapping-aaaa0013'), 'w') as _f:
+                _f.write(f'deadbeefsha {_now - 100} wrap\n')
+            check('status: an INFERRED exit + a WRAPPING marker after it → WRAPPING at all three sites (ARM 1 reads it)',
+                  _all_three('aaaa0013'), ('WRAPPING', 'WRAPPING', 'WRAPPING'))
+            _mk('aaaa0014', marker_ago=1000, reason='inferred-idle')
+            with open(os.path.join(_p_state, 'session-wrapping-aaaa0014'), 'w') as _f:
+                _f.write(f'deadbeefsha {_now - 2000} wrap\n')
+            check('status: an INFERRED exit + a WRAPPING marker BEFORE it → EXITED (ARM 1 compares, the control)',
+                  _all_three('aaaa0014'), ('EXITED', 'EXITED', 'EXITED'))
         finally:
             STATE_DIR, SESSIONS_DIR = _sd2, _ss2
             for _k, _v in _p_saved.items():
@@ -7247,8 +7332,8 @@ def cmd_self_test(args):
               _hv([('observed', 'STANDBY', False)]), 'paused')
         check('whose-edit verdict: one ACTIVE among EXITED → live',
               _hv([('observed', 'EXITED', False), ('observed', 'ACTIVE', False)]), 'live')
-        check('whose-edit verdict: CHECKPOINT (declared continuing) → live',
-              _hv([('observed', 'WRAPPED', False), ('agent', 'CHECKPOINT', False)]), 'live')
+        check('whose-edit verdict: WRAPPING (a /wrap running) → live',
+              _hv([('observed', 'WRAPPED', False), ('agent', 'WRAPPING', False)]), 'live')
         check('whose-edit verdict: the caller\'s own ACTIVE row never counts',
               _hv([('observed', 'EXITED', False), ('observed', 'ACTIVE', True)]), 'all-exited')
         check('whose-edit verdict: only the caller\'s own row → no line',
@@ -7643,7 +7728,7 @@ def build_parser():
     maw.add_argument('--from', dest='from_sid', help='With --signal: only accept the signal from this 8-hex sender')
     maw.add_argument('--on-commit', help='Observational: wait for a NEW commit touching this git pathspec (no sender cooperation needed)')
     maw.add_argument('--since', help='With --on-commit: baseline git ref (default: HEAD at arm time)')
-    maw.add_argument('--peer-done', help='Observational: wait until this peer session reaches WRAPPED, STANDBY or EXITED (its /wrap, /standby or /exit)')
+    maw.add_argument('--peer-done', help='Observational: wait until this peer session reaches WRAPPED (its /wrap COMPLETED — never while it is WRAPPING), STANDBY after a completed wrap, or EXITED')
     maw.add_argument('--timeout', type=int, default=7200, help='Max seconds to wait before giving up (default 7200 = 2h)')
     maw.add_argument('--poll', type=int, default=30, help='Seconds between checks (default 30)')
 

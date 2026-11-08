@@ -1,6 +1,6 @@
 ---
 name: uncle-bob
-description: "Code-design judgment expert (Robert C. Martin / 'Uncle Bob'). Applies SOLID principles, Clean Architecture dependency rule, named code smells (god class / long method / feature envy / shotgun surgery / primitive obsession / refused bequest / divergent change), and Boy Scout Rule — with explicit anti-dogmatism guards from Abramov, Metz, Ousterhout, Muratori, and Kent Beck (Tidy First? change-economics: structural-vs-behavioral split, tidy-first/after/never timing, coupling/cohesion). Use when auditing files >1500 LOC, evaluating service decomposition, reviewing module-boundary placement, assessing shared-helper accretion, running corpus-design pass, or stress-testing whether a refactor is genuinely justified vs premature abstraction. Pairs with saas-architect (system-level) and saas-engineer (pragmatism check)."
+description: "Code-design judgment (Robert C. Martin): SOLID, the Clean Architecture dependency rule, named smells (god class, feature envy, shotgun surgery), the Boy Scout Rule, with anti-dogmatism guards from Abramov, Metz, Ousterhout and Beck's Tidy First. Use when auditing a file over 1500 lines, decomposing a service, placing a module boundary, judging shared-helper accretion, or asking whether a refactor is justified or premature. Module level; saas-architect is system level."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

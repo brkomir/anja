@@ -1,6 +1,6 @@
 ---
 name: haines-paywall-upgrade-cro
-description: When the user wants to create or optimize in-app paywalls, upgrade screens, upsell modals, or feature gates. Also use when the user mentions "paywall," "upgrade screen," "upgrade modal," "upsell," "feature gate," "convert free to paid," "freemium conversion," "trial expiration screen," "limit reached screen," "plan upgrade prompt," "in-app pricing," "free users won't upgrade," "trial to paid conversion," or "how do I get users to pay." Use this for any in-product moment where you're asking users to upgrade. Distinct from public pricing pages (see haines-page-cro) — this focuses on in-product upgrade moments where the user has already experienced value. For pricing decisions, see saas-economist.
+description: "When the user wants to create or optimize in-app paywalls, upgrade screens, upsell modals, or feature gates. Also use when the user mentions paywall, upgrade screen, upsell, feature gate, freemium conversion, or trial expiration screen. For public pricing pages, see haines-page-cro."
 metadata:
   version: 1.1.0
 skepticism: medium
@@ -256,3 +256,9 @@ What you've accomplished:
 - **haines-churn-prevention**: For cancel flows, save offers, and reducing churn post-upgrade
 - **haines-page-cro**: For public pricing page optimization
 - **haines-onboarding-cro**: For driving to aha moment before upgrade
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (part of a shrink of the restart overhead; the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+When the user wants to create or optimize in-app paywalls, upgrade screens, upsell modals, or feature gates. Also use when the user mentions "paywall," "upgrade screen," "upgrade modal," "upsell," "feature gate," "convert free to paid," "freemium conversion," "trial expiration screen," "limit reached screen," "plan upgrade prompt," "in-app pricing," "free users won't upgrade," "trial to paid conversion," or "how do I get users to pay." Use this for any in-product moment where you're asking users to upgrade. Distinct from public pricing pages (see haines-page-cro) — this focuses on in-product upgrade moments where the user has already experienced value. For pricing decisions, see saas-economist.

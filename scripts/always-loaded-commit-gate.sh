@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # always-loaded-commit-gate.sh — refuse a commit that carries an always-loaded file while the committing
 # session's door is closed. Called by scripts/safe-commit.sh and scripts/private-index-commit.sh before
-# they stage anything, and by .githooks/prepare-commit-msg on every commit git's own commit path makes,
-# safe-commit.sh's included.
+# they stage anything, and by .githooks/prepare-commit-msg (and pre-applypatch, for git am and git rebase
+# --apply) on every commit git's own commit path makes, safe-commit.sh's included.
 #
 #   always-loaded-commit-gate.sh -- <path>...   (paths relative to the repo root)
 #   always-loaded-commit-gate.sh --self-test
@@ -16,11 +16,12 @@
 # .claude/orchestrator/conventions.md with `git apply` on 2026-10-28 with its door closed, and a command-string
 # check cannot catch that shape, because `git apply` names the patch file, not the files it changes. Every
 # write method ends in a commit, so the commit is where it is caught, before the change is durable: through
-# these two tools, or through git's own commit path, where .githooks/prepare-commit-msg calls this gate. It
-# does NOT reach an uncommitted change on disk, which every session reads at once, nor anything that writes a
-# commit or moves a branch outside git's commit path (commit-tree or update-ref by hand; git am or a git rebase
-# --apply, which apply patches without running prepare-commit-msg; a commit that already exists arriving on a
-# branch: a fast-forward merge, pull or cherry-pick --ff, or the upstream side of a pull --rebase; a reset),
+# these two tools, or through git's own commit path, where .githooks/prepare-commit-msg calls this gate
+# (.githooks/pre-applypatch for git am and git rebase --apply, since 2026-10-29). It does NOT reach an
+# uncommitted change on disk, which every session reads at once, nor anything that writes a
+# commit or moves a branch outside those hooks (commit-tree or update-ref by hand; git am --no-verify, which
+# skips pre-applypatch; a commit that already exists arriving on a
+# branch: a fast-forward merge, pull, rebase or cherry-pick --ff, or the upstream side of a pull --rebase; a reset),
 # nor a run with core.hooksPath pointed elsewhere, nor a session working to get past it. Every session runs as the
 # owner's user, so a commit from a process it detached from its own tree, with both session variables dropped,
 # reads as the owner's terminal (the parent walk ends at the root without meeting Claude Code), and a ps or bash
@@ -66,12 +67,13 @@ GUARD="${AL_GATE_GUARD:-$HERE/../.claude/hooks/block-subagent-always-loaded-writ
 # not count.
 # One process row per call: from ps, or, as a fixture seam, from the table file FF_ALWAYS_LOADED_ANCESTRY names
 # (rows "<pid> <ppid> <comm> [args]"; the row keyed SELF answers the walk's first pid; an unreadable table is a ps
-# failure; comm EMPTY prints nothing). Only the ROW comes from the seam, so every rule in the walk is under test.
+# failure; a pid with no row, or comm EMPTY, prints nothing, as ps does). Only the ROW comes from the seam, so every rule in the walk is under test.
 _al_proc() {  # $1 = ps -o fields (ppid=,comm= or args=) · $2 = pid
   if [ -z "${FF_ALWAYS_LOADED_ANCESTRY+x}" ]; then ps -o "$1" -p "$2" 2>/dev/null; return; fi
   [ -r "$FF_ALWAYS_LOADED_ANCESTRY" ] || return 1
   local f="$1" row; row="$(awk -v p="$2" '$1==p {print; exit}' "$FF_ALWAYS_LOADED_ANCESTRY")"
-  [ -n "$row" ] || row="$(awk '$1=="SELF" {print; exit}' "$FF_ALWAYS_LOADED_ANCESTRY")"
+  [ -n "$row" ] || [ "$2" != "$$" ] || row="$(awk '$1=="SELF" {print; exit}' "$FF_ALWAYS_LOADED_ANCESTRY")"
+  [ -n "$row" ] || return 0
   set -f; set -- $row; set +f
   [ "${3:-}" = "EMPTY" ] && return 0
   case "$f" in ppid=,comm=) printf '%s %s\n' "$2" "$3" ;; *) shift 3; printf '%s\n' "$*" ;; esac
@@ -93,7 +95,7 @@ claude_ancestor() {
     case "$pp" in ''|*[!0-9]*) return 2 ;; esac
     p="$pp"; i=$((i+1))
   done
-  [ "$p" -le 1 ] && return 1
+  [ "$p" -eq 0 ] && return 1  # the loop reads pid 1 too (-gt 0), so only p=0 means the walk reached the root
   return 2  # 64 levels without reaching the root: the walk cannot tell, so fail closed
 }
 
@@ -149,9 +151,9 @@ al_gate() {
         return 0
       fi
       if [ "$arc" -eq 0 ]; then
-        echo "always-loaded-commit-gate: REFUSED — neither session variable is set, but Claude Code is one of this commit's parent processes, so this is a Claude session and its door decides: ${hits[*]}. Commit from the session with its door open. Nothing was staged or committed." >&2
+        echo "always-loaded-commit-gate: REFUSED — neither session variable is set, but Claude Code is one of this commit's parent processes, so this is a Claude session and its door decides: ${hits[*]}. Commit from the session with its door open. Nothing was committed." >&2
       else
-        echo "always-loaded-commit-gate: REFUSED — neither session variable is set and the parent processes could not be read to the root (the table was unreadable, or the walk passed 64 levels), so the owner's own terminal cannot be told from a Claude session (fail closed): ${hits[*]}. Nothing was staged or committed." >&2
+        echo "always-loaded-commit-gate: REFUSED — neither session variable is set and the parent processes could not be read to the root (the table was unreadable, or the walk passed 64 levels), so the owner's own terminal cannot be told from a Claude session (fail closed): ${hits[*]}. Nothing was committed." >&2
       fi
       { mkdir -p "$root/.claude/logs" && python3 -c '
 import json, sys, datetime
@@ -160,7 +162,7 @@ print(json.dumps({"ts": datetime.datetime.now(datetime.timezone.utc).strftime("%
           "${hits[@]}" >> "$root/.claude/logs/always-loaded-commit-gate-fires.jsonl"; } 2>/dev/null || true
       return 1
     fi
-    echo "always-loaded-commit-gate: REFUSED — a Claude session (CLAUDECODE is set) with no CLAUDE_CODE_SESSION_ID, so no door can be named for it: ${hits[*]}. Commit these from the owner's own terminal. Nothing was staged or committed." >&2
+    echo "always-loaded-commit-gate: REFUSED — a Claude session (CLAUDECODE is set) with no CLAUDE_CODE_SESSION_ID, so no door can be named for it: ${hits[*]}. Commit these from the owner's own terminal. Nothing was committed." >&2
     return 1
   fi
   { mkdir -p "$root/.claude/logs" && python3 -c '
@@ -175,7 +177,7 @@ print(json.dumps({"ts": datetime.datetime.now(datetime.timezone.utc).strftime("%
     echo "  These files are read by every session on its next turn, and only the owner opens the door for writing them."
     echo "  Ask the owner to run:  ! touch ${FF_ALWAYS_LOADED_ALLOW_PREFIX:-/tmp/claude-always-loaded-allow}.$sid"
     echo "  (it opens the door for the guard's window, 15 minutes unless FF_ALWAYS_LOADED_ALLOW_TTL_SEC says otherwise), then re-run this commit; remove the door AFTER the commit."
-    echo "  Nothing was staged or committed."
+    echo "  Nothing was committed."
   } >&2
   return 1
 }
@@ -296,6 +298,15 @@ self_test() {
   at "SELF 500 bash" "500 1 /opt/claude/versions/2.1.0" "1 0 /sbin/launchd"
   g $NOVARS bash "$SELF" -- CLAUDE.md
   ck 1 "G22e Claude Code started by its versioned path counts too" "Claude Code is one of"
+  local rt
+  for rt in nodejs bun; do
+    at "SELF 500 bash" "500 400 $rt $rt /opt/lib/node_modules/@anthropic-ai/claude-code/cli.js" "400 1 -zsh" "1 0 /sbin/launchd"
+    g $NOVARS bash "$SELF" -- CLAUDE.md
+    ck 1 "G22f $rt running the claude-code package counts too" "Claude Code is one of"
+  done
+  at "SELF 500 bash" "500 1 /usr/local/bin/claude-monitor" "1 0 /sbin/launchd"
+  g $NOVARS bash "$SELF" -- CLAUDE.md
+  ck 0 "G22g a binary whose name only contains claude does not count (near miss for the name and versioned rules)" "not run from a Claude session"
   g -u CLAUDE_CODE_SESSION_ID -u FF_ALWAYS_LOADED_ALLOW_MARKER -u CLAUDECODE FF_ALWAYS_LOADED_ANCESTRY="$T/no-such-table" bash "$SELF" -- CLAUDE.md
   ck 1 "G23 a process table that cannot be read refuses (fail closed)" "could not be read"
   at "SELF 500 bash" "500 0 EMPTY"
@@ -312,6 +323,10 @@ self_test() {
   printf '#!/bin/bash\nn=$1; shift\nif [ "$n" -gt 0 ]; then bash "$0" $((n-1)) "$@"; exit $?; fi\nexec "$@"\n' > "$T/nest.sh"
   g -u CLAUDE_CODE_SESSION_ID -u FF_ALWAYS_LOADED_ALLOW_MARKER -u CLAUDECODE -u FF_ALWAYS_LOADED_ANCESTRY bash "$T/nest.sh" 70 bash "$SELF" -- CLAUDE.md
   ck 1 "G26 a parent chain longer than the walk's 64 levels refuses (fail closed), never reads as the owner's terminal" "could not be read" "not run from a Claude session"
+  # G26b: 64 rows above the gate end at pid 1, so the cap stops the walk with pid 1 unread: refused, never "none".
+  { echo "SELF 1000 bash"; local k; for k in $(seq 1000 1061); do echo "$k $((k+1)) bash"; done; echo "1062 1 bash"; echo "1 0 claude"; } > "$AT"
+  g $NOVARS bash "$SELF" -- CLAUDE.md
+  ck 1 "G26b the cap reached with pid 1 still unread refuses, never reads as the owner's terminal" "" "not run from a Claude session"
   # G25: in the gate's own repo the parent-process seam is ignored and the real process table answers, so the
   # expected result is read off this self-test's own parents (a Claude session: refused; a terminal or CI: through).
   # The seam's table always says the OPPOSITE of the real one, so a seam the gate wrongly honours turns this red

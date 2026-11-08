@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# pre-applypatch — git am, and git rebase --apply (which runs git am), commit without prepare-commit-msg. git runs
+# this hook with the patch already in the index and before the commit, and a non-zero exit stops the commit, not
+# the apply: the patch stays applied (measured on git 2.50.1, 2026-10-28). Same door check, same body: prepare-commit-msg's.
+# The second hook site, added after the first. git am --no-verify skips this
+# hook (git help am), so that route stays open, stated not closed. A refusal leaves the patch applied to the
+# working tree and the index, where every session reads it, so the refusal says how to put the tree back.
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/prepare-commit-msg" && exit 0
+echo "pre-applypatch: the patch is applied to the working tree and the index but NOT committed, and every session reads the working tree: git am --abort (git rebase --abort, under a rebase) puts it back; with the door open, git am --continue (git rebase --continue) commits it." >&2
+exit 1

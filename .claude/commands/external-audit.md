@@ -74,7 +74,7 @@ Return findings with severity P0/P1/P2, evidence citation (file paths / line num
 
 ## Synthesis rules (inherit from /expert-review)
 
-- Group findings by topic, not by expert
+- Group findings by topic, not by expert (per `.claude/skills/expert-review/SKILL.md` § Group by topic, not by expert)
 - Flag cross-system convergence: 2+ experts surfacing same finding → promote severity one step (v2.7.0 Guideline 14)
 - Contrarian MUST surface ≥1 concrete concern (v2.7.1 MUST-find rule)
 - Correlation notice if ≥50% panel converges on similar verdicts without distinct evidence

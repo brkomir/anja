@@ -13,6 +13,15 @@
 #
 # Enable this hook (and any other hook in this directory) by configuring once per clone:
 #   git config core.hooksPath .githooks
+#
+# WHOSE FIRES LOG A COMMIT WRITES (every gate below that records through .claude/hooks/lib/fires-log.sh:
+# tsc-gate, pre-commit-skill-lint, todo-meta-schema). git runs the COMMITTING tree's own copy of this
+# file with cwd = that tree's root, so a commit made inside a worktree writes the WORKTREE's
+# .claude/logs/<stem>-fires.jsonl, never the main checkout's — unless HOOK_FIRES_LOG_DIR or
+# CLAUDE_PROJECT_DIR is set in the committing shell (the lib's ladder: that dir, then
+# $CLAUDE_PROJECT_DIR/.claude/logs, then the git toplevel). The Bash tool exports neither, so a reader
+# of the main log undercounts worktree commits by exactly the worktrees' own rows (measured 2026-11-01
+# in a scratch repo: a worktree commit's pre-commit reported cwd and --show-toplevel = the worktree).
 
 set -euo pipefail
 
@@ -70,8 +79,9 @@ if [[ "${SKIP_ROUTER_STALENESS_CHECK:-0}" != "1" ]]; then
 fi
 
 # --- tsc gate (warn-mode) ---
-# NEW class: scripts the push gate types but nothing types at commit time (the rejected inverse
-# was excluding plans/ and eval/ from tsconfig).
+# NEW class: scripts the push gate types but nothing types at commit time. The rejected inverse
+# concerned one eval-root probe, which stays typechecked; plans/, scratchpad/ and
+# eval/{candidates,tier-cal-candidates,runs} are now excluded from tsconfig.
 # WHY: 159 tracked .mts files, 157 outside src/, sit inside tsconfig's `**/*.mts` include, so the
 # whole-project `tsc --noEmit` that pre-deploy-check runs at step 1 (and pre-push aborts on) types
 # every one of them — but they are executed with tsx, which transpiles without typechecking, and
@@ -132,7 +142,7 @@ if [[ -n "$TSC_GATE_STAGED" ]]; then
       echo ""
       printf '%s\n' "$TSC_GATE_ERRS" | sed 's/^/  /'
       echo ""
-      echo "   A typecheck error in a script under plans/ or eval/ reds any push gate that runs this check (the source project's pre-deploy-check does, at step 1) —"
+      echo "   A typecheck error anywhere tsconfig covers (src/, scripts/, eval/lib, eval/*.mts) reds any push gate that runs this check (the source project's pre-deploy-check does, at step 1) —"
       echo "   fix before pushing or set SKIP_TSC_GATE=1. (The errors may be outside your staged files: tsc types the worktree.)"
       echo "   WARN-MODE — commit allowed. Fire recorded in .claude/logs/tsc-gate-fires.jsonl;"
       echo "   promotion to BLOCK-MODE is a separate decision read off that ledger. Escape: SKIP_TSC_GATE=1 git commit."
@@ -161,6 +171,17 @@ if [[ -n "$TSC_GATE_STAGED" ]]; then
     fi
     rm -f "$TSC_GATE_OUT"
   fi
+fi
+
+# --- todo.txt meta-schema arm (warn-mode) ---
+# A `meta:` block the defer-trigger scanner cannot read LOOKS filed and never fires; the scan that
+# would say so runs at /wrap and /orient, long after the author has gone. The hook reuses the
+# scanner's own parse and kind check over the STAGED todo.txt, diff-scoped to the meta lines this
+# commit wrote, and is silent when todo.txt is not staged. It never blocks (always exits 0; the
+# `|| true` covers a crash). Escape: SKIP_TODO_META_SCHEMA_CHECK=1 — its OWN escape, above the
+# skill-lint escape on purpose. Mechanics, bounds and the fires log: the hook's header.
+if [[ -f .claude/hooks/todo-meta-schema-warn.sh ]]; then
+  bash .claude/hooks/todo-meta-schema-warn.sh || true
 fi
 
 if [[ "${SKIP_SKILL_LINT:-0}" == "1" ]]; then

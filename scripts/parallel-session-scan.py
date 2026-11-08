@@ -76,8 +76,9 @@ def parse_iso(ts):
 def lifecycle_status(sid):
     """Derive a peer's terminal status from session-lifecycle.py's markers in
     .claude/state/: finished marker -> EXITED (terminal SessionEnd, no future intent);
-    wrapped marker -> WRAPPED (on-hold but REPEATABLE — a wrapped peer can resume +
-    mutate state, so it is NOT terminal); else ACTIVE.
+    standby -> STANDBY; wrapping marker -> WRAPPING (its /wrap is RUNNING — live, 2026-11-01);
+    wrapped marker -> WRAPPED (the wrap COMPLETED; on-hold but REPEATABLE — a wrapped peer
+    can resume + mutate state, so it is NOT terminal); else ACTIVE.
 
     ⚠️ NO LONGER A REPLICA. This used to be a hand-copied twin of
     session-manifest.py's version, and the copy is what the file's own history warns
@@ -375,7 +376,7 @@ def main():
         badge = {
             'EXITED': ' · ✓ EXITED (terminal — edits settled in git, NOT a live race)',
             'WRAPPED': ' · ⏸ wrapped (done-for-now but REPEATABLE — can resume; still a coordination risk)',
-            'CHECKPOINT': ' · ⏯ checkpoint (wrapped WITH declared intent to CONTINUE — treat as live)',
+            'WRAPPING': ' · ⏳ wrapping (its /wrap stamped Step 0 and has not stamped completion — treat as live)',
             'STANDBY': ' · ⏸ standby (owner-parked, listener DISARMED — holds its work, cannot reply until the owner resumes it; still a coordination risk)',
         }.get(status, '')
         print(f'### Peer session `{s["session_id"]}` (last file-write {age_min:.0f} min ago — recency, NOT liveness{badge})')

@@ -2,6 +2,8 @@
 # PreToolUse hook — block Edit/Write/MultiEdit on ALWAYS-LOADED files.
 # Rule: writes to always-loaded files are guarded the same way memory writes are — a
 # sub-agent does not write them directly; the orchestrator does.
+#   It is a fence for the agent's own tool calls, not a security boundary: any process running as the user
+#   can write these files. It refuses the routes named below; a route it does not name is not refused.
 #
 # PROTECTED SET (the always-loaded corpus — every seat loads these on every turn):
 #   .claude/rules/*.md
@@ -52,6 +54,8 @@
 #   THIS hook, so the set and the 15-min window are one definition), because this hook never sees a shell write
 #   such as `git apply`.
 #   A session that creates the marker itself routes around a safety control, whatever the auto-mode classifier allows.
+#   This hook refuses a file tool writing it; block-dangerous.sh (arm `door-create`, 2026-10-29) refuses a session's
+#   shell command creating it. The owner's `! touch` passes neither, since his `!` lines skip PreToolUse hooks.
 #   The marker is PER SESSION since 2026-10-25: it opens the guard for the session whose payload session_id it names, and only until its mtime is 15 min old (FF_ALWAYS_LOADED_ALLOW_TTL_SEC, default 900; 0 = no expiry). The bare /tmp/claude-always-loaded-allow opens nothing.
 #   The marker is a DELIBERATE ACT, which is the whole point: it converts an always-loaded
 #   write from something that can happen by reflex into something someone chose.
@@ -173,6 +177,46 @@ def rel_in_root(cand, key):
             return None
         cur = up
     raise LookupError("depth")
+# THE EDIT/WRITE ARM ASKS EVERY SPELLING, NOT ONLY THE LEXICAL ONE (2026-10-30, review findings).
+# rel_in_root meets ROOT by inode but reads the path BELOW it as written, and the grep below folds ASCII only,
+# so two spellings landed on a protected file and were allowed: a symlink or a link/.. between ROOT and the
+# file (lnk/x.md with lnk -> .claude/rules, lnkO/../rules/x.md, an outside dir linking in), and a non-ASCII
+# letter APFS folds onto an ASCII one (U+017F long s: .claude/ruleſ/x.md, AGENTſ.md). al_lands asks
+# the lexical path, its realpath, and the realpath of its parent plus the literal name (the file need not
+# exist yet), and matches each repo-relative form both as written and as its NFC casefold. Protected under
+# ANY spelling is protected. Exit codes for is_protected: 0 = lands on a protected path, 3 = the lexical
+# spelling is provably outside ROOT and no spelling lands (the other-repo carve), 1 = neither, so the
+# lexical grep legs decide. An undecidable spelling (LookupError) falls back to its whole normpath, so it
+# fails CLOSED exactly as before. patch-always-loaded.py spellings() still sends the same forms; that is now
+# belt-and-braces, not the only route.
+import re, unicodedata
+def al_spellings(raw):
+    out = [os.path.normpath(raw)]
+    for f in (lambda: os.path.realpath(raw),
+              lambda: os.path.join(os.path.realpath(os.path.dirname(raw) or "."), os.path.basename(raw))):
+        try:
+            s = f()
+        except Exception:
+            continue
+        if s not in out:
+            out.append(s)
+    return out
+def al_lands(raw, key, pat):
+    rx = re.compile(pat, re.I)
+    lexical_outside = False
+    for i, s in enumerate(al_spellings(raw)):
+        try:
+            rel = rel_in_root(s, key)
+        except Exception:
+            rel = os.path.normpath(s)
+        if rel is None:
+            if i == 0:
+                lexical_outside = True
+            continue
+        for form in (rel, unicodedata.normalize("NFC", rel.casefold())):
+            if rx.search(form):
+                return 0
+    return 3 if lexical_outside else 1
 '
 
 is_protected() {
@@ -203,16 +247,27 @@ is_protected() {
   # any stat failure or a hit on ROOT exits 1, so the suffix-match deny below still
   # applies. Smoke arms pin BOTH directions (case alias + firmlink deny; other-repo
   # spellings stay silent). No apostrophes in this payload — the single-quote rule.
+  # Since 2026-10-30 the same call also asks the PHYSICAL and FOLDED spellings (al_lands in CONTAIN_PY):
+  # rc 0 denies, rc 3 is the old provably-outside carve, anything else (1, or a missing or broken python3)
+  # leaves the lexical grep legs below to decide, so an interpreter fault never opens the gate. The protected
+  # set is passed in as AL_RAW, so there is still one definition.
+  # The provably-outside carve needs the AL_OUTSIDE token on stdout as well as rc 3, so a python3 that
+  # exits 3 on every call (a shim) cannot open the gate by its exit code alone (2026-10-30).
   if [ -n "${ROOT:-}" ]; then
-    if python3 -c "$CONTAIN_PY"'
+    local al_out al_rc
+    al_out=$(python3 -c "$CONTAIN_PY"'
 import sys
 try:
-    r = rel_in_root(sys.argv[1], root_key(sys.argv[2]))
+    rc = al_lands(sys.argv[1], root_key(sys.argv[2]), sys.argv[3])
 except Exception:
-    sys.exit(1)
-sys.exit(0 if r is None else 1)' "$canon" "$ROOT" 2>/dev/null; then
-      return 1
-    fi
+    rc = 1
+if rc == 3:
+    print("AL_OUTSIDE")
+sys.exit(rc)' "$raw" "$ROOT" "$AL_RAW" 2>/dev/null); al_rc=$?
+    case $al_rc in
+      0) return 0 ;;
+      3) [ "$al_out" = "AL_OUTSIDE" ] && return 1 ;;
+    esac
   fi
   printf '%s' "$canon" | grep -qiE "$AL_CANON" && return 0
   printf '%s' "$raw"   | grep -qiE "$AL_RAW"   && return 0
@@ -454,7 +509,8 @@ _al_is_subagent && WHAT_TO_DO="You are a SUB-AGENT (this call carries agent_id),
 #   review-seat fixtures inside throwaway worktrees and one a probe, zero genuine un-marked writes to
 #   the live tree. Weighed against the three reasons above, the decision was to keep the no: THE BASH
 #   MATCHER STAYS UNWIRED. The Edit/Write arm's symlink gap (the walk meets ROOT by inode but reads
-#   the path below it lexically) is a watch item whose trigger is a commit that wires a Bash matcher here.
+#   the path below it lexically) was a watch item until a shell route onto this guard landed
+#   (patch-always-loaded, 2026-10-30); al_lands in CONTAIN_PY closes it.
 #
 # ⛔ WHY THE BACKSTOP CANNOT SERVE AS THE BASH GATE — MEASURED 2026-08-19, AND IT INVERTS THE
 # EARLIER WRITE-UP OF THE SHELL GAP. A Bash payload carries no `file_path`, so every Bash command falls

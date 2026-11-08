@@ -81,9 +81,12 @@ Public API (each consumer passes its OWN directories — see `lifecycle_status`)
   last_record_epoch(sid, sessions_dir)       -> int   | None
   exit_marker_superseded(...)                -> bool
   wrapped_mode(path)                         -> 'checkpoint' | 'wrap'
+  wrapping_marker(state_dir, sid)            -> path of the WRAPPING marker (a /wrap is RUNNING)
+  wrap_speaks(path)                          -> bool: a wrapped marker that derives WRAPPED
+  wrap_state(state_dir, sid)                 -> 'WRAPPING' | 'WRAPPED' | None (floored on an exit marker)
   standby_marker(state_dir, sid)             -> path of the /standby marker
   read_standby(path)                         -> (epoch:int, sha:str)
-  lifecycle_status(sid, state_dir, sessions_dir) -> 'EXITED' | 'STANDBY' | 'CHECKPOINT' | 'WRAPPED' | 'ACTIVE'
+  lifecycle_status(sid, state_dir, sessions_dir) -> 'EXITED' | 'STANDBY' | 'WRAPPING' | 'WRAPPED' | 'ACTIVE'
   project_key(root)                          -> the harness's <key> for a root (per UTF-16 unit; >200 suffixed)
   repo_root(cwd=None)                        -> the MAIN checkout's root, as the harness keys it
   project_key_dir(root=None, cwd=None)       -> ~/.claude/projects/<key>
@@ -99,6 +102,17 @@ import unicodedata
 
 def wrapped_marker(state_dir, sid):
     return os.path.join(state_dir, f'session-wrapped-{sid}')
+
+
+def wrapping_marker(state_dir, sid):
+    """The WRAPPING marker: a /wrap is RUNNING on this seat. Written by
+    `session-lifecycle.py wrapping` at /wrap Step 0, removed by `session-lifecycle.py wrapped`
+    (plain, which also writes the wrapped marker) or `wrapped --checkpoint` (which leaves the seat
+    ACTIVE) as the wrap's last act before the summary. Same body shape as the wrapped marker ('<HEAD-sha> <epoch> <mode>'),
+    so `read_wrapped` / `wrapped_mode` read it. Before this marker existed the wrapped stamp was
+    written at Step 0, so a peer's `mail-await --peer-done` fired while the wrap still had ~10 steps
+    to run (measured: ACTIVE 22:41:31Z, "WRAPPED" 22:43Z, the wrap still running at 22:48Z)."""
+    return os.path.join(state_dir, f'session-wrapping-{sid}')
 
 
 def finished_marker(state_dir, sid):
@@ -256,7 +270,7 @@ def last_record_epoch(sid, sessions_dir):
     return best
 
 
-def exit_marker_superseded(sid, finished_epoch, finished_reason, wrapped_path, sessions_dir):
+def exit_marker_superseded(sid, finished_epoch, finished_reason, wrapped_path, sessions_dir, wrapping_path=None):
     """Is the exit marker a STALE CLAIM the session has since outlived? -> bool
 
     A bare existence check on the finished marker is a ONE-WAY LATCH: a session that
@@ -265,7 +279,7 @@ def exit_marker_superseded(sid, finished_epoch, finished_reason, wrapped_path, s
 
     ARM 1 — RE-WRAPPED AFTER AN *INFERRED* EXIT. An inferred marker is a crash-recovery
     GUESS written by session-lifecycle.py's sweep, not an observed SessionEnd. A strictly
-    newer wrapped marker is the session demonstrably back at the keyboard, and a stale
+    newer wrapped or wrapping marker (the newer of the two) is the session demonstrably back at the keyboard, and a stale
     guess must not outrank live evidence. Measured 2026-07-30: one session carried
     'inferred-idle' from the 07-27 memory crash and read EXITED for 2.6 days while
     actively committing and wrapping. A REAL SessionEnd still wins this arm
@@ -289,8 +303,12 @@ def exit_marker_superseded(sid, finished_epoch, finished_reason, wrapped_path, s
     data, and REACHABLE — one trailing record can exceed the tail window on precisely the
     busiest (most-alive) sessions. Absent ≠ negative.
     """
-    if finished_reason.startswith('inferred') and os.path.exists(wrapped_path):
-        if read_wrapped(wrapped_path)[1] > finished_epoch:
+    # ARM 1 reads the WRAPPING marker too (2026-11-02): since 2026-11-01 /wrap
+    # Step 0 writes `session-wrapping-*`, not the wrapped marker, and `wrapped --checkpoint` removes
+    # both, so a wrap stamped after the inferred exit is evidence on whichever marker carries it.
+    if finished_reason.startswith('inferred'):
+        stamps = [read_wrapped(p)[1] for p in (wrapped_path, wrapping_path) if p and os.path.exists(p)]
+        if stamps and max(stamps) > finished_epoch:
             return True
     rec = last_record_epoch(sid, sessions_dir)
     if rec is not None:
@@ -308,6 +326,13 @@ def wrapped_mode(path):
     conservative reading (done-for-now). Deliberately a SEPARATE reader rather than a
     third element on read_wrapped's tuple: that function has three call sites across two
     modules and widening its arity would break them for a field only one caller needs.
+
+    SINCE 2026-11-01 NOTHING WRITES 'checkpoint' INTO A WRAPPED MARKER: a checkpoint wrap's
+    completion (`session-lifecycle.py wrapped --checkpoint`) REMOVES the markers and leaves the
+    seat ACTIVE. A 'checkpoint' wrapped marker is
+    therefore a LEGACY record of a seat that declared it was continuing, and `wrap_speaks`
+    reads it as not-WRAPPED (-> ACTIVE) until the 7-day GC removes it. The field is still read
+    on the WRAPPING marker, where it records which completion stamp the wrap owes.
     """
     try:
         parts = open(path).read().split()
@@ -316,24 +341,58 @@ def wrapped_mode(path):
         return 'wrap'
 
 
+def wrap_speaks(path):
+    """Does this wrapped marker derive WRAPPED? Present AND not a legacy 'checkpoint' record.
+    The one predicate every WRAPPED arm of `lifecycle_status` goes through, so a consumer that
+    reads the wrapped marker directly (`mail-await --peer-done`'s STANDBY arm) asks the same
+    question the derivation does."""
+    return os.path.exists(path) and wrapped_mode(path) == 'wrap'
+
+
+def wrap_state(state_dir, sid):
+    """'WRAPPING' | 'WRAPPED' | None — the wrap half of the precedence, derived in ONE place.
+
+    WRAPPING (a wrapping marker) outranks WRAPPED (a wrapped marker that `wrap_speaks`), and when
+    the seat carries an exit marker neither speaks unless it POST-DATES that exit (the floor
+    `lifecycle_status` has always applied in its superseded-exit branch). `lifecycle_status`
+    calls it under STANDBY/EXITED; `mail-await --peer-done` calls it for the wrap EVENT hidden
+    beneath STANDBY, so the two cannot drift (2026-11-02 — the waiter used to
+    re-derive this without the exit floor)."""
+    finished = finished_marker(state_dir, sid)
+    floor = read_finished(finished)[0] if os.path.exists(finished) else None
+    wrapping = wrapping_marker(state_dir, sid)
+    wrapped = wrapped_marker(state_dir, sid)
+    if os.path.exists(wrapping) and (floor is None or read_wrapped(wrapping)[1] > floor):
+        return 'WRAPPING'
+    if wrap_speaks(wrapped) and (floor is None or read_wrapped(wrapped)[1] > floor):
+        return 'WRAPPED'
+    return None
+
+
 def lifecycle_status(sid, state_dir, sessions_dir):
     """Derive a session's terminal status from its lifecycle markers. THE SSOT.
 
     -> 'EXITED'  terminal SessionEnd, no future intent — the ONLY status that drops a
                  peer from the overlap gate and licenses adopting its work.
-       'WRAPPED' done-for-now but REPEATABLE — /wrap is empirically repeatable (48h
-                 evidence: 8/11 sessions worked past their final /wrap), so a wrapped
-                 peer can still mutate state. Deliberately NOT terminal.
-    'CHECKPOINT' wrapped WITH DECLARED INTENT TO CONTINUE (`/wrap --checkpoint`). A strict
-                 SUB-CASE of WRAPPED, never a replacement: it is equally non-terminal, still
-                 mutates state, still sends and receives mail, and still counts for the
-                 overlap gate. It says only that the seat declared it was not finished.
-                 ⚠️ Its ABSENCE proves nothing — a plain `/wrap` followed by hours of work
-                 reads WRAPPED, because intent is declared at wrap time and never inferred.
+       'WRAPPED' a /wrap COMPLETED (every step ran, no --checkpoint) and the seat has not
+                 stamped anything since — done-for-now but REPEATABLE (48h evidence: 8/11
+                 sessions worked past their final /wrap), so a wrapped peer can still mutate
+                 state. Deliberately NOT terminal. The ONLY state that satisfies
+                 `mail-await --peer-done` short of EXITED.
+      'WRAPPING' a /wrap is RUNNING (stamped at /wrap Step 0, cleared by the completion stamp
+                 before the summary). LIVE and NON-TERMINAL everywhere: it counts for the
+                 overlap gate, mutates state (the wrap commits), reads mail, and must NOT wake a
+                 peer waiting on this seat. Ranks ABOVE WRAPPED: a seat re-wrapping after an
+                 earlier completed wrap is running, not done. A checkpoint wrap's completion
+                 (`wrapped --checkpoint`) clears it and leaves ACTIVE — the seat continues; a
+                 wrap that ends "wrap complete: no" leaves it standing, which is the truth.
+                 The former 'CHECKPOINT' state (2026-08-26..2026-11-01, a wrapped marker with
+                 mode 'checkpoint') is gone: its end state is ACTIVE now, and a legacy record
+                 reads ACTIVE via `wrap_speaks`.
        'ACTIVE'  no marker, or a marker the session has outlived.
        'STANDBY' owner-PARKED (`/standby`, 2026-09-23): alive, holding its work, listener
                  DISARMED on purpose, woken by NOTHING but the owner's next message. Ranks
-                 below EXITED (a parked seat can still die) and above WRAPPED / CHECKPOINT
+                 below EXITED (a parked seat can still die) and above WRAPPING / WRAPPED
                  whatever their age: a wrap stamped after the park leaves the listener just as
                  disarmed, and every consumer that acts on standby keys on the marker's bare
                  existence, so a newer wrap must not relabel a deaf seat as one that still
@@ -342,6 +401,8 @@ def lifecycle_status(sid, state_dir, sessions_dir):
                  until `/standby resume` clears it — the UserPromptSubmit net
                  (`standby-resume-check.sh`) re-fires until then, exactly like the
                  post-compact marker. Still IN the overlap gate (it holds uncommitted work).
+
+    Precedence: EXITED > STANDBY > WRAPPING > WRAPPED > ACTIVE.
 
     `state_dir` / `sessions_dir` are passed IN rather than read from the environment,
     because the consumers use different env overrides for test isolation
@@ -355,16 +416,18 @@ def lifecycle_status(sid, state_dir, sessions_dir):
     ⚠️ A STALE EXIT MARKER IS IGNORED, NOT INVERTED. When `exit_marker_superseded` says
     the session came back, we do not short-circuit to ACTIVE (what the manifest + scan
     replicas did) nor fall straight through to WRAPPED (what session-lifecycle.py did) —
-    we re-read the REMAINING markers, and the wrapped marker only speaks if it POST-DATES
-    the exit. A wrap that predates the exit describes a state the session has since left
-    twice over; reporting it would badge a demonstrably-working seat "⏸ wrapped". Note
-    arm 1 already required exactly this `wts > fts` ordering, so this makes one existing
-    rule uniform rather than inventing a new one. Both branches are non-terminal, so
-    neither can produce the false EXITED that decision (2) exists to prevent.
+    we re-read the REMAINING markers, and the wrapping / wrapped markers only speak if they
+    POST-DATE the exit. A wrap that predates the exit describes a state the session has since
+    left twice over; reporting it would badge a demonstrably-working seat "⏸ wrapped" (or a
+    wrap that died with the session "⏳ wrapping"). Note arm 1 already required exactly this
+    `wts > fts` ordering, so this makes one existing rule uniform rather than inventing a new
+    one. Every branch here is non-terminal, so none can produce the false EXITED that
+    decision (2) exists to prevent.
     """
     if not sid:
         return 'ACTIVE'
     finished = finished_marker(state_dir, sid)
+    wrapping = wrapping_marker(state_dir, sid)
     wrapped = wrapped_marker(state_dir, sid)
     standby = standby_marker(state_dir, sid)
 
@@ -372,22 +435,16 @@ def lifecycle_status(sid, state_dir, sessions_dir):
     # keys on its bare existence (session-start.sh, mail-listen-arm-reminder.sh, post-compact
     # Step 5, standby-resume-check.sh), and the listener stays disarmed until `resume` removes
     # it — so a wrap stamped after the park changes what the seat DID, not whether it can HEAR.
-    # Readers that need the wrap EVENT (`mail-await --peer-done`) read the wrap marker directly.
+    # Readers that need the wrap EVENT under STANDBY (`mail-await --peer-done`) call `wrap_state`, the same floor.
 
     if os.path.exists(finished):
         fts, freason = read_finished(finished)
-        if not exit_marker_superseded(sid, fts, freason, wrapped, sessions_dir):
+        if not exit_marker_superseded(sid, fts, freason, wrapped, sessions_dir, wrapping):
             return 'EXITED'
-        if os.path.exists(standby):
-            return 'STANDBY'
-        if os.path.exists(wrapped) and read_wrapped(wrapped)[1] > fts:
-            return 'CHECKPOINT' if wrapped_mode(wrapped) == 'checkpoint' else 'WRAPPED'
-        return 'ACTIVE'
     if os.path.exists(standby):
         return 'STANDBY'
-    if os.path.exists(wrapped):
-        return 'CHECKPOINT' if wrapped_mode(wrapped) == 'checkpoint' else 'WRAPPED'
-    return 'ACTIVE'
+    # A superseded exit leaves its marker standing, so `wrap_state` floors both wrap markers on it.
+    return wrap_state(state_dir, sid) or 'ACTIVE'
 
 
 # ────────────────────────────────────────────────────────────────────────────────

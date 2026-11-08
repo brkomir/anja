@@ -24,6 +24,7 @@ documentation burst session-cadence.md § ASK WHETHER ANYONE EVER WRITES THIS WI
 warns about. It does descend into what DOES run: $( ) and backtick bodies, `bash|sh|zsh -c '…'`,
 `eval`, and the command after sudo / env / nohup / nice / time / exec / xargs. A heredoc fed to a
 shell as its SCRIPT (`bash <<EOF`, `cat <<EOF | sh`) is a run too, and its body is scanned.
+So are the $( ) and backtick spans of any UNQUOTED heredoc body (`<<EOF`): the shell expands them.
 
 LIMITS (stated, not hidden). It parses shell text approximately: a heredoc is recognised by
 `<<WORD` on its line, and an unbalanced quote falls back to a line-by-line read (a dropped line
@@ -47,7 +48,7 @@ SIGNALS = set("HUP INT QUIT ILL TRAP ABRT EMT FPE KILL BUS SEGV SYS PIPE ALRM TE
               "CONT CHLD TTIN TTOU IO XCPU XFSZ VTALRM PROF WINCH INFO USR1 USR2".split())
 SHELLS = {"bash", "sh", "zsh", "dash"}
 KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "!", "{", "}"}
-HEREDOC_RE = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+HEREDOC_RE = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_.-]*)\2")
 # A shell with no script operand reads its SCRIPT from stdin, so a heredoc fed to it (`bash <<EOF`,
 # `cat <<EOF | sh`) is a run, not a mention.
 STDIN_SHELL_RE = re.compile(r"(?:^|[;&|(]\s*)(?:sudo\s+)?(?:\S*/)?(?:bash|sh|zsh|dash)"
@@ -71,6 +72,22 @@ def strip_heredocs(cmd):
         pending.extend(m.group(3) for m in HEREDOC_RE.finditer(line))
         keep = bool(pending) and bool(STDIN_SHELL_RE.search(HEREDOC_RE.sub(" ", line)))
     return "\n".join(out)
+
+
+def heredoc_substitutions(cmd):
+    """The $( ) and backtick spans of every UNQUOTED heredoc body (`<<EOF`, not `<<'EOF'`): the
+    shell expands that body, so those spans RUN even when the heredoc only feeds a file or a mail.
+    Quotes and `#` are literal in a body, so they are blanked before prepass reads the line."""
+    out, pending = [], []
+    for line in cmd.split("\n"):
+        if pending:
+            if line.strip() == pending[0][0]:
+                pending.pop(0)
+            elif pending[0][1]:
+                prepass(re.sub(r"[#'\"]", " ", line), out)
+            continue
+        pending.extend((m.group(3), not m.group(2)) for m in HEREDOC_RE.finditer(line))
+    return out
 
 
 def _match_paren(s, i):
@@ -162,15 +179,53 @@ def _is_redirect(tok):
     return _is_punct(tok) and ("<" in tok or ">" in tok) and not set(tok) & set(";|()")
 
 
+def _is_write_redirect(tok):
+    # _is_redirect refuses any token holding '|', which leaves `>|` (clobber) out. door-create.py and
+    # patch-always-loaded.py read a write target with this; this file's own splitter calls it too and drops every target.
+    return _is_punct(tok) and ">" in tok and not set(tok) & set(";()")
+
+
+def command_tokens(cmd, word_re, too_large, unparsed, pre=None):
+    """(tokens, inner) for one shell text: the prologue of every arm's scan() (this file's, door-create.py's
+    and patch-always-loaded.py's), so the three arms read one command one way. Too large: ([], []) after too_large() records it.
+    Each arm formats its own record (no self-test reads the string: kill-option-order.py and door-create.py exit 4 on any record and print none; patch-always-loaded.py prints its records as the hook's parse-gap detail): too_large(text) is called when the
+    prepassed text is over MAX_TEXT, and unparsed(line) for each " ; " line that will not tokenize, both only
+    when word_re finds the arm's word there. pre(cmd), when given, runs after the backslash-newline join and
+    before the heredoc reads (patch-always-loaded.py decodes a plain $'apply' there). pre() is pinned only by patch-always-loaded.py's self-test, so run all three self-tests after editing this."""
+    cmd = cmd.replace("\\\n", " ")
+    if pre:
+        cmd = pre(cmd)
+    inner = heredoc_substitutions(cmd)
+    text = prepass(strip_heredocs(cmd), inner)
+    if len(text) > MAX_TEXT:
+        if word_re.search(text):
+            too_large(text)
+        return [], []
+    try:
+        return tokenize(text), inner
+    except ValueError:
+        tokens = []
+        for line in text.split(" ; "):
+            try:
+                tokens += tokenize(line) + [";"]
+            except ValueError:
+                if word_re.search(line):
+                    unparsed(line)  # e.g. $'it\'s' on the same line: recorded, not silent
+        return tokens, inner
+
+
 def simple_commands(tokens):
-    """Split a token list at separators; drop redirections and their targets."""
+    """Split a token list at separators; drop redirections and their targets.
+    door-create.py commands() and patch-always-loaded.py commands() are COPIES of this splitter that keep what
+    this one drops (write targets; reads, heredocs, pipes and subshell depth), so their shapes differ and they
+    stay three copies: a fix to how a separator or redirect is read belongs in all three."""
     cmds, cur, skip = [], [], False
     for t in tokens:
         if skip:
             skip = False
             if t not in ("<(", ">("):  # `cat < <(…)`: the target is a process substitution that RUNS
                 continue
-        if _is_redirect(t):
+        if _is_redirect(t) or _is_write_redirect(t):
             # `2>` arrives as '2', '>': the fd digit is not an argument either.
             if cur and cur[-1].isdigit():
                 cur.pop()
@@ -302,24 +357,7 @@ def check_argv(argv):
 def scan(cmd, depth=0):
     if depth > 6:
         return []
-    cmd = cmd.replace("\\\n", " ")
-    inner = []
-    text = prepass(strip_heredocs(cmd), inner)
-    if len(text) > MAX_TEXT:
-        if TOOL_WORD_RE.search(text):
-            UNPARSED.append(text[:80])
-        return []
-    try:
-        tokens = tokenize(text)
-    except ValueError:
-        tokens = []
-        for line in text.split(" ; "):
-            try:
-                tokens += tokenize(line) + [";"]
-            except ValueError:
-                if TOOL_WORD_RE.search(line):
-                    UNPARSED.append(line)  # e.g. $'it\'s' on the same line: recorded, not silent
-                continue
+    tokens, inner = command_tokens(cmd, TOOL_WORD_RE, lambda text: UNPARSED.append(text[:80]), UNPARSED.append)
     findings = []
     for argv in simple_commands(tokens):
         argv, nested = unwrap(argv)
@@ -393,6 +431,8 @@ FIRE = [
     ("redirect from a process substitution", "cat < <(pkill -f node -n)"),
     ("noglob", "noglob pkill -f node -n"),
     ("find -exec", "find . -name x -exec pkill -f {} -n \\;"),
+    ("a backtick span inside an UNQUOTED heredoc body runs", "cat >> /tmp/p.md <<EOF\nsee `pkill -f node -n`\nEOF"),
+    ("an apostrophe before a backtick span in an UNQUOTED heredoc body", "cat >> /tmp/p.md <<EOF\nit's: `pkill -f node -n`\nEOF"),
     # One arm per branch that no arm above reaches (each measured surviving its own deletion).
     ("inside a double-quoted $( )", "P=\"$(pgrep -f node -n)\""),
     ("behind env", "env FOO=1 pkill -f node -n"),
@@ -410,6 +450,11 @@ FIRE = [
     ("bash --rcfile <file> -c", "bash --rcfile /dev/null -c 'pkill -f node -n'"),
     ("heredoc fed to a shell", "bash <<'EOF'\npkill -f node -n\nEOF"),
     ("heredoc piped to a shell", "cat <<'EOF' | sh\npkill -f node -n\nEOF"),
+    # command_tokens() branches: it is the prologue of all three arms, so its own file pins each one.
+    ("a backslash-newline continues the command", "pkill -f node \\\n-n"),
+    ("a ; command after a line it cannot parse is still read", "echo a ; echo $'it\\'s' ; pkill -f node -n"),
+    ("a heredoc $( ) is scanned when the text around it cannot parse", "echo $'it\\'s'\ncat <<EOF\n$(pkill -f node -n)\nEOF"),
+    ("a clobber redirect before the stray option", "pkill -f x >| /dev/null -n"),
 ]
 CLEAN = [
     ("options first (the fix)", "pkill -n -U \"$(id -u)\" -f 'cat'"),
@@ -439,6 +484,8 @@ CLEAN = [
     ("bash -o pipefail -c, options first", "bash -o pipefail -c 'pkill -n -f node'"),
     ("shell fed a heredoc, options first", "bash <<'EOF'\npkill -n -f node\nEOF"),
     ("cat heredoc body stays a mention", "cat > /tmp/m <<'EOF'\npkill -f cat -n\nEOF"),
+    ("a backtick span in a QUOTED heredoc body stays a mention", "cat >> /tmp/p.md <<'EOF'\nsee `pkill -f node -n`\nEOF"),
+    ("a heredoc delimiter with - and . still ends the body", "cat > /tmp/m <<'END-1.x'\npkill -f cat -n\nEND-1.x"),
     ("trap reset", "trap - EXIT; pgrep -lf node"),
     ("trap with an unrelated script", "trap 'rm -f /tmp/x' EXIT; pgrep -lf node"),
     ("time -p, options first", "time -p pgrep -lf node"),
@@ -452,6 +499,7 @@ CLEAN = [
     ("every pgrep value option first", "pgrep -F /tmp/p -G 20 -P 1 -U 501 -d , -g 1 -t ttys001 -u '<user>' -lf cat"),
     ("every killall value option first", "killall -t ttys001 -c foo -u '<user>' -9 node"),
     ("heredoc to a shell SCRIPT is data", "bash scripts/x.sh <<'EOF'\npkill -f cat -n\nEOF"),
+    ("a clobber target named like a kill tool", "echo hi >| pkill -f node -n"),
 ]
 
 
@@ -467,8 +515,9 @@ def self_test():
         ok = not got
         bad += not ok
         print(("PASS" if ok else "FAIL") + "  clean: " + name + ("" if ok else "  -> " + repr(got[0]["stray"])))
-    doc = deny_document(scan(FIRE[0][1])[0])
-    ok = json.loads(json.dumps(doc))["hookSpecificOutput"]["permissionDecision"] == "deny"
+    got = scan(FIRE[0][1])
+    doc = deny_document(got[0]) if got else {"hookSpecificOutput": {}}
+    ok = json.loads(json.dumps(doc))["hookSpecificOutput"].get("permissionDecision") == "deny"
     bad += not ok
     print(("PASS" if ok else "FAIL") + "  deny document is one valid JSON object")
     del UNPARSED[:]
@@ -477,7 +526,13 @@ def self_test():
     ok = ok and not scan("pgrep -lf node\necho $'it\\'s'") and not UNPARSED
     bad += not ok
     print(("PASS" if ok else "FAIL") + "  a line it cannot parse is recorded (exit 4) only when it names a kill tool")
-    print(("ALL PASS" if bad == 0 else str(bad) + " FAILED") + " (" + str(len(FIRE) + len(CLEAN) + 2) + " arms)")
+    del UNPARSED[:]
+    ok = not scan("echo " + "a" * MAX_TEXT + "; pkill -f node -n") and bool(UNPARSED)
+    del UNPARSED[:]
+    ok = ok and not scan("echo " + "a" * MAX_TEXT) and not UNPARSED
+    bad += not ok
+    print(("PASS" if ok else "FAIL") + "  a command too large to parse is recorded (exit 4) only when it names a kill tool")
+    print(("ALL PASS" if bad == 0 else str(bad) + " FAILED") + " (" + str(len(FIRE) + len(CLEAN) + 3) + " arms)")
     return 0 if bad == 0 else 1
 
 

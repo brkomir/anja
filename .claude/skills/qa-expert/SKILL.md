@@ -5,14 +5,12 @@ applies_when:
   paths:
     - "tests/**"
 description: >-
-  SaaS QA expert. Use when testing features end-to-end, writing test plans,
-  reviewing code for edge cases, validating payment flows, testing file upload
-  handling, verifying AI output quality, checking cross-browser behavior,
-  auditing test coverage before marking a feature complete, or preparing for
-  launch. Also use when the user mentions "QA," "testing," "test plan," "edge
-  cases," "regression," or "bug." Distinct from security-expert (vulnerability
-  assessment and threat modeling) and /test-gap (coverage of one file or
-  feature) — this skill owns test strategy and the launch gate.
+  SaaS QA expert. Use when testing a feature end-to-end, writing a test plan,
+  reviewing code for edge cases, validating a payment flow, testing uploads, verifying AI output
+  quality, checking cross-browser behavior, preparing for launch, or auditing test coverage before
+  marking a feature complete. Distinct from security-expert (vulnerability assessment and threat
+  modeling) and /test-gap (coverage of one file or feature) — this skill owns test strategy and the
+  launch gate.
 skepticism: high
 ---
 

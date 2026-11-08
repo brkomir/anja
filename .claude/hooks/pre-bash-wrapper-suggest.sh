@@ -15,7 +15,7 @@
 #   - `npx vitest run tests/integration` / bare integration vitest
 #     → suggest `npm run test:integration` (auto-starts Docker)
 #   - bare `psql` / direct prod Supabase DATABASE_URL use without /migration context
-#     → suggest `/migration` skill
+#     → suggest `/migration` skill (.claude/skills/migration/SKILL.md, the canonical apply path)
 #   - `timeout`/`gtimeout` in command position when the binary is absent (macOS dev has
 #     no coreutils) → suggest the Bash TOOL's own `timeout` param or `perl -e 'alarm'`
 #     (an enforce layer for a loaded-rule-not-firing gap: the failure kept recurring
@@ -88,7 +88,7 @@ if [[ -z "$warn" ]] \
   && echo "$cmd" | grep -qE '(^|[[:space:]&|;])psql[[:space:]]+.*(supabase\.co|DATABASE_URL)' \
   && ! echo "$cmd" | grep -qE 'migration|supabase/migrations/'; then
   warn="Direct psql against prod/staging Supabase bypasses migration logging + prefers-ipv4 + safety checks"
-  suggest="/migration skill handles apply-to-staging-then-prod sequencing. If truly read-only exploration, add '# read-only' comment to silence this warn."
+  suggest="/migration skill handles apply-to-staging-then-prod sequencing (.claude/skills/migration/SKILL.md). If truly read-only exploration, add '# read-only' comment to silence this warn."
 fi
 
 # `timeout` / `gtimeout` in COMMAND POSITION (start of string/segment — after ; & | && ||

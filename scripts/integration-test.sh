@@ -205,11 +205,11 @@ fi
 
 # ⚠️ THIS LOOP IS PURELY NUMERIC AND DOES NOT READ `-- apply-before: NNNN`
 # (scripts/apply-all-migrations.mjs does — see the block near the top of that
-# file). That is correct HERE only because this database has no hosted-platform
-# public-schema default privilege granting anon, so a migration whose ACL pre-check
-# needs a later migration's fix still passes in numeric order. It is not a general
-# guarantee: if a fixture ever reproduces that default ACL, this loop applies the
-# pre-check before the fix and dies at its RAISE.
+# file). That is correct HERE only because this database reproduces none of the
+# hosted platform's default privileges, so a pre-check that on the hosted database
+# needs a later migration applied first still passes here in numeric order. It is
+# not a general guarantee: if a fixture ever reproduces one, this loop can apply
+# such a pre-check before the migration it depends on and die at its RAISE.
 # Every numbered file from MIGRATIONS_FIRST onwards, in numeric order
 for f in $(ls supabase/migrations/[0-9][0-9][0-9][0-9]_*.sql 2>/dev/null | sort -u); do
   _n=$((10#$(basename "$f" | cut -c1-4))); [ "$_n" -ge "$MIGRATIONS_FIRST" ] || continue
@@ -217,7 +217,7 @@ for f in $(ls supabase/migrations/[0-9][0-9][0-9][0-9]_*.sql 2>/dev/null | sort 
 done
 green "Migrations applied."
 
-# ── Pre-harness column-ACL snapshot (2026-08-17) ──────────────────────────────
+# ── Pre-harness column-ACL snapshot ──────────────────────────────
 # THE ONLY PRISTINE MOMENT. The column-ACL leak test is the
 # authoritative column-ACL gate; its drift arms ask "does any column the MIGRATIONS
 # grant to `authenticated` sit outside the allowlist?". Asking that question from

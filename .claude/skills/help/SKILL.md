@@ -122,9 +122,8 @@ Composes a panel of 3–15 domain experts plus (optionally) a contrarian whose e
 
 Flags:
 - `--final-audit` — pre-launch verification mode (stricter + adds `/audit-check` post-run).
-- `--phase-fresh-synthesis` (opt-in, when shipped) — for ≥9-expert panels, runs synthesis in a fresh sub-agent to avoid orchestrator-context accumulation.
 
-Output: synthesis grouped by topic (NOT by expert), with evidence-class labels (CONVERGED / SINGLE-SOURCE / DISPUTED).
+Output: synthesis grouped by topic (NOT by expert — `.claude/skills/expert-review/SKILL.md` § Group by topic, not by expert), with evidence-class labels (CONVERGED / SINGLE-SOURCE / DISPUTED).
 
 ### `/audit-check` deep-dive
 

@@ -153,10 +153,10 @@ Triage a red GitHub Actions run, fix every failed job, verify locally, batch int
 **Process:**
 
 1. **Resolve the run.** No arg → latest failed run on the current branch: `gh run list --branch "$(git branch --show-current)" --limit 5`. Or take a `<run-id>` / `<PR#>`.
-2. **Enumerate failed jobs + the failing step per job:**
+2. **Enumerate every job that did not pass + its failing step** (a cancelled or timed-out job counts: it never finished, so read its log before calling it code):
    ```bash
    gh run view <id> --json status,conclusion,jobs \
-     --jq '.jobs[] | select(.conclusion=="failure") | "[\(.databaseId)] \(.name) → \(.steps[]|select(.conclusion=="failure")|.name)"'
+     --jq '.jobs[] | select(.conclusion != null and (.conclusion | IN("success","skipped","neutral") | not)) | "[\(.databaseId)] \(.conclusion) \(.name) → \([.steps[]|select(.conclusion != null and (.conclusion | IN("success","skipped","neutral") | not))|.name] | join(", "))"'
    ```
 3. **Reproduce each failure LOCALLY** — `gh run view --job <id> --log` only serves logs after the WHOLE run completes (mid-run it returns empty), so reproduce rather than wait. Map the failing CI step to its local command:
 
@@ -185,7 +185,7 @@ Triage a red GitHub Actions run, fix every failed job, verify locally, batch int
 
 **Meta-surface CI fixes route through `/meta` first.** Most `/fix --ci` work is product-CI (the app-test setup, the auth-stub, flakes) and needs no gate. But when the fix touches the **meta-system** surface — a `.claude/` hook, `skill-lint` / `smoke-test-hooks` config, the `meta-hygiene` CI job, a skill spec, or a slash command — it IS a meta-system change: consult `/meta` first so the SC-1 velocity gate + naming-coherence discipline load before you edit. Distinguish by what the fix EDITS, not which job failed.
 
-**CI-vs-local discrepancy catalog** (why a green local run goes red in CI — check these first whenever step 4 says "passes locally"; all observed in the 2026-06-19 135-commit-backlog triage):
+**CI-vs-local discrepancy catalog** (why a green local run goes red in CI — check these first whenever step 4 says "passes locally"):
 - **Gitignored runtime files absent in a fresh checkout** — logs, caches, generated artifacts. A test/script that reads one breaks in CI where it doesn't exist. Fix: make the reader tolerate absence (`|| echo 0`, `touch` first, `[ -f ]` guard).
 - **`grep -v PATTERN file && mv` skips the `mv` when ALL lines match** — `grep -v` exits 1 when its output is empty (every line matched), so `&&` short-circuits. Exactly the fresh/empty-file case in CI. Fix: decouple `mv` from grep's exit (`grep -v … || true; mv … || true`).
 - **Local-runner setup not mirrored in the CI workflow** — a bootstrap step in `scripts/e2e-local.sh` (DB role/schema stub, seed) that the CI workflow lacks. They DRIFT. Fix: extract the shared step to ONE file both apply; never maintain two copies.

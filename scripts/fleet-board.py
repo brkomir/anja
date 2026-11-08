@@ -178,8 +178,10 @@ def _first_int(path):
 def lifecycle(sid, args, now, hubs=()):
     st = session_status.lifecycle_status(sid, args.state_dir, args.sessions_dir)
     bits, epoch = [], 0
-    if st in ("WRAPPED", "CHECKPOINT"):
+    if st == "WRAPPED":
         epoch = session_status.read_wrapped(session_status.wrapped_marker(args.state_dir, sid))[1]
+    elif st == "WRAPPING":   # a /wrap RUNNING (2026-11-01): age = since its Step 0 stamp
+        epoch = session_status.read_wrapped(session_status.wrapping_marker(args.state_dir, sid))[1]
     elif st == "STANDBY":
         epoch = session_status.read_standby(session_status.standby_marker(args.state_dir, sid))[0]
     elif st == "EXITED":

@@ -1,6 +1,6 @@
 ---
 name: engagement-psychologist
-description: "Expert in behavioral psychology, game theory, and gamification of user experience. Designs engagement loops, retention mechanics, and incentive structures for SaaS products. Use when designing features for user retention, planning gamification, analyzing user motivation, designing onboarding, building habit loops, or evaluating engagement mechanics."
+description: "Behavioral psychology, game theory and gamification expert: engagement loops, retention mechanics, incentive structures. Use when designing for retention, planning gamification, analyzing user motivation, designing onboarding, building habit loops, or evaluating an engagement mechanic."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

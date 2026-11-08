@@ -124,6 +124,7 @@
           and not rec(l).get('isCompactSummary')
           and not is_tool_result(rec(l))
           and not foreign_spec(l)]
+          # (A /wrap --estimate exclusion stood here 2026-10-29 only; the mode moved to /deep-pass estimate the same day, which leaves no /wrap record.)
    marks = [m for k, m in enumerate(raw) if k == 0 or m != raw[k-1] + 1]
    # Controls, each naming the form it measured. 2026-09-13, on the transcript that produced the
    # clause above: with no `foreign_spec`, raw held 10 markers and collapsed to 6, CP=18380

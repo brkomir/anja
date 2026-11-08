@@ -9,6 +9,14 @@
 # with a DIFFERENT first prompt read the doctrine from cache, it survived /compact, and a dispatched sub-agent
 # did not receive it. Sized at ~12-22M base-input-equivalent a week, mostly at compactions.
 #
+# RE-CHECKED 2026-11-02 on Claude Code 2.1.316 (built for 2.1.292): two headless sessions with different prompts, the
+# second read the appended doctrine from cache (63,315 cached tokens against 11,957 without the flag, haiku), so the
+# sharing holds; a subcommand placed after the flag (`mcp list`) still parses. NEW in 2.1.316: the system prompt is
+# recorded at a conversation's first request and re-sent as-is after a --resume until the next compaction
+# (--system-prompt-snapshot, default on; measured with two canary files), so a resumed conversation keeps the doctrine
+# it was recorded with, not this launch's. session-start.sh records the launch commit per session at startup, clear and
+# compact (resident-doctrine-commit-<sid8>) and compares a resume against it.
+#
 # HOW: concatenate .claude/orchestrator/{conventions,session-doctrine}.md at ONE resolved HEAD (a file missing there
 # launches without the flag, see below) into a content-addressed file under .claude/state/, then exec claude with --append-system-prompt-file and
 # SKIP_ORCHESTRATOR_INJECT=1 (orchestrator-inject.sh already honors it, so nothing is delivered twice). The
@@ -51,7 +59,9 @@ H="$(shasum -a 256 "$TMP" | cut -c1-12)"
 OUT="$STATE/resident-doctrine-$H.md"
 # Sweep BEFORE choosing: sweeping after the choice deleted the file this launch was about to pass once the
 # doctrine sat unchanged for 15 days ("Append system prompt file not found").
-find "$STATE" -maxdepth 1 \( -name 'resident-doctrine-*.md' -o -name 'resident-doctrine.??????' \) -mtime +14 -delete 2>/dev/null || true
+# A per-session launch record (resident-doctrine-commit-<sid8>, session-start.sh) older than 14 days goes too: a resume
+# after that reads freshness UNKNOWN, which is the safe side.
+find "$STATE" -maxdepth 1 \( -name 'resident-doctrine-*.md' -o -name 'resident-doctrine.??????' -o -name 'resident-doctrine-commit-*' \) -mtime +14 -delete 2>/dev/null || true
 # Always rename: an existing file of that name is never TRUSTED (a same-name file with other bytes, or a
 # symlink, was reused verbatim), and same name = same bytes, so a running session loses nothing. The rename
 # also refreshes the mtime the sweep reads.

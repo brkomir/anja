@@ -25,20 +25,20 @@ Ergonomic surface over the `scripts/session-manifest.py mail-*` engine — the *
 2. **Compose the drop-in** from the conversation using the handoff schema: **context/why + the exact change (apply-ready, with code/paths) + apply-instructions + a verify step**. Sender provenance is stamped by the engine — don't hand-write it.
 3. **Send it** — write the composed body to a temp file, then:
    ```bash
-   python3 scripts/session-manifest.py mail-send --to <recipient> --subject "<one-line>" --body-file <tmp>
+   python3 scripts/session-manifest.py mail-send --to <recipient> --subject '<one-line>' --body-file <tmp>
    ```
-   (Or pipe the body via stdin.) Clean up the temp file.
+   (Or pipe the body via a QUOTED `<<'EOF'` heredoc on stdin.) Single-quote `--subject`: in double quotes backticks and the `$` family are command-substituted and eaten silently. Clean up the temp file.
 4. **Confirm** what was sent: recipient + subject + a one-line summary of the body. The recipient sees it at its next SessionStart, or immediately if it runs `/mail check`.
 
 **Passthrough variant:** `/mail send --body-file <f>` (or a body the user supplies verbatim) → skip composition, send as-is.
 
 **Verify-before-relay annotation (optional, `--verify`):** when the handoff carries a load-bearing STATE-CLAIM, attach the exact ground-truth check with `--verify "<command/ref>"` (e.g. `--verify "git log --oneline -5 -- src/x.ts"`). It surfaces to the recipient as a distinct `⚠ VERIFY-BEFORE-RELAY:` line — the per-message, sender-attached, *typed* complement to the always-on staleness primer. The sender, who knows what needs checking, attaches the check; the relayer runs it before relaying the claim as current.
 
-**No per-send approval gate (2026-06-21).** Composing + sending a peer handoff does NOT need owner sign-off — it's internal-fleet coordination (free, advisory, deliver-and-surface so the recipient never auto-applies it): the recommend-AND-execute class, NOT the `git push`/CI/deploy approval class (cross-SESSION ≠ cross-SYSTEM). Verify the mail's load-bearing state-claim against ground truth FIRST (don't relay a stale claim), then send + report what you sent. Asking "say 'send it' and I'll deliver" is the list-and-wait anti-pattern.
+**No per-send approval gate (2026-06-21).** Composing + sending a peer handoff does NOT need owner sign-off — it's internal-fleet coordination (NOT free — it spends the recipient's context and theirs spends yours — but advisory, execute-then-report, deliver-and-surface so the recipient never auto-applies it): the recommend-AND-execute class, NOT the `git push`/CI/deploy approval class (cross-SESSION ≠ cross-SYSTEM). Verify the mail's load-bearing state-claim against ground truth FIRST (don't relay a stale claim), then send + report what you sent. Asking "say 'send it' and I'll deliver" is the list-and-wait anti-pattern.
 
 **Send behaviors (engine):** `--to all` is a TRUE broadcast — every active peer surfaces it once (per-recipient receipts). A `--to` that isn't an 8-hex prefix or `all` is rejected. If the recipient has EXITED (terminal — only `/exit` is, not `/wrap`), the send still writes but warns it lands only if that session reopens (else it prunes unread in 72h). **Behavioral response to that warning (2026-06-21): an EXITED recipient = effectively UNDELIVERED — a terminal session does NOT reopen, so treat the send as a no-op and make the coordination durable elsewhere (tracker / commit). Never rely on the reopen path.**
 
-**Broadcast-correction channel symmetry (2026-07-06): broadcast-in ⇒ broadcast-out.** If you `--to all` a load-bearing claim / heads-up / premise and later find it WRONG (no-op / superseded / refuted), its correction MUST go out `--to all` too (same audience) + a `--verify` — NEVER a targeted single-recipient reply. A targeted retraction leaves the N−1 sessions you didn't mail still propagating the stale premise (they never learn it was retracted). Evidence: a broadcast demo-upload "editor-persist leak" traced to a no-op; the "it's a no-op" correction went to one session → 2 peers kept de-staling the original until a corrective re-broadcast closed it. Sender half of the receiver-side rule ("before ACTING on a broadcast, check for a later same-sender retraction").
+**Broadcast-correction channel symmetry (2026-07-06): broadcast-in ⇒ broadcast-out.** If you `--to all` a load-bearing claim / heads-up / premise and later find it WRONG (no-op / superseded / refuted), its correction MUST go out `--to all` too (same audience) + a `--verify` — NEVER a targeted single-recipient reply. A targeted retraction leaves the N−1 sessions you didn't mail still propagating the stale premise (they never learn it was retracted). Evidence: a broadcast defect report traced to a no-op; the "it's a no-op" correction went to one session → 2 peers kept de-staling the original until a corrective re-broadcast closed it. Sender half of the receiver-side rule ("before ACTING on a broadcast, check for a later same-sender retraction").
 
 ## ⛔ SUBJECT CONVENTION FOR REVIEW MAIL — ONE review-id per subject, and an ACK never shares a subject with a disposition
 
@@ -113,14 +113,14 @@ and `review-hub/SKILL.md` (*"unread-on-disk is NOT unhandled"*).
 
 **Arm it (one Bash call, `run_in_background: true`):**
 ```bash
-python3 scripts/session-manifest.py mail-await --peer-done <sid8>             # until that peer /wraps or /exits
+python3 scripts/session-manifest.py mail-await --peer-done <sid8>             # until that peer's /wrap COMPLETES (a park after it counts), or it exits
 python3 scripts/session-manifest.py mail-await --on-commit <pathspec>         # until a NEW commit touches <pathspec>
 python3 scripts/session-manifest.py mail-await --signal <tok> [--from <sid8>] # until an explicit go-signal
 ```
 On the go-condition it prints the match + exits 0 → the session wakes with that text in context. On timeout (default 2h, `--timeout <sec>`; `--poll <sec>` cadence) it exits 1 with a notice to surface to the human (the blocker may have stalled).
 
 **Pick the mode by what "done" looks like — prefer the two zero-cooperation modes:**
-- **`--peer-done <sid8>`** — the blocker finishing IS the signal. Reuses the WRAPPED/EXITED lifecycle marker the peer's `/wrap` (or `/exit`) writes automatically — **no cooperation from the blocker.** The common "wait for peer X to finish" case.
+- **`--peer-done <sid8>`** — the blocker finishing IS the signal. Reuses the WRAPPED/EXITED lifecycle marker the peer's `/wrap` (or `/exit`) writes automatically — **no cooperation from the blocker.** Since 2026-11-01 WRAPPED is stamped only when the wrap COMPLETES; a peer mid-wrap reads WRAPPING and does not wake you. The common "wait for peer X to finish" case.
 - **`--on-commit <pathspec> [--since <ref>]`** — wait for a deliverable to land. Keys on a real commit (durable + attributable); baseline = HEAD at arm time. **No cooperation needed** — strictly better than a sender-side post-commit hook (no committer state, works retroactively even if the commit already landed).
 - **`--signal <tok> [--from <sid8>]`** — cooperative explicit green-light, for "go BEFORE I wrap/commit" (e.g. "my part is safe, proceed"). Blocker emits `mail-send --to <waiter> --signal <tok>`. Race-safe: a signal sent before the await armed is caught on the first check (durable mailbox + non-consuming peek).
 

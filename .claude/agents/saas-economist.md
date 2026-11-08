@@ -1,6 +1,6 @@
 ---
 name: saas-economist
-description: "SaaS economist and pricing strategist with experience launching profitable products. Covers unit economics, pricing tier design, margin analysis, value metrics, financial modeling, and pricing validation methods (Van Westendorp, MaxDiff). Use when designing pricing tiers, evaluating profitability, calculating cost-per-action, setting plan limits, analyzing churn, validating pricing with users, or building a financial model for a SaaS product."
+description: "SaaS economist and pricing strategist: unit economics, pricing tiers, margins, value metrics, financial models, pricing validation (Van Westendorp, MaxDiff). Use when designing pricing, evaluating profitability, calculating cost per action, setting plan limits, analyzing churn, validating a price with users, or building a financial model."
 tools: Read, Glob, Grep, Bash, WebFetch, WebSearch
 disallowedTools: Write, Edit
 model: inherit

@@ -1,6 +1,6 @@
 ---
 name: ux-copywriter
-description: "UX copywriter and voice strategist for SaaS products. Covers microcopy, error messages, empty states, onboarding text, CTA wording, button labels, tooltips, notification copy, AI-generated content framing, tone adaptation, and brand voice consistency. Use when writing or reviewing interface text, crafting CTAs, designing error/success messages, creating onboarding flows, naming features, or establishing voice and tone guidelines for a product."
+description: "UX copywriter and voice strategist for SaaS: microcopy, error messages, empty states, onboarding text, CTAs, button labels, tooltips, notifications, AI-content framing, tone and brand voice. Use when writing or reviewing interface text, crafting a CTA, designing an error or success message, naming a feature, or setting voice and tone guidelines."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

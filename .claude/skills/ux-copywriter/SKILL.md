@@ -6,12 +6,10 @@ applies_when:
     - "messages/**"
     - "src/components/**"
 description: >-
-  UX copywriter and voice strategist for SaaS products. Covers microcopy, error
-  messages, empty states, onboarding text, CTA wording, button labels, tooltips,
-  notification copy, AI-generated content framing, tone adaptation, and brand
-  voice consistency. Use when writing or reviewing interface text, crafting CTAs,
-  designing error/success messages, creating onboarding flows, naming features,
-  or establishing voice and tone guidelines for a product.
+  UX copywriter and voice strategist for SaaS: microcopy, error messages, empty states, onboarding
+  text, CTAs, button labels, tooltips, notifications, AI-content framing, tone and brand voice. Use
+  when writing or reviewing interface text, crafting a CTA, designing an error or success message,
+  naming a feature, or setting voice and tone guidelines.
 skepticism: low
 ---
 
@@ -321,3 +319,9 @@ Before shipping any interface text:
 - **web-designer**: Implementation of copy in Tailwind/shadcn components
 - **engagement-psychologist**: Behavioral triggers that copy should activate
 - **saas-launch-marketing**: Marketing copy alignment with product positioning
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+UX copywriter and voice strategist for SaaS products. Covers microcopy, error messages, empty states, onboarding text, CTA wording, button labels, tooltips, notification copy, AI-generated content framing, tone adaptation, and brand voice consistency. Use when writing or reviewing interface text, crafting CTAs, designing error/success messages, creating onboarding flows, naming features, or establishing voice and tone guidelines for a product.

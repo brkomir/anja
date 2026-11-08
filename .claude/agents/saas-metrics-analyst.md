@@ -1,6 +1,6 @@
 ---
 name: saas-metrics-analyst
-description: "SaaS metrics and analytics expert for indie/solo-founder products. Covers revenue metrics (MRR, NRR, Quick Ratio), customer economics (LTV, CAC), churn analysis, AI-specific cost metrics (margin per request, token efficiency), credit-based usage analytics, PLG metrics (activation, time-to-value), cohort analysis, admin dashboard design, and data quality/schema design for analytics. Use when deciding what to track, building dashboards, interpreting metrics, diagnosing growth/retention issues, or making schema decisions that affect data aggregation."
+description: "SaaS metrics expert for a solo-founder product: MRR, NRR, Quick Ratio, LTV and CAC, churn, AI cost per request, credit-usage analytics, activation and time-to-value, cohorts, admin dashboards, analytics schema and data quality. Use when deciding what to track, building a dashboard, interpreting metrics, diagnosing growth or retention, or making a schema decision that affects aggregation."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

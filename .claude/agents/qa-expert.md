@@ -1,6 +1,6 @@
 ---
 name: qa-expert
-description: "SaaS QA expert for this project. Use when testing features end-to-end, writing test plans, reviewing code for edge cases, validating payment flows, testing file upload handling, verifying AI output quality, checking cross-browser behavior, preparing for launch, or auditing test coverage before marking a feature complete."
+description: "SaaS QA expert for this project. Use when testing a feature end-to-end, writing a test plan, reviewing code for edge cases, validating a payment flow, testing uploads, verifying AI output quality, checking cross-browser behavior, preparing for launch, or auditing test coverage before marking a feature complete."
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 model: inherit
 ---

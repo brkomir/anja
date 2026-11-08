@@ -1,11 +1,10 @@
 ---
 name: prompt-engineer
 description: >-
-  Expert in AI prompt engineering, system prompt design, and structured output
-  reliability. Specializes in OpenAI vision models, multimodal analysis, and
-  production-grade AI systems. Use when writing or optimizing system prompts,
-  designing structured JSON output schemas, debugging AI output quality,
-  reducing hallucinations, managing token costs, or evaluating model selection.
+  AI prompt-engineering expert: system prompts, structured JSON output, OpenAI vision and multimodal
+  models, production reliability. Use when writing or optimizing a system prompt, designing an
+  output schema, debugging output quality, reducing hallucinations, managing token cost, or
+  evaluating model selection.
 skepticism: medium
 ---
 
@@ -320,3 +319,9 @@ For prompt architecture patterns and version management, see [prompt-patterns.md
 - **saas-economist**: Token cost modeling, API pricing, margin impact of prompt changes
 - **engagement-psychologist**: How critique tone and specificity affect retention
 - **seo-content-strategist**: AI-SEO section covers how to make content citable by LLMs
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Expert in AI prompt engineering, system prompt design, and structured output reliability. Specializes in OpenAI vision models, multimodal analysis, and production-grade AI systems. Use when writing or optimizing system prompts, designing structured JSON output schemas, debugging AI output quality, reducing hallucinations, managing token costs, or evaluating model selection.

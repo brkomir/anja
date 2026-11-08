@@ -117,12 +117,17 @@ FIXTURES = [
 # ⛔ THE FIX IS MEMBERSHIP, NOT A COUNT. `session-cadence.md` § A DECLARED COUNT CAN BE
 # SATISFIED; A REFUSAL CANNOT: a count's only power is making someone LOOK, so a matching
 # number releases exactly the attention it was supposed to buy. Membership has no satisfying
-# input — delete an arm and its own name is what goes missing. A count would also have passed
-# the partial trim measured here (3 -> 1), which is the shape a real edit takes.
+# input — delete an arm and its own name is what goes missing. A count printed in the verdict
+# line is read by nothing (an emptied table prints 1, a one-arm trim prints 2).
 #
 # Adding a genuine new arm? Add its key here in the SAME edit. That is the point: the required
 # set is the ledger, and it is meant to cost one line.
-REQUIRED_MUTATION_ARMS = ("F7 form", "F8 form")
+# Each name maps to the EXACT fixtures its historical form must red on: ">=1 red" alone
+# is met by a never-match body, so an arm kept by name with a gutted body stayed green.
+REQUIRED_MUTATION_ARMS = {
+    "F7 form": {"F7 inline: an owner field after ` | ` must be read"},
+    "F8 form": {"F8 shadowing: prose after a pipe must NOT beat a real field line"},
+}
 
 # The historical broken forms. Each MUST fail at least one fixture; if one passes them all,
 # that fixture set no longer discriminates and this sentinel has gone decorative.
@@ -299,8 +304,8 @@ def self_test():
     # ⛔ PRESENCE FIRST. Everything below this loop is unreachable when the dict is empty, so
     # without this the whole arm deletes silently — measured, twice, including after a peer
     # had grown the suite around it. Membership, not the count printed in the verdict line.
-    missing = [k for k in REQUIRED_MUTATION_ARMS
-               if not any(k in label for label in HISTORICAL_BROKEN)]
+    arm_keys = {label.split(" (", 1)[0] for label in HISTORICAL_BROKEN}  # exact key, not substring
+    missing = [k for k in REQUIRED_MUTATION_ARMS if k not in arm_keys]
     if missing:
         print(f"  [FAIL] REQUIRED mutation arm(s) ABSENT: {', '.join(missing)}")
         print("         HISTORICAL_BROKEN was emptied or trimmed. The loop below cannot run,")
@@ -311,7 +316,11 @@ def self_test():
               f"({', '.join(REQUIRED_MUTATION_ARMS)})")
     for label, (bad_line, bad_pipe) in HISTORICAL_BROKEN.items():
         reds = [n for n, b, e in FIXTURES if read_owner(b, bad_line, bad_pipe) != e]
-        if reds:
+        want = REQUIRED_MUTATION_ARMS.get(label.split(" (", 1)[0])
+        if want is None or set(reds) != want:
+            print(f"  [FAIL] {label}\n         reds {sorted(reds)} != required {sorted(want or [])}")
+            failures.append(f"mutation arm unregistered or red set drifted: {label}")
+        elif reds:
             print(f"  [PASS] {label}\n         goes RED on: {', '.join(reds)}")
         else:
             print(f"  [FAIL] {label}\n         passes every fixture — the fixtures do not discriminate")

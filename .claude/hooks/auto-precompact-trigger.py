@@ -226,7 +226,7 @@ def auto_message(inp, root, state_dir, sid8):
     except OSError:
         pass
     return (f'⏳ AUTO PRE-COMPACT — context is at {context:,} of {threshold:,} tokens, {max(left, 0):,} left before '
-           f'the automatic compaction. Run /pre-compact NOW through the Skill tool (no --disarm), before anything '
+           f'the automatic compaction. Run /pre-compact --keep-listening NOW through the Skill tool, before anything '
            f'else in this turn: it banks the hand-off state in this session\'s working plan (heading '
            f'"## PRE-COMPACT — <UTC ISO>", AUTO), writes nothing else, and the work then carries on. Fires once per '
            f'crossing (pre-compact/SKILL.md § Automatic trigger).')

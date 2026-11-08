@@ -1,13 +1,11 @@
 ---
 name: growth-analyst
 description: >-
-  Product analytics and growth expert for SaaS products. Covers North Star
-  metrics, activation funnels, retention cohorts, engagement tracking,
-  revenue metrics (MRR, LTV, CAC), A/B testing strategy, segmentation,
-  instrumentation planning, and dashboard design. Use when defining what to
-  measure, designing analytics instrumentation, evaluating feature impact,
-  planning experiments, analyzing funnels, or building growth models for a
-  SaaS product.
+  Product analytics and growth expert for SaaS: North Star metrics, activation funnels, retention
+  cohorts, engagement tracking, MRR, LTV and CAC, experiment strategy, segmentation,
+  instrumentation, dashboards. Use when defining what to measure, designing instrumentation,
+  evaluating a feature's impact, planning an experiment, analyzing a funnel, or building a growth
+  model.
 skepticism: medium
 ---
 
@@ -414,3 +412,9 @@ Don't over-tool early. One good analytics platform + the hosting platform's buil
 - **saas-launch-marketing**: Go-to-market execution that drives the funnel
 - **haines-onboarding-cro**: Activation optimization (the metric growth depends on most)
 - **haines-churn-prevention**: Retention mechanics that protect growth gains
+
+## Scope, as the description read until 2026-11-02
+
+The frontmatter description was shortened to the agent listing's text on 2026-11-02 (the generator reads the agent description from the frontmatter since then). The fuller text it replaced, kept so nothing it named is lost:
+
+Product analytics and growth expert for SaaS products. Covers North Star metrics, activation funnels, retention cohorts, engagement tracking, revenue metrics (MRR, LTV, CAC), A/B testing strategy, segmentation, instrumentation planning, and dashboard design. Use when defining what to measure, designing analytics instrumentation, evaluating feature impact, planning experiments, analyzing funnels, or building growth models for a SaaS product.

@@ -12,20 +12,28 @@ Distinguishes WRAPPED (task-done, repeatable — /wrap) from FINISHED/EXITED
 Markers in .claude/state/ (session_id-keyed, normalized to 8 hex chars so the
 in-model /wrap writer [CLAUDE_CODE_SESSION_ID env] and the hook reader [stdin
 session_id] always agree):
-  session-wrapped-<sid>    "<HEAD-sha> <epoch>"   written by /wrap          (intent, repeatable)
+  session-wrapping-<sid>   "<HEAD-sha> <epoch> <mode>"  written by /wrap Step 0      (a wrap is RUNNING;
+                                                  removed by the completion stamp)
+  session-wrapped-<sid>    "<HEAD-sha> <epoch> wrap"    written by the /wrap COMPLETION stamp (done-for-now,
+                                                  repeatable). Until 2026-11-01 it was written at Step 0, so a
+                                                  peer's `mail-await --peer-done` woke ~10 steps early.
   session-finished-<sid>   "<epoch> <reason>"     written by SessionEnd     (terminal)
   session-standby-<sid>    "<epoch> <HEAD-sha>"   written by /standby       (owner-parked; cleared by
                                                   `resume`, which /standby resume runs on the owner's
                                                   next message)
 
 Derived status (NEVER stored): finished marker -> EXITED; else standby -> STANDBY; else
-wrapped -> WRAPPED / CHECKPOINT; else ACTIVE (derivation: scripts/session_status.py).
+wrapping -> WRAPPING; else wrapped -> WRAPPED; else ACTIVE (derivation: scripts/session_status.py).
+The former CHECKPOINT state is gone: a checkpoint wrap's completion leaves the seat ACTIVE.
 
 Why SessionEnd is the only true "exited" signal: /wrap is empirically repeatable
 (48h evidence: 8/11 sessions worked past their final /wrap, 23 /wraps across 11).
 
 Modes:
-  wrapped              stamp WRAPPED for current/--session id          (called by /wrap)
+  wrapping [--checkpoint]  stamp WRAPPING: a /wrap started                (called by /wrap Step 0)
+  wrapped              the wrap COMPLETED: stamp WRAPPED, clear WRAPPING  (/wrap's last act before the summary)
+  wrapped --checkpoint a checkpoint wrap COMPLETED: clear WRAPPING (and any
+                       wrapped marker) — the seat continues, reads ACTIVE   (/wrap's last act before the summary)
   finished --reason R  stamp FINISHED iff R in exit-reason-class       (called by SessionEnd hook)
   standby              stamp STANDBY — alive, listener disarmed, deaf   (called by /standby)
   resume               clear STANDBY, print how long it was parked     (called by /standby resume)
@@ -136,6 +144,10 @@ def wrapped_path(sid):
     return os.path.join(STATE_DIR, f'session-wrapped-{sid}')
 
 
+def wrapping_path(sid):
+    return session_status.wrapping_marker(STATE_DIR, sid)
+
+
 def finished_path(sid):
     return os.path.join(STATE_DIR, f'session-finished-{sid}')
 
@@ -193,24 +205,82 @@ def cmd_resume(args):
     return 0
 
 
+def cmd_wrapping(args):
+    """/wrap Step 0: a wrap STARTED. The seat reads WRAPPING — live,
+    non-terminal, never a peer-wake — until the completion stamp (`wrapped` / `wrapped
+    --checkpoint`) runs as the wrap's last act before the summary. THIRD FIELD = the mode this wrap owes at
+    completion ('wrap' | 'checkpoint'); `cmd_wrapped` reads it back to flag a flag dropped
+    between Step 0 and the completion stamp. Idempotent: a second stamp re-dates."""
+    sid = current_sid(args.session)
+    if not sid:
+        print('session-lifecycle: no session id (CLAUDE_CODE_SESSION_ID unset) — skipping WRAPPING', file=sys.stderr)
+        return 0
+    os.makedirs(STATE_DIR, exist_ok=True)
+    mode = 'checkpoint' if getattr(args, 'checkpoint', False) else 'wrap'
+    with open(wrapping_path(sid), 'w') as f:
+        f.write(f'{head_sha()} {int(time.time())} {mode}\n')
+    print(f'session-lifecycle: marked WRAPPING ({sid}){" — checkpoint: completion will leave ACTIVE" if mode == "checkpoint" else ""}',
+          file=sys.stderr)
+    return 0
+
+
 def cmd_wrapped(args):
+    """The wrap COMPLETED (WRAPPED only when the wrap has fully completed: every step done, and no
+    --checkpoint given). Runs as /wrap's last act before the summary, after the
+    Step 11 gate, only on "wrap complete: yes".
+      plain         -> write the wrapped marker, remove the wrapping marker  => WRAPPED
+      --checkpoint  -> remove the wrapping marker AND any wrapped marker     => ACTIVE
+    The checkpoint branch removes a wrapped marker on purpose: the seat is demonstrably
+    continuing, so a prior completed wrap's "done-for-now" no longer describes it (before this
+    change it wrote a 'checkpoint' record and the derivation called it CHECKPOINT; that state has
+    no producer now — session_status.wrapped_mode).
+    Until 2026-11-01 this was Step 0's stamp, so every reader keyed on the wrapped marker fired
+    at the START of the wrap. The marker's third field stays 'wrap' for every reader that splits
+    on whitespace (legacy 2-field and 3-field markers parse identically in read_wrapped)."""
     sid = current_sid(args.session)
     if not sid:
         print('session-lifecycle: no session id (CLAUDE_CODE_SESSION_ID unset) — skipping WRAPPED', file=sys.stderr)
         return 0
     os.makedirs(STATE_DIR, exist_ok=True)
-    # THIRD FIELD = INTENT, so a CHECKPOINT wrap is told apart from a plain WRAPPED.
-    # `/wrap` writes 'wrap' (done-for-now); `/wrap --checkpoint` writes
-    # 'checkpoint' (the session CONTINUES). Backward-compatible by construction: every
-    # existing reader goes through session_status.read_wrapped, which splits on whitespace
-    # and reads parts[0..1] only, so a legacy 2-field marker and a new 3-field one parse
-    # identically there. Intent is DECLARED here and cannot be derived later — a checkpoint
-    # that then goes quiet is byte-identical to a plain wrap without this field.
-    mode = 'checkpoint' if getattr(args, 'checkpoint', False) else 'wrap'
+    checkpoint = bool(getattr(args, 'checkpoint', False))
+    wp = wrapping_path(sid)
+    had_wrapping = os.path.exists(wp)
+    declared = session_status.wrapped_mode(wp) if had_wrapping else None
+    if declared is not None and declared != ('checkpoint' if checkpoint else 'wrap'):
+        # Step 0 said one mode, the completion stamp says the other. Either way the seat reads
+        # ACTIVE: a checkpoint declared at Step 0 is the /wrap invocation's --checkpoint, and the
+        # rule is WRAPPED only when no --checkpoint was issued — so a flag dropped at the
+        # completion stamp must not wake a peer on a seat that is still working.
+        # A plain Step 0 with a --checkpoint completion already fails safe (ACTIVE). Say so either
+        # way; closing for good after a checkpoint Step 0 is `wrapping` (plain), then `wrapped`.
+        print(f'⚠ session-lifecycle: Step 0 declared {declared!r} but the completion stamp says '
+              f'{"checkpoint" if checkpoint else "wrap"!r} — read as a checkpoint (the seat reads ACTIVE, no peer wake); '
+              f'to close for good re-stamp `wrapping` without --checkpoint, then `wrapped`.',
+              file=sys.stderr)
+        checkpoint = True
+    if checkpoint:
+        removed = []
+        for p, name in ((wp, 'WRAPPING'), (wrapped_path(sid), 'WRAPPED')):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                    removed.append(name)
+                except OSError as e:
+                    print(f'session-lifecycle: could not remove {p}: {e}', file=sys.stderr)
+        print(f'session-lifecycle: checkpoint wrap complete ({sid}) — '
+              f'{"cleared " + " + ".join(removed) if removed else "no marker to clear"}; the seat reads ACTIVE',
+              file=sys.stderr)
+        return 0
     with open(wrapped_path(sid), 'w') as f:
-        f.write(f'{head_sha()} {int(time.time())} {mode}\n')
-    label = 'CHECKPOINT' if mode == 'checkpoint' else 'WRAPPED'
-    print(f'session-lifecycle: marked {label} ({sid})', file=sys.stderr)
+        f.write(f'{head_sha()} {int(time.time())} wrap\n')
+    if had_wrapping:
+        try:
+            os.remove(wp)
+        except OSError as e:
+            print(f'session-lifecycle: could not remove {wp}: {e}', file=sys.stderr)
+    print(f'session-lifecycle: marked WRAPPED ({sid}) — wrap complete'
+          f'{"" if had_wrapping else " (no WRAPPING marker stood: Step 0 did not stamp `wrapping`, or this is a bare stamp)"}',
+          file=sys.stderr)
     return 0
 
 
@@ -264,6 +334,7 @@ def cmd_gate(args):
     # 1) GC: drop markers older than GC_DAYS (housekeeping; session_id-keyed
     #    markers would otherwise accumulate — staleness hygiene).
     for p in (glob.glob(os.path.join(STATE_DIR, 'session-wrapped-*')) +
+              glob.glob(os.path.join(STATE_DIR, 'session-wrapping-*')) +
               glob.glob(os.path.join(STATE_DIR, 'session-finished-*')) +
               glob.glob(os.path.join(STATE_DIR, 'session-exit-resumed-*'))):
         try:
@@ -318,6 +389,18 @@ def cmd_gate(args):
         print(f'⏎ session-lifecycle: this session already ran /wrap ({when}). '
               f'You are REOPENING, not starting fresh — restate intent before mutating durable '
               f'state; re-run /wrap when the new work is done.', file=sys.stderr)
+    # 3b) A WRAPPING marker at a start means a wrap began and never stamped completion (the
+    #     session stopped mid-wrap, or the wrap ended "wrap complete: no"). The seat reads
+    #     WRAPPING to every peer until a completion stamp runs; say so rather than clearing it —
+    #     derive-don't-store, and whether to finish the wrap or abandon it is the seat's call.
+    #     A marker at or before an exit is handled by step 4 below (it goes with the exit marker).
+    if sid and src in ('resume', 'startup') and os.path.exists(wrapping_path(sid)) and not os.path.exists(finished_path(sid)):
+        _, wts = _read_wrap(wrapping_path(sid))
+        when = datetime.datetime.fromtimestamp(wts).strftime('%Y-%m-%d %H:%M') if wts else 'earlier'
+        print(f'⏳ session-lifecycle: this session stamped WRAPPING ({when}) and never stamped completion — '
+              f'it reads WRAPPING to peers (live, non-terminal) until the wrap completes: re-run /wrap, or '
+              f'`python3 scripts/session-lifecycle.py wrapped --checkpoint` to abandon the wrap and read ACTIVE.',
+              file=sys.stderr)
 
     # 4) A SessionStart for a sid whose OWN session-finished marker exists means that session is
     #    running again: the owner restarted it (SessionEnd wrote the marker, the resume brought the
@@ -336,19 +419,22 @@ def cmd_gate(args):
                     prev = f.read()
                 # A wrap stamped at or before this exit is a state the session has since left;
                 # session_status.lifecycle_status silences it only WHILE the exit marker exists, so
-                # it goes with the marker, or the resumed seat reads WRAPPED/CHECKPOINT to peers.
-                wp = wrapped_path(sid)
-                stale_wrap = os.path.exists(wp) and _read_wrap(wp)[1] <= session_status.read_finished(fp)[0]
-                wbody = open(wp, encoding='utf-8').read().strip() if stale_wrap else ''
+                # it goes with the marker, or the resumed seat reads WRAPPED to peers.
+                # The same for a WRAPPING marker at or before the exit: that wrap died with the
+                # session, so on the resume the seat is ACTIVE, not mid-wrap (2026-11-01).
+                fts = session_status.read_finished(fp)[0]
+                stale = [(p, tag, open(p, encoding='utf-8').read().strip())
+                         for p, tag in ((wrapped_path(sid), 'superseded-wrap'), (wrapping_path(sid), 'superseded-wrapping'))
+                         if os.path.exists(p) and _read_wrap(p)[1] <= fts]
                 with open(resumed_path(sid), 'a', encoding='utf-8') as f:
                     if prev:
                         f.write(prev if prev.endswith('\n') else prev + '\n')
-                    if stale_wrap:
-                        f.write(f'{now} superseded-wrap {wbody}\n')
+                    for _, tag, body in stale:
+                        f.write(f'{now} {tag} {body}\n')
                     f.write(f'{now} resumed source={src}\n')
                 os.remove(fp)
-                if stale_wrap:
-                    os.remove(wp)
+                for p, _, _ in stale:
+                    os.remove(p)
                 print(f'session-lifecycle: this session ({sid}) had exited and is running again — '
                       f'its exit marker moved to session-exit-resumed-{sid}', file=sys.stderr)
             except OSError:
@@ -429,21 +515,26 @@ def cmd_status(args):
 def main():
     p = argparse.ArgumentParser(description='Session done/exited lifecycle markers')
     sub = p.add_subparsers(dest='cmd', required=True)
-    for name in ('wrapped', 'finished', 'standby', 'resume', 'gate', 'status'):
+    for name in ('wrapping', 'wrapped', 'finished', 'standby', 'resume', 'gate', 'status'):
         sp = sub.add_parser(name)
         sp.add_argument('--session', help='Session id (default: $CLAUDE_CODE_SESSION_ID)')
-        if name == 'wrapped':
+        if name == 'wrapping':
             sp.add_argument('--checkpoint', action='store_true',
-                            help='Declare INTENT TO CONTINUE (/wrap --checkpoint). Writes CHECKPOINT '
-                                 'instead of WRAPPED. Both are non-terminal and identical to every '
-                                 'gate; the flag records only that the seat said it was not finished.')
+                            help='This wrap is a checkpoint (/wrap --checkpoint): its completion stamp '
+                                 'will leave the seat ACTIVE. Recorded on the WRAPPING marker so the '
+                                 'completion stamp can flag a dropped flag.')
+        elif name == 'wrapped':
+            sp.add_argument('--checkpoint', action='store_true',
+                            help='A CHECKPOINT wrap completed (/wrap --checkpoint): clear the WRAPPING marker '
+                                 '(and any wrapped marker) and leave the seat ACTIVE — the session '
+                                 'continues. Without it the wrap completed for good: WRAPPED.')
         elif name == 'finished':
             sp.add_argument('--reason', default='', help='SessionEnd reason (logout/prompt_input_exit/clear/other)')
         elif name == 'gate':
             sp.add_argument('--source', default='', help='SessionStart source (startup/resume/clear/compact)')
     args = p.parse_args()
     return {
-        'wrapped': cmd_wrapped, 'finished': cmd_finished,
+        'wrapping': cmd_wrapping, 'wrapped': cmd_wrapped, 'finished': cmd_finished,
         'standby': cmd_standby, 'resume': cmd_resume,
         'gate': cmd_gate, 'status': cmd_status,
     }[args.cmd](args)
